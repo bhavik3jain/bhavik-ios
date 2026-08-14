@@ -1,30 +1,26 @@
 import SwiftData
 import SwiftUI
 
-struct AddShowView: View {
+struct AddMovieView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
     @AppStorage(TVTrackerModule.apiKeyDefaultsKey) private var apiKey = ""
 
     @State private var query = ""
-    @State private var results: [TMDBShowSummary] = []
+    @State private var results: [TMDBMovieSummary] = []
     @State private var isSearching = false
     @State private var errorMessage: String?
-    @State private var importingShowID: Int?
-    @State private var showingSettings = false
+    @State private var importingID: Int?
 
     var body: some View {
         NavigationStack {
             List {
                 if apiKey.isEmpty {
                     Section {
-                        Button {
-                            showingSettings = true
-                        } label: {
-                            Label("Add a TMDB API key to search", systemImage: "key")
-                        }
+                        Label("Add a TMDB API key in Settings to search", systemImage: "key")
+                            .foregroundStyle(.secondary)
                     } footer: {
-                        Text("Without a key you can still add shows and episodes by hand.")
+                        Text("Without a key you can still add movies by hand.")
                     }
                 }
 
@@ -39,8 +35,7 @@ struct AddShowView: View {
                     Section {
                         HStack {
                             ProgressView()
-                            Text("Searching…")
-                                .foregroundStyle(.secondary)
+                            Text("Searching…").foregroundStyle(.secondary)
                         }
                     }
                 }
@@ -52,21 +47,21 @@ struct AddShowView: View {
                         HStack(spacing: 12) {
                             PosterView(path: result.posterPath, width: 40)
                             VStack(alignment: .leading, spacing: 2) {
-                                Text(result.name)
+                                Text(result.title)
                                     .foregroundStyle(.primary)
-                                if let year = result.firstAirDate {
-                                    Text(year, format: .dateTime.year())
+                                if let releaseDate = result.releaseDate {
+                                    Text(releaseDate, format: .dateTime.year())
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
                                 }
                             }
                             Spacer()
-                            if importingShowID == result.id {
+                            if importingID == result.id {
                                 ProgressView()
                             }
                         }
                     }
-                    .disabled(importingShowID != nil)
+                    .disabled(importingID != nil)
                 }
 
                 Section {
@@ -75,26 +70,23 @@ struct AddShowView: View {
                     } label: {
                         Label(
                             query.trimmingCharacters(in: .whitespaces).isEmpty
-                                ? "Add show by hand"
+                                ? "Add movie by hand"
                                 : "Add “\(query)” by hand",
                             systemImage: "square.and.pencil"
                         )
                     }
                 }
             }
-            .searchable(text: $query, prompt: "Search shows")
+            .searchable(text: $query, prompt: "Search movies")
             .onSubmit(of: .search) {
                 Task { await search() }
             }
-            .navigationTitle("Add Show")
+            .navigationTitle("Add Movie")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel", role: .cancel) { dismiss() }
                 }
-            }
-            .sheet(isPresented: $showingSettings) {
-                TVSettingsView()
             }
         }
     }
@@ -108,50 +100,39 @@ struct AddShowView: View {
         isSearching = true
         defer { isSearching = false }
         do {
-            results = try await TMDBClient(apiKey: apiKey).searchShows(query: query)
+            results = try await TMDBClient(apiKey: apiKey).searchMovies(query: query)
             if results.isEmpty {
-                errorMessage = "No shows matched “\(query)”."
+                errorMessage = "No movies matched “\(query)”."
             }
         } catch {
             errorMessage = error.localizedDescription
         }
     }
 
-    private func add(_ summary: TMDBShowSummary) async {
-        importingShowID = summary.id
-        defer { importingShowID = nil }
+    private func add(_ summary: TMDBMovieSummary) async {
+        importingID = summary.id
+        defer { importingID = nil }
 
-        let show = Show(
-            tmdbID: summary.id,
-            name: summary.name,
-            overview: summary.overview,
-            posterPath: summary.posterPath
+        // Search results carry no runtime, so re-read the movie for it. A
+        // failure here is not worth losing the movie over.
+        let detail = (try? await TMDBClient(apiKey: apiKey).movieDetail(id: summary.id)) ?? summary
+
+        modelContext.insert(
+            Movie(
+                tmdbID: detail.id,
+                title: detail.title,
+                overview: detail.overview,
+                posterPath: detail.posterPath,
+                releaseDate: detail.releaseDate,
+                runtime: detail.runtime
+            )
         )
-        modelContext.insert(show)
-
-        do {
-            let episodes = try await TMDBClient(apiKey: apiKey).allEpisodes(showID: summary.id)
-            for payload in episodes {
-                let episode = Episode(
-                    tmdbID: payload.id,
-                    name: payload.name,
-                    seasonNumber: payload.seasonNumber,
-                    episodeNumber: payload.episodeNumber,
-                    airDate: payload.airDate
-                )
-                episode.show = show
-                modelContext.insert(episode)
-            }
-            dismiss()
-        } catch {
-            // The show is kept even if the episode list fails, so the work isn't lost.
-            errorMessage = "Added \(summary.name), but its episodes could not be loaded. \(error.localizedDescription)"
-        }
+        dismiss()
     }
 
     private func addManually() {
-        let name = query.trimmingCharacters(in: .whitespaces)
-        modelContext.insert(Show(name: name.isEmpty ? "New Show" : name))
+        let title = query.trimmingCharacters(in: .whitespaces)
+        modelContext.insert(Movie(title: title.isEmpty ? "New Movie" : title))
         dismiss()
     }
 }

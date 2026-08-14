@@ -68,3 +68,5 @@ cd Packages/FuelTracker && xcodebuild test -scheme FuelTracker -destination 'pla
 ```
 
 Swap in `GymTracker` or `TVTracker` for the others.
+
+The TV suite also carries tests that hit the real TMDB API. They are skipped by default and report *why* they skipped, so a missing key can never read as a pass. To run them, put a key in a file and point the test runner at it from Xcode's scheme editor (Product → Scheme → Edit Scheme → Test → Arguments), setting `TMDB_KEY_FILE` to its path. `xcodebuild` does not forward environment variables into the simulator, so exporting the variable in a shell will not work.

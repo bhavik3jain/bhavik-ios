@@ -50,7 +50,9 @@ private struct ScheduleRow: View {
     let isAired: Bool
 
     var body: some View {
-        HStack {
+        HStack(spacing: 12) {
+            PosterView(path: item.posterPath, width: 38)
+
             VStack(alignment: .leading, spacing: 2) {
                 Text(item.showName)
                     .fontWeight(.semibold)

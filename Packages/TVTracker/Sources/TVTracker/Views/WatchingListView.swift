@@ -68,26 +68,30 @@ private struct ShowRow: View {
     let show: Show
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                Text(show.name)
-                    .fontWeight(.semibold)
-                Spacer()
-                Text("\(show.watchedCount)/\(show.episodeCount)")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .monospacedDigit()
-            }
+        HStack(spacing: 12) {
+            PosterView(path: show.posterPath, width: 46)
 
-            if show.episodeCount > 0 {
-                ProgressView(value: show.progress)
-                    .tint(TVTrackerModule.accent.color)
-            }
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    Text(show.name)
+                        .fontWeight(.semibold)
+                    Spacer()
+                    Text("\(show.watchedCount)/\(show.episodeCount)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                }
 
-            if let next = show.nextUnwatched {
-                Text(next.hasAired() ? "Next up: \(next.code)" : "Waiting on \(next.code)")
-                    .font(.caption)
-                    .foregroundStyle(next.hasAired() ? TVTrackerModule.accent.color : .secondary)
+                if show.episodeCount > 0 {
+                    ProgressView(value: show.progress)
+                        .tint(TVTrackerModule.accent.color)
+                }
+
+                if let next = show.nextUnwatched {
+                    Text(next.hasAired() ? "Next up: \(next.code)" : "Waiting on \(next.code)")
+                        .font(.caption)
+                        .foregroundStyle(next.hasAired() ? TVTrackerModule.accent.color : .secondary)
+                }
             }
         }
         .padding(.vertical, 2)

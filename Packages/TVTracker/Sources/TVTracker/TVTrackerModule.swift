@@ -10,7 +10,7 @@ public enum TVTrackerModule {
     public static let apiKeyDefaultsKey = "tmdb.apiKey"
 
     public static var models: [any PersistentModel.Type] {
-        [Show.self, Episode.self]
+        [Show.self, Episode.self, Movie.self]
     }
 
     @MainActor

@@ -15,22 +15,33 @@ struct ShowDetailView: View {
     var body: some View {
         List {
             Section {
-                if show.episodeCount > 0 {
+                HStack(alignment: .top, spacing: 14) {
+                    PosterView(path: show.posterPath, width: 76)
+
                     VStack(alignment: .leading, spacing: 8) {
-                        HStack {
-                            Text("\(show.watchedCount) of \(show.episodeCount) watched")
-                                .font(.subheadline)
-                            Spacer()
-                            Text(show.progress, format: .percent.precision(.fractionLength(0)))
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                                .monospacedDigit()
+                        if show.episodeCount > 0 {
+                            HStack {
+                                Text("\(show.watchedCount) of \(show.episodeCount) watched")
+                                    .font(.subheadline)
+                                Spacer()
+                                Text(show.progress, format: .percent.precision(.fractionLength(0)))
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                                    .monospacedDigit()
+                            }
+                            ProgressView(value: show.progress)
+                                .tint(TVTrackerModule.accent.color)
                         }
-                        ProgressView(value: show.progress)
-                            .tint(TVTrackerModule.accent.color)
+
+                        if !show.overview.isEmpty {
+                            Text(show.overview)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(4)
+                        }
                     }
-                    .padding(.vertical, 4)
                 }
+                .padding(.vertical, 4)
 
                 Picker("Status", selection: $show.statusRaw) {
                     ForEach(ShowStatus.allCases, id: \.rawValue) { status in

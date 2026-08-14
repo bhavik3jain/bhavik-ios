@@ -8,6 +8,17 @@ public struct TMDBShowSummary: Identifiable, Sendable, Equatable {
     public let firstAirDate: Date?
 }
 
+public struct TMDBMovieSummary: Identifiable, Sendable, Equatable {
+    public let id: Int
+    public let title: String
+    public let overview: String
+    public let posterPath: String
+    public let releaseDate: Date?
+    /// Minutes, and zero from search results — the search endpoint omits it,
+    /// so it is filled in by `movieDetail(id:)`.
+    public let runtime: Int
+}
+
 public struct TMDBEpisode: Sendable, Equatable {
     public let id: Int
     public let name: String
@@ -65,6 +76,30 @@ public struct TMDBClient: Sendable {
 
         let payload: SearchResponse = try await get(components)
         return payload.results.map(\.summary)
+    }
+
+    public func searchMovies(query: String) async throws -> [TMDBMovieSummary] {
+        guard !apiKey.isEmpty else { throw TMDBError.missingAPIKey }
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return [] }
+
+        var components = URLComponents(string: "https://api.themoviedb.org/3/search/movie")!
+        components.queryItems = [
+            URLQueryItem(name: "api_key", value: apiKey),
+            URLQueryItem(name: "query", value: trimmed)
+        ]
+
+        let payload: MovieSearchResponse = try await get(components)
+        return payload.results.map(\.summary)
+    }
+
+    /// Re-reads a movie to pick up the runtime, which search results omit.
+    public func movieDetail(id: Int) async throws -> TMDBMovieSummary {
+        guard !apiKey.isEmpty else { throw TMDBError.missingAPIKey }
+        var components = URLComponents(string: "https://api.themoviedb.org/3/movie/\(id)")!
+        components.queryItems = [URLQueryItem(name: "api_key", value: apiKey)]
+        let payload: MovieDetailResponse = try await get(components)
+        return payload.summary
     }
 
     /// Fetches every episode of a show by walking its seasons. Specials
@@ -132,6 +167,49 @@ private struct SearchResponse: Decodable {
                 firstAirDate: TMDBDate.parse(first_air_date)
             )
         }
+    }
+}
+
+private struct MovieSearchResponse: Decodable {
+    let results: [Result]
+
+    struct Result: Decodable {
+        let id: Int
+        let title: String
+        let overview: String?
+        let poster_path: String?
+        let release_date: String?
+
+        var summary: TMDBMovieSummary {
+            TMDBMovieSummary(
+                id: id,
+                title: title,
+                overview: overview ?? "",
+                posterPath: poster_path ?? "",
+                releaseDate: TMDBDate.parse(release_date),
+                runtime: 0
+            )
+        }
+    }
+}
+
+private struct MovieDetailResponse: Decodable {
+    let id: Int
+    let title: String
+    let overview: String?
+    let poster_path: String?
+    let release_date: String?
+    let runtime: Int?
+
+    var summary: TMDBMovieSummary {
+        TMDBMovieSummary(
+            id: id,
+            title: title,
+            overview: overview ?? "",
+            posterPath: poster_path ?? "",
+            releaseDate: TMDBDate.parse(release_date),
+            runtime: runtime ?? 0
+        )
     }
 }
 

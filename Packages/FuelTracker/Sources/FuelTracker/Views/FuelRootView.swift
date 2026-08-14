@@ -2,6 +2,7 @@ import SwiftData
 import SwiftUI
 
 struct FuelRootView: View {
+    @Environment(\.modelContext) private var modelContext
     @Query(sort: \Vehicle.createdAt) private var vehicles: [Vehicle]
     @State private var selectedVehicleID: PersistentIdentifier?
 
@@ -25,5 +26,11 @@ struct FuelRootView: View {
             }
         }
         .tint(FuelTrackerModule.accent.color)
+        #if DEBUG
+        .task {
+            guard FuelDebugSeed.isRequested else { return }
+            FuelDebugSeed.run(context: modelContext)
+        }
+        #endif
     }
 }

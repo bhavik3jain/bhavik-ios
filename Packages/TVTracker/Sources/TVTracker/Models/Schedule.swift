@@ -3,6 +3,7 @@ import Foundation
 public struct ScheduledEpisode: Identifiable, Sendable {
     public let id: PersistentEpisodeID
     public let showName: String
+    public let posterPath: String
     public let code: String
     public let episodeName: String
     public let airDate: Date?
@@ -24,6 +25,7 @@ public enum Schedule {
                     ScheduledEpisode(
                         id: .init(showName: show.name, code: episode.code),
                         showName: show.name,
+                        posterPath: show.posterPath,
                         code: episode.code,
                         episodeName: episode.name,
                         airDate: episode.airDate
@@ -42,6 +44,7 @@ public enum Schedule {
                 return ScheduledEpisode(
                     id: .init(showName: show.name, code: episode.code),
                     showName: show.name,
+                    posterPath: show.posterPath,
                     code: episode.code,
                     episodeName: episode.name,
                     airDate: episode.airDate
