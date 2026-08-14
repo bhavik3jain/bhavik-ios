@@ -10,6 +10,8 @@ packages:
     path: Packages/Core
   GymTracker:
     path: Packages/GymTracker
+  FuelTracker:
+    path: Packages/FuelTracker
 
 targets:
   bhavik-ios:
@@ -32,6 +34,7 @@ targets:
     dependencies:
       - package: Core
       - package: GymTracker
+      - package: FuelTracker
     info:
       path: App/Resources/Info.plist
       properties:
@@ -39,3 +42,6 @@ targets:
         UILaunchScreen: {}
         UIBackgroundModes:
           - remote-notification
+        # Lets you drop a Fuelly CSV into the app's folder from Finder or the Files app.
+        UIFileSharingEnabled: true
+        LSSupportsOpeningDocumentsInPlace: true

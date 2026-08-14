@@ -1,3 +1,4 @@
+import FuelTracker
 import GymTracker
 import SwiftData
 import SwiftUI
@@ -8,7 +9,7 @@ struct BhavikApp: App {
 
     init() {
         do {
-            let schema = Schema(GymTrackerModule.models)
+            let schema = Schema(GymTrackerModule.models + FuelTrackerModule.models)
             let configuration = ModelConfiguration(
                 schema: schema,
                 cloudKitDatabase: .private("iCloud.com.bhavikjain.trackers")

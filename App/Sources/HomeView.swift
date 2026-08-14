@@ -1,4 +1,5 @@
 import Core
+import FuelTracker
 import GymTracker
 import SwiftData
 import SwiftUI
@@ -26,11 +27,12 @@ struct HomeView: View {
                     ) {}
 
                     ModuleTile(
-                        accent: .init(name: "Fuel", color: .teal),
+                        accent: FuelTrackerModule.accent,
                         icon: "fuelpump.fill",
-                        subtitle: "Coming soon",
-                        isEnabled: false
-                    ) {}
+                        subtitle: "Fill-ups, MPG, and cost"
+                    ) {
+                        selectedModule = .fuel
+                    }
                 }
                 .padding()
             }
@@ -39,6 +41,8 @@ struct HomeView: View {
                 switch module {
                 case .gym:
                     GymTrackerModule.rootView()
+                case .fuel:
+                    FuelTrackerModule.rootView()
                 }
             }
         }
@@ -51,6 +55,7 @@ struct HomeView: View {
 
 private enum SelectedModule: String, Identifiable {
     case gym
+    case fuel
     var id: String { rawValue }
 }
 
