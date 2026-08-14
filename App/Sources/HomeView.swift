@@ -3,6 +3,7 @@ import FuelTracker
 import GymTracker
 import SwiftData
 import SwiftUI
+import TVTracker
 
 struct HomeView: View {
     @State private var selectedModule: SelectedModule?
@@ -20,11 +21,12 @@ struct HomeView: View {
                     }
 
                     ModuleTile(
-                        accent: .init(name: "TV", color: .indigo),
+                        accent: TVTrackerModule.accent,
                         icon: "tv.fill",
-                        subtitle: "Coming soon",
-                        isEnabled: false
-                    ) {}
+                        subtitle: "Shows, episodes, schedule"
+                    ) {
+                        selectedModule = .tv
+                    }
 
                     ModuleTile(
                         accent: FuelTrackerModule.accent,
@@ -43,6 +45,8 @@ struct HomeView: View {
                     GymTrackerModule.rootView()
                 case .fuel:
                     FuelTrackerModule.rootView()
+                case .tv:
+                    TVTrackerModule.rootView()
                 }
             }
         }
@@ -56,6 +60,7 @@ struct HomeView: View {
 private enum SelectedModule: String, Identifiable {
     case gym
     case fuel
+    case tv
     var id: String { rawValue }
 }
 

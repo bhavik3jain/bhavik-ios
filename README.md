@@ -2,11 +2,11 @@
 
 A personal iOS app with several self-contained tracker modules behind one home screen.
 
-| Module | Status | What it does |
-| --- | --- | --- |
-| Gym | Built (v1) | Log workouts as weight × reps, save routines, track per-exercise progress |
-| TV | Planned | Track shows and episodes, with an upcoming-episode schedule |
-| Fuel | Planned | Log fill-ups and track MPG and cost over time |
+| Module | What it does |
+| --- | --- |
+| Gym | Log workouts as weight × reps, save routines, track per-exercise progress |
+| TV | Track shows and episodes, with a catch-up backlog and an upcoming-episode schedule |
+| Fuel | Log fill-ups per vehicle, track MPG and cost, import a Fuelly CSV export |
 
 ## Getting set up
 
@@ -30,11 +30,25 @@ brew install xcodegen swiftlint
 App/            Thin app shell — entry point, home screen, shared model container
 Packages/
   Core/         Types shared across modules
-  GymTracker/   Gym module: SwiftData models, seed data, views, tests
+  GymTracker/   Workouts, routines, exercise library
+  TVTracker/    Shows, episodes, schedule, TMDB lookup
+  FuelTracker/  Vehicles, fill-ups, MPG, Fuelly import
 project.yml     XcodeGen project definition
 ```
 
 Each tracker is its own local Swift package so the modules stay independent and can be developed — or removed — without disturbing the others.
+
+## TV metadata
+
+Show and episode details come from [TMDB](https://www.themoviedb.org), which needs a free API key for personal use. Add yours under **TV → Stats → Settings**; it is stored on the device and never checked in. Without a key the module still works — you can add shows and episodes by hand — you just don't get search or automatic episode lists.
+
+What you have watched is always yours: it lives in your own iCloud account, not on TMDB.
+
+> This product uses the TMDB API but is not endorsed or certified by TMDB.
+
+## Importing fuel history
+
+**Fuel → Garage → Import from Fuelly** takes a CSV exported from Fuelly. It reads fill-ups and service records for every vehicle in the file and skips anything already imported, so running it twice is harmless. You can also drop a CSV into the app's folder from Finder or the Files app.
 
 ## Data and sync
 
@@ -47,6 +61,10 @@ Breaking either one fails at launch when the container loads, not at compile tim
 
 ## Tests
 
+Each module carries its own suite. Run one with:
+
 ```bash
-cd Packages/GymTracker && xcodebuild test -scheme GymTracker -destination 'platform=iOS Simulator,name=iPhone 17 Pro'
+cd Packages/FuelTracker && xcodebuild test -scheme FuelTracker -destination 'platform=iOS Simulator,name=iPhone 17 Pro'
 ```
+
+Swap in `GymTracker` or `TVTracker` for the others.

@@ -12,6 +12,8 @@ packages:
     path: Packages/GymTracker
   FuelTracker:
     path: Packages/FuelTracker
+  TVTracker:
+    path: Packages/TVTracker
 
 targets:
   bhavik-ios:
@@ -35,6 +37,7 @@ targets:
       - package: Core
       - package: GymTracker
       - package: FuelTracker
+      - package: TVTracker
     info:
       path: App/Resources/Info.plist
       properties:
