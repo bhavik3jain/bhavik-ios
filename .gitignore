@@ -1,4 +1,6 @@
 # Xcode
+# The project file is generated from project.yml by XcodeGen — run `xcodegen generate`.
+*.xcodeproj/
 build/
 DerivedData/
 *.pbxuser
@@ -18,9 +20,9 @@ xcuserdata/
 !default.xcscheme
 
 # Swift Package Manager
+# Note: Packages/ holds this app's own local modules, so it is tracked.
 .swiftpm/
 .build/
-Packages/
 Package.resolved
 
 # CocoaPods (if used later)

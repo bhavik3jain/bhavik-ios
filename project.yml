@@ -1,0 +1,41 @@
+name: bhavik-ios
+options:
+  bundleIdPrefix: com.bhavikjain
+  deploymentTarget:
+    iOS: "18.0"
+  createIntermediateGroups: true
+
+packages:
+  Core:
+    path: Packages/Core
+  GymTracker:
+    path: Packages/GymTracker
+
+targets:
+  bhavik-ios:
+    type: application
+    platform: iOS
+    sources:
+      - path: App/Sources
+    resources:
+      - path: App/Resources/Assets.xcassets
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.bhavikjain.trackers
+        MARKETING_VERSION: "1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        SWIFT_VERSION: "6.0"
+        CODE_SIGN_ENTITLEMENTS: App/Resources/App.entitlements
+        INFOPLIST_KEY_UILaunchScreen_Generation: "YES"
+        INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait
+        TARGETED_DEVICE_FAMILY: "1"
+    dependencies:
+      - package: Core
+      - package: GymTracker
+    info:
+      path: App/Resources/Info.plist
+      properties:
+        CFBundleDisplayName: Trackers
+        UILaunchScreen: {}
+        UIBackgroundModes:
+          - remote-notification
