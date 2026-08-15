@@ -1,4 +1,5 @@
 import SwiftData
+import Core
 import SwiftUI
 
 struct WorkoutsListView: View {
@@ -67,6 +68,7 @@ struct WorkoutsListView: View {
                 }
             }
             .navigationTitle("Workouts")
+            .moduleChrome(accent: GymTrackerModule.accent)
             .sheet(isPresented: $showingNewRoutine) {
                 RoutineEditorView()
             }

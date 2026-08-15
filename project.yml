@@ -14,6 +14,8 @@ packages:
     path: Packages/FuelTracker
   TVTracker:
     path: Packages/TVTracker
+  ParcelTracker:
+    path: Packages/ParcelTracker
 
 targets:
   bhavik-ios:
@@ -38,6 +40,7 @@ targets:
       - package: GymTracker
       - package: FuelTracker
       - package: TVTracker
+      - package: ParcelTracker
     info:
       path: App/Resources/Info.plist
       properties:

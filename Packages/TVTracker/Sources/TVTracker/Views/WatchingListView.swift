@@ -1,4 +1,5 @@
 import SwiftData
+import Core
 import SwiftUI
 
 struct WatchingListView: View {
@@ -48,6 +49,7 @@ struct WatchingListView: View {
                 }
             }
             .navigationTitle("Watching")
+            .moduleChrome(accent: TVTrackerModule.accent)
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
                     Button {

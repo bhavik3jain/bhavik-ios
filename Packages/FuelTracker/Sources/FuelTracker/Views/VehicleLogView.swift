@@ -1,4 +1,5 @@
 import SwiftData
+import Core
 import SwiftUI
 
 struct VehicleLogView: View {
@@ -62,9 +63,12 @@ struct VehicleLogView: View {
                 }
             }
             .navigationTitle(vehicle?.name ?? "Fuel")
+            .moduleChrome(accent: FuelTrackerModule.accent)
             .toolbar {
+                // The vehicle switcher sits beside the add button so it does
+                // not crowd the way back to the hub.
                 if vehicles.count > 1 {
-                    ToolbarItem(placement: .topBarLeading) {
+                    ToolbarItem(placement: .primaryAction) {
                         Menu {
                             Picker("Vehicle", selection: $selectedVehicleID) {
                                 ForEach(vehicles) { candidate in
