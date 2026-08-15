@@ -172,14 +172,15 @@ public actor FedExClient: CarrierClient {
 /// FedEx timestamps carry an offset (`2026-05-19T07:36:00+02:00`), and some
 /// fields arrive without one, so both are accepted.
 enum ISO8601Date {
-    // Configured once and only read afterwards, so sharing them is safe.
+    // ISO8601DateFormatter isn't Sendable, unlike DateFormatter below. This one
+    // is configured once and only read afterwards, so sharing it is safe.
     nonisolated(unsafe) private static let withOffset: ISO8601DateFormatter = {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime]
         return formatter
     }()
 
-    nonisolated(unsafe) private static let plain: DateFormatter = {
+    private static let plain: DateFormatter = {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.timeZone = TimeZone(identifier: "UTC")
@@ -187,7 +188,7 @@ enum ISO8601Date {
         return formatter
     }()
 
-    nonisolated(unsafe) private static let dateOnly: DateFormatter = {
+    private static let dateOnly: DateFormatter = {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.timeZone = TimeZone(identifier: "UTC")

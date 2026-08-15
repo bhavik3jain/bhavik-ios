@@ -44,15 +44,18 @@ jobs:
             xcrun simctl list devices available
             exit 1
           fi
-          echo "Using simulator $udid"
+          echo "Using simulator $udid on $(uname -m)"
           echo "udid=$udid" >> "$GITHUB_OUTPUT"
+          # A simulator is listed once per architecture, so naming the host's
+          # arch keeps xcodebuild from reporting an ambiguous destination.
+          echo "arch=$(uname -m)" >> "$GITHUB_OUTPUT"
 
       - name: Test each package
         run: |
           set -euo pipefail
           for package in Core GymTracker FuelTracker TVTracker ParcelTracker; do
             echo "::group::$package"
-            ( cd "Packages/$package" && xcodebuild test -scheme "$package" -destination "id=${{ steps.simulator.outputs.udid }}" -quiet )
+            ( cd "Packages/$package" && xcodebuild test -scheme "$package" -destination "platform=iOS Simulator,id=${{ steps.simulator.outputs.udid }},arch=${{ steps.simulator.outputs.arch }}" -quiet )
             echo "::endgroup::"
           done
 
@@ -62,4 +65,4 @@ jobs:
         run: |
           set -euo pipefail
           xcodegen generate
-          xcodebuild build -project bhavik-ios.xcodeproj -scheme bhavik-ios -destination "id=${{ steps.simulator.outputs.udid }}" -quiet
+          xcodebuild build -project bhavik-ios.xcodeproj -scheme bhavik-ios -destination "platform=iOS Simulator,id=${{ steps.simulator.outputs.udid }},arch=${{ steps.simulator.outputs.arch }}" -quiet
