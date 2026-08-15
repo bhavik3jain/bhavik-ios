@@ -10,6 +10,9 @@ struct TVRootView: View {
 
     var body: some View {
         TabView(selection: $selection) {
+            Tab("Home", systemImage: "house", value: ModuleTab.home) {
+                Color.clear
+            }
             Tab("Watching", systemImage: "tv", value: "watching") {
                 WatchingListView()
             }
@@ -19,11 +22,8 @@ struct TVRootView: View {
             Tab("Up Next", systemImage: "calendar", value: "upnext") {
                 ScheduleView()
             }
-            Tab("Stats", systemImage: "chart.bar", value: "stats") {
-                TVStatsView()
-            }
-            Tab("Home", systemImage: "house", value: ModuleTab.home) {
-                Color.clear
+            Tab("Settings", systemImage: "gear", value: "settings") {
+                NavigationStack { TVSettingsView() }
             }
         }
         .tint(TVTrackerModule.accent.color)

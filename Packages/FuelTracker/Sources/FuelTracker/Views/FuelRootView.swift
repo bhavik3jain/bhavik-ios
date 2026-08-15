@@ -17,6 +17,9 @@ struct FuelRootView: View {
 
     var body: some View {
         TabView(selection: $selection) {
+            Tab("Home", systemImage: "house", value: ModuleTab.home) {
+                Color.clear
+            }
             Tab("Vehicle", systemImage: "car.fill", value: "vehicle") {
                 VehicleLogView(vehicle: selectedVehicle, vehicles: vehicles, selectedVehicleID: $selectedVehicleID)
             }
@@ -25,9 +28,6 @@ struct FuelRootView: View {
             }
             Tab("Garage", systemImage: "building.2.fill", value: "garage") {
                 GarageView()
-            }
-            Tab("Home", systemImage: "house", value: ModuleTab.home) {
-                Color.clear
             }
         }
         .tint(FuelTrackerModule.accent.color)

@@ -1,3 +1,4 @@
+import SwiftData
 import SwiftUI
 
 struct TVSettingsView: View {
@@ -12,8 +13,38 @@ struct TVSettingsView: View {
         case invalid(String)
     }
 
+    @Query private var shows: [Show]
+    @Query private var movies: [Movie]
+
+    private var watchedEpisodes: Int {
+        shows.reduce(0) { $0 + $1.watchedCount }
+    }
+
     var body: some View {
         Form {
+            Section("Watching") {
+                LabeledContent("Episodes watched", value: "\(watchedEpisodes)")
+                LabeledContent("Shows completed", value: "\(shows.count { $0.status == .completed })")
+                LabeledContent("Movies watched", value: "\(movies.count(where: \.isWatched))")
+            }
+
+            if !shows.isEmpty {
+                Section("Progress") {
+                    ForEach(shows.sorted { $0.progress > $1.progress }) { show in
+                        HStack {
+                            Text(show.name)
+                                .font(.subheadline)
+                                .lineLimit(1)
+                            Spacer()
+                            Text("\(show.watchedCount)/\(show.episodeCount)")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .monospacedDigit()
+                        }
+                    }
+                }
+            }
+
             Section {
                 SecureField("TMDB API key", text: $draft)
                     .textContentType(.password)

@@ -43,16 +43,18 @@ struct HomeView: View {
                     icon: "fuelpump.fill",
                     detail: fuelDetail
                 ) { selectedModule = .fuel }
-
-                Section {
+            }
+            .navigationTitle("Trackers")
+            .toolbar {
+                ToolbarItem(placement: .primaryAction) {
                     NavigationLink {
                         AppSettingsView()
                     } label: {
-                        Label("Settings", systemImage: "gearshape")
+                        Image(systemName: "gearshape")
                     }
+                    .accessibilityLabel("Settings")
                 }
             }
-            .navigationTitle("Trackers")
             .fullScreenCover(item: $selectedModule) { module in
                 switch module {
                 case .gym:

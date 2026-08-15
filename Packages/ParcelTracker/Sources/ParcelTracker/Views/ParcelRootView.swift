@@ -9,14 +9,14 @@ struct ParcelRootView: View {
 
     var body: some View {
         TabView(selection: $selection) {
+            Tab("Home", systemImage: "house", value: ModuleTab.home) {
+                Color.clear
+            }
             Tab("Parcels", systemImage: "shippingbox", value: "parcels") {
                 ParcelListView()
             }
             Tab("Settings", systemImage: "gear", value: "settings") {
                 ParcelSettingsView()
-            }
-            Tab("Home", systemImage: "house", value: ModuleTab.home) {
-                Color.clear
             }
         }
         .tint(ParcelTrackerModule.accent.color)

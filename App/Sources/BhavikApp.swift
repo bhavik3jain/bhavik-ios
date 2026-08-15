@@ -8,6 +8,10 @@ import TVTracker
 
 @main
 struct BhavikApp: App {
+    /// Named once so the settings screen can ask CloudKit about the same
+    /// container the store actually syncs through.
+    static let cloudContainerID = "iCloud.com.bhavikjain.trackers"
+
     let container: ModelContainer
     @AppStorage(Appearance.defaultsKey) private var appearanceRaw = Appearance.system.rawValue
 
@@ -16,7 +20,7 @@ struct BhavikApp: App {
             let schema = Schema(GymTrackerModule.models + FuelTrackerModule.models + TVTrackerModule.models + ParcelTrackerModule.models)
             let configuration = ModelConfiguration(
                 schema: schema,
-                cloudKitDatabase: .private("iCloud.com.bhavikjain.trackers")
+                cloudKitDatabase: .private(Self.cloudContainerID)
             )
             container = try ModelContainer(for: schema, configurations: [configuration])
         } catch {

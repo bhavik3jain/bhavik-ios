@@ -94,7 +94,7 @@ struct AddShowView: View {
                 }
             }
             .sheet(isPresented: $showingSettings) {
-                TVSettingsView()
+                NavigationStack { TVSettingsView() }
             }
         }
     }

@@ -41,3 +41,38 @@ import Testing
     #expect(Appearance.allCases.count == 3)
     #expect(Appearance.allCases.allSatisfy { !$0.displayName.isEmpty })
 }
+
+// MARK: - Sync status
+
+import CloudKit
+
+@Test func accountStatusMapsToSomethingSayable() {
+    #expect(CloudSyncState(.available) == .syncing)
+    #expect(CloudSyncState(.noAccount) == .signedOut)
+    #expect(CloudSyncState(.restricted) == .restricted)
+    #expect(CloudSyncState(.temporarilyUnavailable) == .temporarilyUnavailable)
+    #expect(CloudSyncState(.couldNotDetermine) == .undetermined)
+}
+
+@Test func onlyAWorkingAccountCountsAsHealthy() {
+    #expect(CloudSyncState.syncing.isHealthy)
+    for state in [CloudSyncState.checking, .signedOut, .restricted, .temporarilyUnavailable, .undetermined] {
+        #expect(!state.isHealthy, "\(state) must not read as syncing")
+    }
+}
+
+@Test func everySyncStateExplainsItself() {
+    let states: [CloudSyncState] = [.checking, .syncing, .signedOut, .restricted, .temporarilyUnavailable, .undetermined]
+    for state in states {
+        #expect(!state.summary.isEmpty)
+        #expect(!state.explanation.isEmpty)
+        #expect(!state.symbolName.isEmpty)
+    }
+}
+
+@Test func aTroubledAccountSaysTheDataIsStillHere() {
+    // The reader's first worry on seeing "Signed out" is whether they lost
+    // anything, so the local copy is mentioned before anything else.
+    #expect(CloudSyncState.signedOut.explanation.contains("still saved"))
+    #expect(CloudSyncState.restricted.explanation.contains("still saved"))
+}

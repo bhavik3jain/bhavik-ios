@@ -9,6 +9,9 @@ struct GymRootView: View {
 
     var body: some View {
         TabView(selection: $selection) {
+            Tab("Home", systemImage: "house", value: ModuleTab.home) {
+                Color.clear
+            }
             Tab("Workouts", systemImage: "dumbbell.fill", value: "workouts") {
                 WorkoutsListView()
             }
@@ -17,9 +20,6 @@ struct GymRootView: View {
             }
             Tab("Progress", systemImage: "chart.line.uptrend.xyaxis", value: "progress") {
                 ProgressOverviewView()
-            }
-            Tab("Home", systemImage: "house", value: ModuleTab.home) {
-                Color.clear
             }
         }
         .tint(GymTrackerModule.accent.color)
