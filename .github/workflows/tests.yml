@@ -1,0 +1,65 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Build and test
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Use the newest installed Xcode
+        run: |
+          latest=$(ls -d /Applications/Xcode*.app | sort -V | tail -1)
+          echo "Selecting $latest"
+          sudo xcode-select -s "$latest"
+          xcodebuild -version
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Pick an iPhone simulator
+        id: simulator
+        # The runners' simulator line-up changes, so choose one at run time
+        # rather than pinning a model that may not be installed.
+        run: |
+          set -euo pipefail
+          udid=$(xcrun simctl list devices available \
+                 | grep -E "^\s+iPhone" \
+                 | tail -1 \
+                 | grep -oE "[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}")
+          if [ -z "$udid" ]; then
+            echo "No iPhone simulator available on this runner"
+            xcrun simctl list devices available
+            exit 1
+          fi
+          echo "Using simulator $udid"
+          echo "udid=$udid" >> "$GITHUB_OUTPUT"
+
+      - name: Test each package
+        run: |
+          set -euo pipefail
+          for package in Core GymTracker FuelTracker TVTracker ParcelTracker; do
+            echo "::group::$package"
+            ( cd "Packages/$package" && xcodebuild test -scheme "$package" -destination "id=${{ steps.simulator.outputs.udid }}" -quiet )
+            echo "::endgroup::"
+          done
+
+      - name: Build the app
+        # Catches anything that compiles per package but breaks once the
+        # modules are wired together, which the package tests can't see.
+        run: |
+          set -euo pipefail
+          xcodegen generate
+          xcodebuild build -project bhavik-ios.xcodeproj -scheme bhavik-ios -destination "id=${{ steps.simulator.outputs.udid }}" -quiet
