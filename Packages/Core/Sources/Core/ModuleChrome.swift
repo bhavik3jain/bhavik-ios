@@ -1,49 +1,40 @@
 import SwiftUI
 
-/// Puts a way back to the hub on a module's screens.
+/// The way back to the hub from inside a module.
 ///
-/// Modules are presented as full-screen covers, which come with no dismiss
-/// control of their own, so each one carries this instead.
-public struct ModuleDismissButton: ToolbarContent {
+/// Modules are presented as full-screen covers, which carry no dismiss control
+/// of their own, so each one puts a Home tab alongside its own tabs. Selecting
+/// it closes the module rather than showing a screen, which is why it needs the
+/// handling below rather than being an ordinary tab.
+public enum ModuleTab {
+    /// The value the Home tab carries. Unlikely to collide with a module's own
+    /// tab names.
+    public static let home = "module.home"
+}
+
+private struct HomeTabDismissal: ViewModifier {
+    @Binding var selection: String
+    let fallback: String
     @Environment(\.dismiss) private var dismiss
-    private let accent: ModuleAccent
 
-    public init(accent: ModuleAccent) {
-        self.accent = accent
-    }
-
-    public var body: some ToolbarContent {
-        ToolbarItem(placement: .topBarLeading) {
-            Button {
-                dismiss()
-            } label: {
-                Label("Trackers", systemImage: "chevron.left")
-                    .labelStyle(.titleAndIcon)
-                    .font(.subheadline)
-            }
-            .tint(accent.color)
+    func body(content: Content) -> some View {
+        content.onChange(of: selection) { _, current in
+            guard current == ModuleTab.home else { return }
+            // Put the selection back before leaving, so the module opens on its
+            // own first tab next time rather than on the Home tab.
+            selection = fallback
+            dismiss()
         }
     }
 }
 
 public extension View {
-    /// Adds the hub back button to a module's root screen, alongside whatever
-    /// else the screen puts in its toolbar.
+    /// Closes the module when its Home tab is selected.
     ///
-    /// Everything goes in one `toolbar` call: a screen that declares two of
-    /// them can end up with the items from the second drawn but inert.
-    func moduleChrome<Extra: ToolbarContent>(
-        accent: ModuleAccent,
-        @ToolbarContentBuilder items: () -> Extra
-    ) -> some View {
-        toolbar {
-            ModuleDismissButton(accent: accent)
-            items()
-        }
-    }
-
-    /// The back button on its own, for screens with no toolbar of their own.
-    func moduleChrome(accent: ModuleAccent) -> some View {
-        toolbar { ModuleDismissButton(accent: accent) }
+    /// - Parameters:
+    ///   - selection: the `TabView`'s selection.
+    ///   - fallback: the tab to restore before leaving.
+    func dismissesOnHomeTab(_ selection: Binding<String>, restoringTo fallback: String) -> some View {
+        modifier(HomeTabDismissal(selection: selection, fallback: fallback))
     }
 }

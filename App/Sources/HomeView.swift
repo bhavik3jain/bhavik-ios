@@ -9,43 +9,48 @@ import TVTracker
 struct HomeView: View {
     @State private var selectedModule: SelectedModule?
 
+    // Each module's own data, so a row can say what is actually going on
+    // rather than repeating a fixed description.
+    @Query(filter: #Predicate<WorkoutSession> { $0.finishedAt != nil }, sort: \WorkoutSession.startedAt, order: .reverse)
+    private var sessions: [WorkoutSession]
+    @Query private var shows: [Show]
+    @Query(filter: #Predicate<Parcel> { !$0.isArchived }) private var parcels: [Parcel]
+    @Query(sort: \Vehicle.createdAt) private var vehicles: [Vehicle]
+
     var body: some View {
         NavigationStack {
-            ScrollView {
-                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
-                    ModuleTile(
-                        accent: GymTrackerModule.accent,
-                        icon: "dumbbell.fill",
-                        subtitle: gymSubtitle
-                    ) {
-                        selectedModule = .gym
-                    }
+            List {
+                ModuleRow(
+                    accent: GymTrackerModule.accent,
+                    icon: "dumbbell.fill",
+                    detail: gymDetail
+                ) { selectedModule = .gym }
 
-                    ModuleTile(
-                        accent: TVTrackerModule.accent,
-                        icon: "tv.fill",
-                        subtitle: "Shows, episodes, schedule"
-                    ) {
-                        selectedModule = .tv
-                    }
+                ModuleRow(
+                    accent: TVTrackerModule.accent,
+                    icon: "tv.fill",
+                    detail: tvDetail
+                ) { selectedModule = .tv }
 
-                    ModuleTile(
-                        accent: ParcelTrackerModule.accent,
-                        icon: "shippingbox.fill",
-                        subtitle: "Deliveries on the way"
-                    ) {
-                        selectedModule = .parcels
-                    }
+                ModuleRow(
+                    accent: ParcelTrackerModule.accent,
+                    icon: "shippingbox.fill",
+                    detail: parcelDetail
+                ) { selectedModule = .parcels }
 
-                    ModuleTile(
-                        accent: FuelTrackerModule.accent,
-                        icon: "fuelpump.fill",
-                        subtitle: "Fill-ups, MPG, and cost"
-                    ) {
-                        selectedModule = .fuel
+                ModuleRow(
+                    accent: FuelTrackerModule.accent,
+                    icon: "fuelpump.fill",
+                    detail: fuelDetail
+                ) { selectedModule = .fuel }
+
+                Section {
+                    NavigationLink {
+                        AppSettingsView()
+                    } label: {
+                        Label("Settings", systemImage: "gearshape")
                     }
                 }
-                .padding()
             }
             .navigationTitle("Trackers")
             .fullScreenCover(item: $selectedModule) { module in
@@ -63,8 +68,31 @@ struct HomeView: View {
         }
     }
 
-    private var gymSubtitle: String {
-        "Log workouts, track progress"
+    private var gymDetail: String {
+        guard let last = sessions.first else { return "No workouts yet" }
+        return "Last workout \(last.startedAt.formatted(.relative(presentation: .named)))"
+    }
+
+    private var tvDetail: String {
+        let ready = Schedule.readyToWatch(shows: shows).count
+        if ready > 0 { return "\(counted(ready, "episode")) ready" }
+        if shows.isEmpty { return "No shows yet" }
+        let upcoming = Schedule.upcoming(shows: shows).count
+        return upcoming > 0 ? "Nothing to watch, \(upcoming) coming up" : "All caught up"
+    }
+
+    private var parcelDetail: String {
+        let onTheWay = parcels.count { !$0.status.isSettled }
+        if onTheWay > 0 { return "\(counted(onTheWay, "parcel")) on the way" }
+        return parcels.isEmpty ? "No parcels" : "Nothing on the way"
+    }
+
+    private var fuelDetail: String {
+        guard let vehicle = vehicles.first else { return "No vehicles yet" }
+        guard let mpg = FuelStatistics.averageMPG(for: vehicle.orderedFillUps) else {
+            return vehicle.name
+        }
+        return "\(vehicle.name) · \(mpg.formatted(.number.precision(.fractionLength(1)))) mpg"
     }
 }
 
@@ -76,41 +104,41 @@ private enum SelectedModule: String, Identifiable {
     var id: String { rawValue }
 }
 
-private struct ModuleTile: View {
+private struct ModuleRow: View {
     let accent: ModuleAccent
     let icon: String
-    let subtitle: String
-    var isEnabled: Bool = true
+    let detail: String
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
-            VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 14) {
                 Image(systemName: icon)
-                    .font(.system(size: 16, weight: .semibold))
+                    .font(.system(size: 17, weight: .semibold))
                     .foregroundStyle(.white)
-                    .frame(width: 32, height: 32)
-                    .background(accent.color, in: RoundedRectangle(cornerRadius: 8))
+                    .frame(width: 36, height: 36)
+                    .background(accent.color, in: RoundedRectangle(cornerRadius: 9))
 
-                Spacer(minLength: 0)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(accent.name)
+                        .font(.body)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(.primary)
+                    Text(detail)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
 
-                Text(accent.name)
-                    .font(.subheadline)
-                    .fontWeight(.bold)
-                    .foregroundStyle(.primary)
+                Spacer(minLength: 8)
 
-                Text(subtitle)
-                    .font(.caption2)
-                    .foregroundStyle(accent.color)
-                    .lineLimit(1)
+                Image(systemName: "chevron.right")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(.tertiary)
             }
-            .frame(maxWidth: .infinity, minHeight: 92, alignment: .leading)
-            .padding(14)
-            .background(accent.color.opacity(0.12), in: RoundedRectangle(cornerRadius: 18))
-            .contentShape(RoundedRectangle(cornerRadius: 18))
+            .padding(.vertical, 6)
+            .contentShape(.rect)
         }
         .buttonStyle(.plain)
-        .disabled(!isEnabled)
-        .opacity(isEnabled ? 1 : 0.6)
     }
 }

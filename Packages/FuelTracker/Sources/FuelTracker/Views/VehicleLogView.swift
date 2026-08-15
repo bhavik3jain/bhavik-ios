@@ -63,9 +63,7 @@ struct VehicleLogView: View {
                 }
             }
             .navigationTitle(vehicle?.name ?? "Fuel")
-            .moduleChrome(accent: FuelTrackerModule.accent) {
-                // The vehicle switcher sits beside the add button so it does
-                // not crowd the way back to the hub.
+            .toolbar {
                 if vehicles.count > 1 {
                     ToolbarItem(placement: .primaryAction) {
                         Menu {

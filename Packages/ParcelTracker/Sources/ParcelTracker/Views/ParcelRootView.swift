@@ -1,19 +1,26 @@
+import Core
 import SwiftData
 import SwiftUI
 
 struct ParcelRootView: View {
     @Environment(\.modelContext) private var modelContext
 
+    @State private var selection = "parcels"
+
     var body: some View {
-        TabView {
-            Tab("Parcels", systemImage: "shippingbox") {
+        TabView(selection: $selection) {
+            Tab("Parcels", systemImage: "shippingbox", value: "parcels") {
                 ParcelListView()
             }
-            Tab("Settings", systemImage: "gear") {
+            Tab("Settings", systemImage: "gear", value: "settings") {
                 ParcelSettingsView()
+            }
+            Tab("Home", systemImage: "house", value: ModuleTab.home) {
+                Color.clear
             }
         }
         .tint(ParcelTrackerModule.accent.color)
+        .dismissesOnHomeTab($selection, restoringTo: "parcels")
         #if DEBUG
         .task {
             guard ParcelDebugSeed.isRequested else { return }

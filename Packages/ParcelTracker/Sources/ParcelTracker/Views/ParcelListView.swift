@@ -52,7 +52,7 @@ struct ParcelListView: View {
                 }
             }
             .navigationTitle("Parcels")
-            .moduleChrome(accent: ParcelTrackerModule.accent) {
+            .toolbar {
                 ToolbarItem(placement: .primaryAction) {
                     Button {
                         showingAdd = true

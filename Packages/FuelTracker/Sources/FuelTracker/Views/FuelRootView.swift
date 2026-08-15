@@ -1,3 +1,4 @@
+import Core
 import SwiftData
 import SwiftUI
 
@@ -5,6 +6,7 @@ struct FuelRootView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \Vehicle.createdAt) private var vehicles: [Vehicle]
     @State private var selectedVehicleID: PersistentIdentifier?
+    @State private var selection = "vehicle"
 
     private var selectedVehicle: Vehicle? {
         if let selectedVehicleID, let match = vehicles.first(where: { $0.persistentModelID == selectedVehicleID }) {
@@ -14,18 +16,22 @@ struct FuelRootView: View {
     }
 
     var body: some View {
-        TabView {
-            Tab("Vehicle", systemImage: "car.fill") {
+        TabView(selection: $selection) {
+            Tab("Vehicle", systemImage: "car.fill", value: "vehicle") {
                 VehicleLogView(vehicle: selectedVehicle, vehicles: vehicles, selectedVehicleID: $selectedVehicleID)
             }
-            Tab("Trends", systemImage: "chart.xyaxis.line") {
+            Tab("Trends", systemImage: "chart.xyaxis.line", value: "trends") {
                 TrendsView(vehicle: selectedVehicle)
             }
-            Tab("Garage", systemImage: "building.2.fill") {
+            Tab("Garage", systemImage: "building.2.fill", value: "garage") {
                 GarageView()
+            }
+            Tab("Home", systemImage: "house", value: ModuleTab.home) {
+                Color.clear
             }
         }
         .tint(FuelTrackerModule.accent.color)
+        .dismissesOnHomeTab($selection, restoringTo: "vehicle")
         #if DEBUG
         .task {
             guard FuelDebugSeed.isRequested else { return }

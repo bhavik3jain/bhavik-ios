@@ -68,7 +68,6 @@ struct WorkoutsListView: View {
                 }
             }
             .navigationTitle("Workouts")
-            .moduleChrome(accent: GymTrackerModule.accent)
             .sheet(isPresented: $showingNewRoutine) {
                 RoutineEditorView()
             }

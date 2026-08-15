@@ -1,3 +1,4 @@
+import Core
 import FuelTracker
 import GymTracker
 import ParcelTracker
@@ -8,6 +9,7 @@ import TVTracker
 @main
 struct BhavikApp: App {
     let container: ModelContainer
+    @AppStorage(Appearance.defaultsKey) private var appearanceRaw = Appearance.system.rawValue
 
     init() {
         do {
@@ -25,6 +27,7 @@ struct BhavikApp: App {
     var body: some Scene {
         WindowGroup {
             HomeView()
+                .preferredColorScheme(Appearance.stored(appearanceRaw).colorScheme)
         }
         .modelContainer(container)
     }
