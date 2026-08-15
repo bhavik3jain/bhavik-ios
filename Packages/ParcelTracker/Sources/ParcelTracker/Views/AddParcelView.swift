@@ -7,24 +7,18 @@ struct AddParcelView: View {
 
     @State private var trackingNumber = ""
     @State private var name = ""
-    @State private var carrier: Carrier = .other
-    @State private var hasEditedCarrier = false
+    @State private var choice = CarrierChoice()
     @FocusState private var isNumberFocused: Bool
 
     private var normalized: String { CarrierDetector.normalize(trackingNumber) }
     private var guess: CarrierDetector.Guess { CarrierDetector.detect(trackingNumber) }
+    private var carrier: Carrier { choice.resolved(for: trackingNumber) }
     private var canSave: Bool { !normalized.isEmpty }
 
-    /// Picking a carrier by hand stops detection from overriding the choice.
-    /// Writing through a binding keeps that decision here, rather than trying
-    /// to tell the reader's edits apart from ours inside an onChange.
     private var carrierSelection: Binding<String> {
         Binding(
             get: { carrier.rawValue },
-            set: { newValue in
-                carrier = Carrier(rawValue: newValue) ?? .other
-                hasEditedCarrier = true
-            }
+            set: { choice.choose(Carrier(rawValue: $0) ?? .other, whileShowing: carrier) }
         )
     }
 
@@ -36,18 +30,13 @@ struct AddParcelView: View {
                         .textInputAutocapitalization(.characters)
                         .autocorrectionDisabled()
                         .focused($isNumberFocused)
-                        .onChange(of: trackingNumber) { _, newValue in
-                            // Follow the number until the reader picks a carrier
-                            // themselves. Read the incoming value rather than the
-                            // computed guess, which still reflects the old text.
-                            guard !hasEditedCarrier else { return }
-                            carrier = CarrierDetector.detect(newValue).carrier
-                        }
 
                     TextField("What is it? (optional)", text: $name)
                 } footer: {
                     if !normalized.isEmpty {
-                        if guess.carrier == .other {
+                        if choice.isManual {
+                            Text("Set to \(carrier.displayName).")
+                        } else if guess.carrier == .other {
                             Text("That number isn't a format this app recognises. Pick a carrier below if you know it.")
                         } else if guess.isCertain {
                             Text("Looks like \(guess.carrier.displayName).")

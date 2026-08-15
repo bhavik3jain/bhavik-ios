@@ -113,3 +113,20 @@ func uspsIntelligentMailIsRecognised(number: String) {
     #expect(CarrierDetector.detect("11111111111").carrier == .other, "11 digits is not a FedEx length")
     #expect(CarrierDetector.detect("111111111111").carrier == .fedex, "12 digits is")
 }
+
+@Test func realWorldUPSNumberIsRecognised() {
+    // A real label, including the lowercase and spacing a paste can carry.
+    let guess = CarrierDetector.detect("1zr0y0651268323735")
+    #expect(guess.carrier == .ups)
+    #expect(guess.isCertain)
+
+    let spaced = CarrierDetector.detect("1Z R0Y065 12 6832 3735")
+    #expect(spaced.carrier == .ups)
+    #expect(CarrierDetector.normalize("1z r0y065 12 6832 3735") == "1ZR0Y0651268323735")
+}
+
+@Test func upsNumbersLinkToUPSTracking() throws {
+    let url = try #require(Carrier.ups.trackingURL(for: "1ZR0Y0651268323735"))
+    #expect(url.absoluteString.contains("ups.com"))
+    #expect(url.absoluteString.contains("1ZR0Y0651268323735"))
+}

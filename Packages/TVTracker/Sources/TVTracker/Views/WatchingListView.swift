@@ -49,8 +49,7 @@ struct WatchingListView: View {
                 }
             }
             .navigationTitle("Watching")
-            .moduleChrome(accent: TVTrackerModule.accent)
-            .toolbar {
+            .moduleChrome(accent: TVTrackerModule.accent) {
                 ToolbarItem(placement: .primaryAction) {
                     Button {
                         showingAddShow = true
