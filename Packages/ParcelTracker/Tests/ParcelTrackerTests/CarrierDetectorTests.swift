@@ -76,11 +76,24 @@ func uspsIntelligentMailIsRecognised(number: String) {
 
 // MARK: - Carrier capabilities
 
-@Test func onlyFedExAndUPSCanBeTrackedAutomatically() {
+@Test func onlyFedExIsTrackedAutomaticallyForNow() {
     #expect(Carrier.fedex.supportsAutomaticTracking)
-    #expect(Carrier.ups.supportsAutomaticTracking)
+    #expect(!Carrier.ups.supportsAutomaticTracking, "UPS isn't wired up yet")
     #expect(!Carrier.usps.supportsAutomaticTracking, "USPS closed third-party tracking in April 2026")
     #expect(!Carrier.other.supportsAutomaticTracking)
+}
+
+@Test func carriersFollowedByHandExplainWhy() {
+    // The screens show this text, so every manual carrier needs one and the
+    // automatic one must not claim to need explaining.
+    #expect(Carrier.ups.manualTrackingReason != nil)
+    #expect(Carrier.usps.manualTrackingReason != nil)
+    #expect(Carrier.fedex.manualTrackingReason == nil)
+
+    for carrier in Carrier.allCases where !carrier.supportsAutomaticTracking && carrier != .other {
+        #expect(carrier.manualTrackingReason?.isEmpty == false, "\(carrier.displayName) needs a reason")
+        #expect(carrier.trackingURL(for: "123") != nil, "\(carrier.displayName) must be openable")
+    }
 }
 
 @Test func everyTrackableCarrierOffersALinkToItsOwnSite() {

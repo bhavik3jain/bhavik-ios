@@ -64,8 +64,8 @@ struct AddParcelView: View {
                         }
                     }
                 } footer: {
-                    if !carrier.supportsAutomaticTracking, carrier != .other {
-                        Text("\(carrier.displayName) stopped letting apps look up parcels they didn't ship, so this one won't refresh on its own. You can still keep it here and open \(carrier.displayName) to check on it.")
+                    if let reason = carrier.manualTrackingReason {
+                        Text(reason)
                     }
                 }
             }

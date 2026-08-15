@@ -1,3 +1,4 @@
+import Core
 import SwiftData
 import SwiftUI
 
@@ -6,8 +7,8 @@ struct ParcelDetailView: View {
     let router: CarrierRouter
 
     @Environment(\.modelContext) private var modelContext
-    @Environment(\.openURL) private var openURL
     @State private var isRefreshing = false
+    @State private var webPage: WebPage?
 
     var body: some View {
         List {
@@ -68,7 +69,7 @@ struct ParcelDetailView: View {
 
                 if let url = parcel.trackingURL {
                     Button {
-                        openURL(url)
+                        webPage = WebPage(url: url)
                     } label: {
                         Label("Open in \(parcel.carrier.displayName)", systemImage: "safari")
                     }
@@ -81,8 +82,8 @@ struct ParcelDetailView: View {
                 }
                 .disabled(parcel.carrier.supportsAutomaticTracking)
             } footer: {
-                if parcel.isManual {
-                    Text("\(parcel.carrier.displayName) doesn't let apps look up parcels they didn't ship, so set the status yourself after checking with the carrier.")
+                if let reason = parcel.carrier.manualTrackingReason {
+                    Text(reason)
                 }
             }
 
@@ -107,6 +108,7 @@ struct ParcelDetailView: View {
         }
         .navigationTitle(parcel.name.isEmpty ? parcel.trackingNumber : parcel.name)
         .navigationBarTitleDisplayMode(.inline)
+        .webSheet($webPage, tint: ParcelTrackerModule.accent.color)
         .task {
             guard parcel.carrier.supportsAutomaticTracking, parcel.lastRefreshedAt == nil else { return }
             await refresh()

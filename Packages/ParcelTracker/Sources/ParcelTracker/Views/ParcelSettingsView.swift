@@ -50,17 +50,14 @@ struct ParcelSettingsView: View {
                 }
 
                 Section {
-                    LabeledContent("UPS", value: "Not set up")
+                    LabeledContent("UPS", value: "Opens in browser")
                         .foregroundStyle(.secondary)
-                } footer: {
-                    Text("UPS credentials come from developer.ups.com. Support for them isn't wired up yet.")
-                }
-
-                Section {
-                    LabeledContent("USPS", value: "Manual only")
+                    LabeledContent("USPS", value: "Opens in browser")
                         .foregroundStyle(.secondary)
+                } header: {
+                    Text("Other carriers")
                 } footer: {
-                    Text("Since April 2026 USPS only serves tracking to whoever shipped the parcel, so USPS parcels are kept here by hand with a link out to USPS.")
+                    Text("These are kept here by hand: tap a parcel to open the carrier's own tracking page without leaving the app, then set its status. USPS stopped answering third parties in April 2026; UPS support just isn't built yet.")
                 }
             }
             .navigationTitle("Settings")

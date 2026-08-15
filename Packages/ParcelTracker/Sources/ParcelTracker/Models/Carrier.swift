@@ -18,12 +18,25 @@ public enum Carrier: String, CaseIterable, Codable, Sendable {
     /// Whether the app can fetch status for this carrier itself.
     ///
     /// USPS closed third-party tracking in April 2026 — its API now serves only
-    /// the shipper of record — so USPS parcels are tracked by hand and opened
-    /// on the carrier's own site.
+    /// the shipper of record. UPS has an API the app could use, but it isn't
+    /// wired up yet. Either way the parcel is followed by hand and opened on
+    /// the carrier's own site.
     public var supportsAutomaticTracking: Bool {
         switch self {
-        case .ups, .fedex: true
-        case .usps, .other: false
+        case .fedex: true
+        case .ups, .usps, .other: false
+        }
+    }
+
+    /// Why a carrier can't be read automatically, for the screens that explain it.
+    public var manualTrackingReason: String? {
+        switch self {
+        case .fedex, .other:
+            nil
+        case .ups:
+            "UPS tracking isn't wired up yet, so update this one yourself after checking UPS."
+        case .usps:
+            "USPS only tells whoever shipped a parcel where it is, so update this one yourself after checking USPS."
         }
     }
 
