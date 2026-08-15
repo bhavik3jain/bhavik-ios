@@ -27,6 +27,7 @@ struct TVRootView: View {
             }
         }
         .tint(TVTrackerModule.accent.color)
+        .minimizesTabBarOnScroll()
         .dismissesOnHomeTab($selection, restoringTo: "watching")
         #if DEBUG
         .task {

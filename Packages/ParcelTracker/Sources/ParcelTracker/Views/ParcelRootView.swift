@@ -20,6 +20,7 @@ struct ParcelRootView: View {
             }
         }
         .tint(ParcelTrackerModule.accent.color)
+        .minimizesTabBarOnScroll()
         .dismissesOnHomeTab($selection, restoringTo: "parcels")
         #if DEBUG
         .task {

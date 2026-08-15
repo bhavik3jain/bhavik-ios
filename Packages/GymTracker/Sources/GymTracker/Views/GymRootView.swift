@@ -23,6 +23,7 @@ struct GymRootView: View {
             }
         }
         .tint(GymTrackerModule.accent.color)
+        .minimizesTabBarOnScroll()
         .dismissesOnHomeTab($selection, restoringTo: "workouts")
         .task {
             ExerciseSeed.seedIfNeeded(context: modelContext)

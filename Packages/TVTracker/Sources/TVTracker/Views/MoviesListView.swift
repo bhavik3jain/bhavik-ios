@@ -1,4 +1,5 @@
 import SwiftData
+import Core
 import SwiftUI
 
 struct MoviesListView: View {
@@ -19,8 +20,7 @@ struct MoviesListView: View {
                         Text("Keep a watchlist and tick films off as you see them.")
                     } actions: {
                         Button("Add Movie") { showingAddMovie = true }
-                            .buttonStyle(.borderedProminent)
-                            .tint(TVTrackerModule.accent.color)
+                            .primaryActionStyle(tint: TVTrackerModule.accent.color)
                     }
                 } else {
                     List {

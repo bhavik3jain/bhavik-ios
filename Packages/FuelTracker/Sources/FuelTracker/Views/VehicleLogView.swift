@@ -76,6 +76,12 @@ struct VehicleLogView: View {
                             Image(systemName: "car.2.fill")
                         }
                     }
+                    // Switching vehicle and adding a fill-up are unrelated, so
+                    // they sit in separate glass groups rather than reading as
+                    // one control.
+                    if #available(iOS 26, *) {
+                        ToolbarSpacer(.fixed, placement: .primaryAction)
+                    }
                 }
                 if vehicle != nil {
                     ToolbarItem(placement: .primaryAction) {

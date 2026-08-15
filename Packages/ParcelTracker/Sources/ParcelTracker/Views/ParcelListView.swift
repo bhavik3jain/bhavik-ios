@@ -26,8 +26,7 @@ struct ParcelListView: View {
                         Text("Add a tracking number and the carrier is worked out for you.")
                     } actions: {
                         Button("Add Parcel") { showingAdd = true }
-                            .buttonStyle(.borderedProminent)
-                            .tint(ParcelTrackerModule.accent.color)
+                            .primaryActionStyle(tint: ParcelTrackerModule.accent.color)
                     }
                 } else {
                     List {

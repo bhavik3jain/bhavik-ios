@@ -13,18 +13,22 @@ struct WorkoutsListView: View {
 
     var body: some View {
         NavigationStack {
-            List {
-                Section {
-                    Button {
-                        startEmptyWorkout()
-                    } label: {
-                        Label("Start Empty Workout", systemImage: "plus.circle.fill")
-                            .fontWeight(.semibold)
-                    }
-                    .listRowBackground(GymTrackerModule.accent.color)
-                    .foregroundStyle(.white)
+            // Starting a workout sits above the list rather than in it: it is
+            // the reason for the screen, and a list row would put a grouped
+            // background behind a control that is meant to float.
+            VStack(spacing: 12) {
+                Button {
+                    startEmptyWorkout()
+                } label: {
+                    Label("Start Empty Workout", systemImage: "plus.circle.fill")
+                        .fontWeight(.semibold)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 4)
                 }
+                .primaryActionStyle(tint: GymTrackerModule.accent.color)
+                .padding(.horizontal)
 
+                List {
                 Section("Routines") {
                     ForEach(routines) { routine in
                         Button {
@@ -65,6 +69,7 @@ struct WorkoutsListView: View {
                             }
                         }
                     }
+                }
                 }
             }
             .navigationTitle("Workouts")

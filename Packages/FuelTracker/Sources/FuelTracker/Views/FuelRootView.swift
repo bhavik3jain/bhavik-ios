@@ -31,6 +31,7 @@ struct FuelRootView: View {
             }
         }
         .tint(FuelTrackerModule.accent.color)
+        .minimizesTabBarOnScroll()
         .dismissesOnHomeTab($selection, restoringTo: "vehicle")
         #if DEBUG
         .task {

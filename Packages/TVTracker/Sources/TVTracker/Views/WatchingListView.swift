@@ -24,8 +24,7 @@ struct WatchingListView: View {
                         Text("Add a show to start tracking which episodes you've watched.")
                     } actions: {
                         Button("Add Show") { showingAddShow = true }
-                            .buttonStyle(.borderedProminent)
-                            .tint(TVTrackerModule.accent.color)
+                            .primaryActionStyle(tint: TVTrackerModule.accent.color)
                     }
                 } else {
                     List {
