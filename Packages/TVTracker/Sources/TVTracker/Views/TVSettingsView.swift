@@ -1,8 +1,9 @@
+import Core
 import SwiftData
 import SwiftUI
 
 struct TVSettingsView: View {
-    @AppStorage(TVTrackerModule.apiKeyDefaultsKey) private var apiKey = ""
+    @SyncedSecret(TVTrackerModule.apiKeyDefaultsKey) private var apiKey
     @State private var draft = ""
     @State private var checkState: CheckState = .idle
 
@@ -74,7 +75,7 @@ struct TVSettingsView: View {
             } header: {
                 Text("Metadata")
             } footer: {
-                Text("A free TMDB account provides an API key for personal use. It's stored on this device and used only to look up shows and episodes — what you've watched is stored in your own iCloud account.")
+                Text("A free TMDB account provides an API key for personal use. It's kept in your iCloud Keychain and used only to look up shows and episodes — what you've watched is stored in your own iCloud account.")
             }
 
             if !apiKey.isEmpty {

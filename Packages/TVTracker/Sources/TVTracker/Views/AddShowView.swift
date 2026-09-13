@@ -1,10 +1,11 @@
+import Core
 import SwiftData
 import SwiftUI
 
 struct AddShowView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
-    @AppStorage(TVTrackerModule.apiKeyDefaultsKey) private var apiKey = ""
+    @SyncedSecret(TVTrackerModule.apiKeyDefaultsKey) private var apiKey
 
     @State private var query = ""
     @State private var results: [TMDBShowSummary] = []

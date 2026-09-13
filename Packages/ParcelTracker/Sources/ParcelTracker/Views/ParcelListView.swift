@@ -4,8 +4,8 @@ import SwiftUI
 
 struct ParcelListView: View {
     @Environment(\.modelContext) private var modelContext
-    @AppStorage(ParcelTrackerModule.fedExKeyDefaultsKey) private var fedExKey = ""
-    @AppStorage(ParcelTrackerModule.fedExSecretDefaultsKey) private var fedExSecret = ""
+    @SyncedSecret(ParcelTrackerModule.fedExKeyDefaultsKey) private var fedExKey
+    @SyncedSecret(ParcelTrackerModule.fedExSecretDefaultsKey) private var fedExSecret
 
     @Query(filter: #Predicate<Parcel> { !$0.isArchived }, sort: \Parcel.addedAt, order: .reverse)
     private var parcels: [Parcel]

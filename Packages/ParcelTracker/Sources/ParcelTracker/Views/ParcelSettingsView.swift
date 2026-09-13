@@ -1,8 +1,9 @@
+import Core
 import SwiftUI
 
 struct ParcelSettingsView: View {
-    @AppStorage(ParcelTrackerModule.fedExKeyDefaultsKey) private var fedExKey = ""
-    @AppStorage(ParcelTrackerModule.fedExSecretDefaultsKey) private var fedExSecret = ""
+    @SyncedSecret(ParcelTrackerModule.fedExKeyDefaultsKey) private var fedExKey
+    @SyncedSecret(ParcelTrackerModule.fedExSecretDefaultsKey) private var fedExSecret
 
     @State private var keyDraft = ""
     @State private var secretDraft = ""
@@ -46,7 +47,7 @@ struct ParcelSettingsView: View {
                 } header: {
                     Text("FedEx")
                 } footer: {
-                    Text("A free account at developer.fedex.com provides an API key and secret. They're stored on this device.")
+                    Text("A free account at developer.fedex.com provides an API key and secret. They're kept in your iCloud Keychain, so they reach your other devices and survive reinstalling the app.")
                 }
 
                 Section {

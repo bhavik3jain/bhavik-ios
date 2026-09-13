@@ -30,6 +30,11 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.bhavikjain.trackers
+        # Signing lives here, not in Xcode's Signing & Capabilities tab: the
+        # .xcodeproj is generated, so anything set in the GUI is lost on the
+        # next `xcodegen generate`.
+        DEVELOPMENT_TEAM: Y4M3S6H4NK
+        CODE_SIGN_STYLE: Automatic
         MARKETING_VERSION: "1.0"
         CURRENT_PROJECT_VERSION: "1"
         SWIFT_VERSION: "6.0"
@@ -47,10 +52,14 @@ targets:
     info:
       path: App/Resources/Info.plist
       properties:
-        CFBundleDisplayName: Trackers
+        CFBundleDisplayName: Multitrack
         UILaunchScreen: {}
         UIBackgroundModes:
           - remote-notification
         # Lets you drop a Fuelly CSV into the app's folder from Finder or the Files app.
         UIFileSharingEnabled: true
         LSSupportsOpeningDocumentsInPlace: true
+        # The app only talks HTTPS, which is an exempt use of encryption, so
+        # declaring this stops App Store Connect asking the export-compliance
+        # question on every single upload.
+        ITSAppUsesNonExemptEncryption: false

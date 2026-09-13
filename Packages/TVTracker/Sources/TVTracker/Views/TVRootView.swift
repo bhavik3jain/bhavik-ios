@@ -4,7 +4,7 @@ import SwiftUI
 
 struct TVRootView: View {
     @Environment(\.modelContext) private var modelContext
-    @AppStorage(TVTrackerModule.apiKeyDefaultsKey) private var apiKey = ""
+    @SyncedSecret(TVTrackerModule.apiKeyDefaultsKey) private var apiKey
 
     @State private var selection = "watching"
 

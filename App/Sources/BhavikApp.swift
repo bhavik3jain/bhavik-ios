@@ -23,6 +23,9 @@ struct BhavikApp: App {
                 cloudKitDatabase: .private(Self.cloudContainerID)
             )
             container = try ModelContainer(for: schema, configurations: [configuration])
+            #if DEBUG
+            CloudKitSchemaSeeder.runIfRequested(in: ModelContext(container))
+            #endif
         } catch {
             fatalError("Failed to create ModelContainer: \(error)")
         }
