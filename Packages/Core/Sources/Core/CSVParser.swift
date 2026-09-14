@@ -5,8 +5,13 @@ import Foundation
 /// Quote awareness is essential here: exported logs quote fields that contain
 /// their own commas, such as `"37,057"` odometer readings and `"$6,405.36"`
 /// costs, which naive splitting would tear apart.
-enum CSVParser {
-    static func rows(from text: String) -> [[String]] {
+public enum CSVParser {
+    public static func rows(from text: String) -> [[String]] {
+        // Exports written on Windows start with a UTF-8
+        // byte order mark. Left in place it becomes part of the first
+        // header's name, so every lookup against that column misses.
+        let text = text.hasPrefix("\u{FEFF}") ? String(text.dropFirst()) : text
+
         var rows: [[String]] = []
         var field = ""
         var row: [String] = []
@@ -54,10 +59,12 @@ enum CSVParser {
                 inQuotes = true
             case ",":
                 endField()
-            case "\n":
+            // Swift folds CRLF into a single Character, so "\r\n" matches
+            // neither "\r" nor "\n" and has to be named outright. Miss it and
+            // a Windows-style export never ends a row: the entire file arrives
+            // as one enormous field.
+            case "\n", "\r\n", "\r":
                 endRow()
-            case "\r":
-                break  // Handled by the following \n in CRLF files.
             default:
                 field.append(character)
             }

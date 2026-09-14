@@ -14,7 +14,7 @@ let package = Package(
         .target(name: "FuelTracker", dependencies: ["Core"]),
         .testTarget(
             name: "FuelTrackerTests",
-            dependencies: ["FuelTracker"],
+            dependencies: ["FuelTracker", "Core"],
             resources: [.process("Fixtures")]
         )
     ]

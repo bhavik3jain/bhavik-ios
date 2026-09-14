@@ -76,3 +76,34 @@ import CloudKit
     #expect(CloudSyncState.signedOut.explanation.contains("still saved"))
     #expect(CloudSyncState.restricted.explanation.contains("still saved"))
 }
+
+// MARK: - CSVParser
+
+@Test func parsesUnixLineEndings() {
+    let rows = CSVParser.rows(from: "a,b\n1,2\n3,4")
+    #expect(rows == [["a", "b"], ["1", "2"], ["3", "4"]])
+}
+
+@Test func parsesWindowsLineEndings() {
+    // Swift folds CRLF into one Character, so a parser matching only "\n" and
+    // "\r" separately never ends a row and returns the whole file as a single
+    // enormous field. Real exports are CRLF, and this went unnoticed
+    // because every fixture here was written with Unix endings.
+    let rows = CSVParser.rows(from: "a,b\r\n1,2\r\n3,4")
+    #expect(rows == [["a", "b"], ["1", "2"], ["3", "4"]])
+}
+
+@Test func parsesLoneCarriageReturns() {
+    let rows = CSVParser.rows(from: "a,b\r1,2")
+    #expect(rows == [["a", "b"], ["1", "2"]])
+}
+
+@Test func keepsCommasInsideQuotedFields() {
+    let rows = CSVParser.rows(from: "\"a\",\"37,057\",\"$6,405.36\"")
+    #expect(rows == [["a", "37,057", "$6,405.36"]])
+}
+
+@Test func stripsAByteOrderMarkFromTheFirstHeader() {
+    let rows = CSVParser.rows(from: "\u{FEFF}type,title\r\nshow,Thing")
+    #expect(rows.first?.first == "type")
+}
