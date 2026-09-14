@@ -1,4 +1,5 @@
 import Charts
+import Core // Only reached on macOS, where Core stands in for the iOS-only SwiftUI API below.
 import SwiftData
 import SwiftUI
 

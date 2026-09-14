@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>com.apple.developer.icloud-container-identifiers</key>
+	<array>
+		<string>iCloud.com.bhavikjain.trackers</string>
+	</array>
+	<key>com.apple.developer.icloud-services</key>
+	<array>
+		<string>CloudKit</string>
+	</array>
+	<key>com.apple.developer.ubiquity-kvstore-identifier</key>
+	<string>$(TeamIdentifierPrefix)$(CFBundleIdentifier)</string>
+	<!-- CloudKit refuses to hand a Mac app its private database unless the app
+	     is sandboxed, so the sandbox is a requirement here, not a hardening
+	     choice. The three keys below are what it then has to give back. -->
+	<key>com.apple.security.app-sandbox</key>
+	<true/>
+	<!-- Without this the sandbox denies every outbound connection and the TMDB
+	     and FedEx clients fail silently: URLSession just returns an error the
+	     UI shows as "no results", with nothing in the log pointing at signing. -->
+	<key>com.apple.security.network.client</key>
+	<true/>
+	<!-- Lets the Fuelly CSV importer read the file the user picks in the open
+	     panel. Read-only is enough: the importer never writes back. -->
+	<key>com.apple.security.files.user-selected.read-only</key>
+	<true/>
+</dict>
+</plist>

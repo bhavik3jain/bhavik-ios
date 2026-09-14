@@ -79,7 +79,7 @@ struct VehicleLogView: View {
                     // Switching vehicle and adding a fill-up are unrelated, so
                     // they sit in separate glass groups rather than reading as
                     // one control.
-                    if #available(iOS 26, *) {
+                    if #available(iOS 26, macOS 26, *) {
                         ToolbarSpacer(.fixed, placement: .primaryAction)
                     }
                 }

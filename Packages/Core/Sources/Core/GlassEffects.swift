@@ -14,7 +14,7 @@ public extension View {
     /// a primary button is; content itself is deliberately left alone.
     @ViewBuilder
     func primaryActionStyle(tint: Color) -> some View {
-        if #available(iOS 26, *) {
+        if #available(iOS 26, macOS 26, *) {
             buttonStyle(.glassProminent).tint(tint)
         } else {
             buttonStyle(.borderedProminent).tint(tint)
@@ -22,12 +22,19 @@ public extension View {
     }
 
     /// Lets the tab bar shrink out of the way as a long list is scrolled.
+    ///
+    /// A Mac window has no tab bar to get out of the way, so there the
+    /// modifier is deliberately nothing at all.
     @ViewBuilder
     func minimizesTabBarOnScroll() -> some View {
+        #if os(iOS)
         if #available(iOS 26, *) {
             tabBarMinimizeBehavior(.onScrollDown)
         } else {
             self
         }
+        #else
+        self
+        #endif
     }
 }

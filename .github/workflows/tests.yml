@@ -66,3 +66,12 @@ jobs:
           set -euo pipefail
           xcodegen generate
           xcodebuild build -project bhavik-ios.xcodeproj -scheme bhavik-ios -destination "platform=iOS Simulator,id=${{ steps.simulator.outputs.udid }},arch=${{ steps.simulator.outputs.arch }}" -quiet
+
+      - name: Build the Mac app
+        # The Mac target compiles the same sources as the iPhone one, so an
+        # edit that builds for iOS can still break macOS — usually by reaching
+        # for UIKit-only API, which nothing above would notice. Unsigned,
+        # because a runner is not a registered Mac and cannot get a profile.
+        run: |
+          set -euo pipefail
+          xcodebuild build -project bhavik-ios.xcodeproj -scheme bhavik-macOS -destination "platform=macOS" CODE_SIGNING_ALLOWED=NO -quiet

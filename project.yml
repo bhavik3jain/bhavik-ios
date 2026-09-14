@@ -21,7 +21,7 @@ targets:
   bhavik-ios:
     type: application
     platform: iOS
-    sources:
+    sources: &appSources
       # XcodeGen has no separate "resources" key: everything goes in sources and
       # Xcode sorts it into the right build phase by file type. Listing the asset
       # catalog under "resources" silently did nothing, leaving the app iconless.
@@ -43,7 +43,7 @@ targets:
         INFOPLIST_KEY_UILaunchScreen_Generation: "YES"
         INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait
         TARGETED_DEVICE_FAMILY: "1"
-    dependencies:
+    dependencies: &appDependencies
       - package: Core
       - package: GymTracker
       - package: FuelTracker
@@ -62,4 +62,48 @@ targets:
         # The app only talks HTTPS, which is an exempt use of encryption, so
         # declaring this stops App Store Connect asking the export-compliance
         # question on every single upload.
+        ITSAppUsesNonExemptEncryption: false
+
+  # Same code, same packages, same bundle id — only the platform chrome differs.
+  # Sources and dependencies are aliased from the iOS target rather than copied
+  # so that adding a package can't leave the Mac build a module behind.
+  bhavik-macOS:
+    type: application
+    platform: macOS
+    # Lives on the target, not in options.deploymentTarget, so that adding the
+    # Mac build writes nothing into the settings the shipping iOS app inherits.
+    deploymentTarget: "15.0"
+    sources: *appSources
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.bhavikjain.trackers
+        DEVELOPMENT_TEAM: Y4M3S6H4NK
+        CODE_SIGN_STYLE: Automatic
+        # On the Mac the bundle name is visible in a way it never is on
+        # iPhone: it names the app in Finder, the menu bar and the About
+        # box. Left alone it inherits the target name and reads
+        # "bhavik-macOS".
+        PRODUCT_NAME: Multitrack
+        MARKETING_VERSION: "1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        SWIFT_VERSION: "6.0"
+        # A separate entitlements file, because CloudKit on macOS only works
+        # from a sandboxed app and the sandbox then has to be opened back up
+        # for outbound HTTPS and for the CSV import.
+        CODE_SIGN_ENTITLEMENTS: App/Resources/App-macOS.entitlements
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        # Deliberately absent: TARGETED_DEVICE_FAMILY,
+        # INFOPLIST_KEY_UILaunchScreen_Generation and
+        # INFOPLIST_KEY_UISupportedInterfaceOrientations are iOS-only and make
+        # the Mac build warn.
+    dependencies: *appDependencies
+    info:
+      # Its own plist: the iOS one carries launch-screen, background-mode and
+      # file-sharing keys that mean nothing on the Mac.
+      path: App/Resources/Info-macOS.plist
+      properties:
+        CFBundleDisplayName: Multitrack
+        # Stops the Mac app launching on a system too old to run it, where it
+        # would only get as far as a dyld crash.
+        LSMinimumSystemVersion: $(MACOSX_DEPLOYMENT_TARGET)
         ITSAppUsesNonExemptEncryption: false
