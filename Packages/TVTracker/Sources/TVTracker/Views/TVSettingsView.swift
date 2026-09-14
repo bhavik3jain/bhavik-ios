@@ -5,6 +5,7 @@ import SwiftUI
 struct TVSettingsView: View {
     @SyncedSecret(TVTrackerModule.apiKeyDefaultsKey) private var apiKey
     @State private var draft = ""
+    @State private var showingImport = false
     @State private var checkState: CheckState = .idle
 
     private enum CheckState {
@@ -44,6 +45,12 @@ struct TVSettingsView: View {
                         }
                     }
                 }
+            }
+
+            Section {
+                Button("Import Library…") { showingImport = true }
+            } footer: {
+                Text("Brings across your library and everything you've watched. Each title is looked up on TMDB, so it takes a few minutes.")
             }
 
             Section {
@@ -96,6 +103,9 @@ struct TVSettingsView: View {
         }
         .navigationTitle("TV Settings")
         .navigationBarTitleDisplayMode(.inline)
+        .sheet(isPresented: $showingImport) {
+            LibraryImportView()
+        }
         .onAppear { draft = apiKey }
     }
 

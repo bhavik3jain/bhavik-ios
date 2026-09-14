@@ -105,22 +105,36 @@ public struct TMDBClient: Sendable {
     /// Fetches every episode of a show by walking its seasons. Specials
     /// (season 0) are skipped — they are rarely what you are tracking.
     public func allEpisodes(showID: Int) async throws -> [TMDBEpisode] {
+        try await show(id: showID).episodes
+    }
+
+    /// A show's own details together with its full episode list.
+    ///
+    /// Fetching the episodes already costs a `/tv/{id}` request, which carries
+    /// the name, overview and poster as well — `allEpisodes` simply threw those
+    /// away. An import walking a hundred shows would otherwise ask for each one
+    /// twice.
+    ///
+    /// Season 0 is skipped deliberately: TMDB files trailers, recaps and
+    /// behind-the-scenes clips there, and counting those as episodes would make
+    /// every show's progress unreachable.
+    public func show(id: Int) async throws -> (summary: TMDBShowSummary, episodes: [TMDBEpisode]) {
         guard !apiKey.isEmpty else { throw TMDBError.missingAPIKey }
 
-        var components = URLComponents(string: "https://api.themoviedb.org/3/tv/\(showID)")!
+        var components = URLComponents(string: "https://api.themoviedb.org/3/tv/\(id)")!
         components.queryItems = [URLQueryItem(name: "api_key", value: apiKey)]
         let detail: ShowDetailResponse = try await get(components)
 
         var episodes: [TMDBEpisode] = []
         for season in detail.seasons where season.season_number > 0 {
             var seasonComponents = URLComponents(
-                string: "https://api.themoviedb.org/3/tv/\(showID)/season/\(season.season_number)"
+                string: "https://api.themoviedb.org/3/tv/\(id)/season/\(season.season_number)"
             )!
             seasonComponents.queryItems = [URLQueryItem(name: "api_key", value: apiKey)]
             let seasonDetail: SeasonDetailResponse = try await get(seasonComponents)
             episodes.append(contentsOf: seasonDetail.episodes.map(\.episode))
         }
-        return episodes
+        return (detail.summary(id: id), episodes)
     }
 
     private func get<T: Decodable>(_ components: URLComponents) async throws -> T {
@@ -214,10 +228,24 @@ private struct MovieDetailResponse: Decodable {
 }
 
 private struct ShowDetailResponse: Decodable {
+    let name: String?
+    let overview: String?
+    let poster_path: String?
+    let first_air_date: String?
     let seasons: [Season]
 
     struct Season: Decodable {
         let season_number: Int
+    }
+
+    func summary(id: Int) -> TMDBShowSummary {
+        TMDBShowSummary(
+            id: id,
+            name: name ?? "",
+            overview: overview ?? "",
+            posterPath: poster_path ?? "",
+            firstAirDate: TMDBDate.parse(first_air_date)
+        )
     }
 }
 
