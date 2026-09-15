@@ -462,6 +462,113 @@ public enum LibraryImporter {
         }
     }
 
+    /// A show's episodes, for choosing one by hand.
+    public static func episodes(ofShow tmdbID: Int, apiKey: String) async throws -> [TMDBEpisode] {
+        try await TMDBClient(apiKey: apiKey).show(id: tmdbID, includingSpecials: true).episodes
+    }
+
+    /// Searches shows and films by name, for pointing a stray watch at the
+    /// right thing.
+    public static func search(
+        _ query: String,
+        movies: Bool,
+        apiKey: String
+    ) async throws -> [(id: Int, name: String, subtitle: String, posterPath: String)] {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return [] }
+        let client = TMDBClient(apiKey: apiKey)
+
+        if movies {
+            return try await client.searchMovies(query: trimmed).map {
+                ($0.id, $0.title, $0.releaseDate.map { d in d.formatted(.dateTime.year()) } ?? "", $0.posterPath)
+            }
+        }
+        return try await client.searchShows(query: trimmed).map {
+            ($0.id, $0.name, $0.firstAirDate.map { d in d.formatted(.dateTime.year()) } ?? "", $0.posterPath)
+        }
+    }
+
+    /// Marks one episode watched, importing its show first if it isn't tracked
+    /// yet — the chosen episode may well belong to a show that was never in the
+    /// export at all.
+    @MainActor
+    public static func markEpisodeWatched(
+        showTMDBID: Int,
+        showName: String,
+        seasonNumber: Int,
+        episodeNumber: Int,
+        watchedAt: Date,
+        apiKey: String,
+        into context: ModelContext
+    ) async throws {
+        let show: Show
+        if let existing = try existingShows(in: context)[showTMDBID] {
+            show = existing
+        } else {
+            let (detail, tmdbEpisodes) = try await TMDBClient(apiKey: apiKey)
+                .show(id: showTMDBID, includingSpecials: true)
+            let created = Show(
+                tmdbID: showTMDBID,
+                name: detail.name.isEmpty ? showName : detail.name,
+                overview: detail.overview,
+                posterPath: detail.posterPath
+            )
+            context.insert(created)
+            for tmdbEpisode in tmdbEpisodes {
+                // A special is only kept when it is the one being linked;
+                // otherwise trailers would pad the show's episode count.
+                if tmdbEpisode.seasonNumber == 0,
+                   !(tmdbEpisode.seasonNumber == seasonNumber && tmdbEpisode.episodeNumber == episodeNumber) {
+                    continue
+                }
+                let episode = Episode(
+                    tmdbID: tmdbEpisode.id,
+                    name: tmdbEpisode.name,
+                    seasonNumber: tmdbEpisode.seasonNumber,
+                    episodeNumber: tmdbEpisode.episodeNumber,
+                    airDate: tmdbEpisode.airDate
+                )
+                episode.show = created
+                context.insert(episode)
+            }
+            show = created
+        }
+
+        if let match = (show.episodes ?? []).first(where: {
+            $0.seasonNumber == seasonNumber && $0.episodeNumber == episodeNumber
+        }) {
+            match.setWatched(true, at: watchedAt)
+        }
+        try context.save()
+    }
+
+    /// Marks a film watched, importing it first if it isn't tracked yet.
+    @MainActor
+    public static func markMovieWatched(
+        tmdbID: Int,
+        title: String,
+        watchedAt: Date,
+        apiKey: String,
+        into context: ModelContext
+    ) async throws {
+        if let existing = try existingMovies(in: context)[tmdbID] {
+            existing.setWatched(true, at: watchedAt)
+        } else {
+            let detail = try await TMDBClient(apiKey: apiKey).movieDetail(id: tmdbID)
+            let movie = Movie(
+                tmdbID: tmdbID,
+                title: detail.title.isEmpty ? title : detail.title,
+                overview: detail.overview,
+                posterPath: detail.posterPath,
+                releaseDate: detail.releaseDate,
+                runtime: detail.runtime
+            )
+            movie.setWatched(true, at: watchedAt)
+            context.insert(movie)
+        }
+        try context.save()
+    }
+
     // MARK: - Helpers
 
     @MainActor
