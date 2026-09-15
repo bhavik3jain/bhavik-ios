@@ -17,6 +17,11 @@ struct LibraryImportView: View {
     @State private var phase: Phase = .idle
     @State private var showingPicker = false
     @State private var task: Task<Void, Never>?
+    /// Kept after the run so a resolved title can be re-imported with the watch
+    /// history the export recorded against its broken id.
+    @State private var export: LibraryExport?
+    @State private var unresolved: [UnresolvedItem] = []
+    @State private var resolving: UnresolvedItem?
 
     private enum Phase {
         case idle
@@ -61,6 +66,13 @@ struct LibraryImportView: View {
                 allowsMultipleSelection: true
             ) { result in
                 start(with: result)
+            }
+        }
+        .sheet(item: $resolving) { item in
+            if let export {
+                ResolveItemView(item: item, export: export, apiKey: apiKey) {
+                    unresolved.removeAll { $0.id == item.id }
+                }
             }
         }
         .onDisappear { task?.cancel() }
@@ -134,32 +146,34 @@ struct LibraryImportView: View {
             }
         }
 
-        // Named rather than counted. A bare "6 watches — no episode" tells you
-        // something is wrong and gives you no way to do anything about it.
-        if !summary.unmatched.isEmpty {
+        // Tappable, because a list you can't act on is just a list of
+        // complaints. Each row opens the same choice: point it at the right
+        // thing, or drop it.
+        if !unresolved.isEmpty {
             Section {
-                ForEach(summary.unmatched, id: \.self) { name in
-                    Text(name)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                ForEach(unresolved) { item in
+                    Button {
+                        resolving = item
+                    } label: {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(item.displayName)
+                                    .foregroundStyle(.primary)
+                                Text(item.detail)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .font(.caption)
+                                .foregroundStyle(.tertiary)
+                        }
+                    }
                 }
             } header: {
-                Text("Episodes TMDB doesn't list")
+                Text("Couldn't be matched")
             } footer: {
-                Text("Usually a show renumbered after you watched it. Mark these watched by hand if you still want them counted.")
-            }
-        }
-
-        if !summary.failedShows.isEmpty {
-            Section {
-                ForEach(summary.failedShows, id: \.self) { name in
-                    Label(name, systemImage: "exclamationmark.triangle")
-                        .foregroundStyle(.orange)
-                }
-            } header: {
-                Text("Couldn't be looked up")
-            } footer: {
-                Text("The export's TMDB id for these doesn't resolve. Add them by hand from the Watching tab — searching by name will find the right one.")
+                Text("Tap one to link it to the right show, film or episode — or to ignore it.")
             }
         }
     }
@@ -173,16 +187,18 @@ struct LibraryImportView: View {
         let key = apiKey
         task = Task { @MainActor in
             do {
-                let export = try LibraryImporter.parse(fileURLs: urls)
-                phase = .working(done: 0, total: export.titleCount, title: "")
+                let parsed = try LibraryImporter.parse(fileURLs: urls)
+                export = parsed
+                phase = .working(done: 0, total: parsed.titleCount, title: "")
 
                 let summary = try await LibraryImporter.run(
-                    export,
+                    parsed,
                     apiKey: key,
                     into: modelContext
                 ) { done, total, title in
                     phase = .working(done: done, total: total, title: title)
                 }
+                unresolved = summary.unresolved
                 phase = .finished(summary)
             } catch is CancellationError {
                 // Everything fetched so far was already saved, so this is a

@@ -12,13 +12,45 @@ public struct LibraryImportSummary: Sendable, Equatable {
     /// Specials — season 0 — that were watched and so were pulled in even
     /// though the numbered seasons are what normally count.
     public var specialsImported = 0
-    /// Watches naming an episode TMDB doesn't list, usually because the show
-    /// was renumbered upstream after it was watched. Named rather than counted:
-    /// a bare number gives you nothing to act on.
-    public var unmatched: [String] = []
-    public var failedShows: [String] = []
+    /// Things the import could not place, carried as structured values rather
+    /// than printed strings so they can actually be resolved afterwards.
+    public var unresolved: [UnresolvedItem] = []
 
     public var totalImported: Int { showsImported + moviesImported }
+}
+
+/// Something the import couldn't place, and enough context to fix it by hand.
+public enum UnresolvedItem: Sendable, Hashable, Identifiable {
+    /// The show imported, but the export names an episode TMDB doesn't list —
+    /// nearly always a renumbering upstream after it was watched.
+    case episode(showTMDBID: Int, showName: String, season: Int, episode: Int, watchedAt: Date)
+    /// The export's TMDB id doesn't resolve at all, so nothing was imported.
+    case title(name: String, tmdbID: Int, isShow: Bool)
+
+    public var id: String {
+        switch self {
+        case let .episode(showID, _, season, episode, _):
+            "e-\(showID)-\(season)-\(episode)"
+        case let .title(_, tmdbID, isShow):
+            "t-\(isShow ? "s" : "m")-\(tmdbID)"
+        }
+    }
+
+    public var displayName: String {
+        switch self {
+        case let .episode(_, showName, season, episode, _):
+            "\(showName) S\(String(format: "%02d", season))E\(String(format: "%02d", episode))"
+        case let .title(name, _, _):
+            name
+        }
+    }
+
+    public var detail: String {
+        switch self {
+        case .episode: "TMDB doesn't list this episode"
+        case let .title(_, tmdbID, _): "TMDB id \(tmdbID) doesn't resolve"
+        }
+    }
 }
 
 public enum LibraryImportError: LocalizedError {
@@ -240,10 +272,14 @@ public enum LibraryImporter {
                 summary.specialsImported += specialsKept
                 // Named, so an episode TMDB has renumbered can actually be
                 // found and fixed by hand rather than being a number.
-                for key in watches.keys where !matched.contains(key) {
-                    summary.unmatched.append(
-                        "\(title.name) S\(String(format: "%02d", key.season))E\(String(format: "%02d", key.episode))"
-                    )
+                for (key, watchedAt) in watches where !matched.contains(key) {
+                    summary.unresolved.append(.episode(
+                        showTMDBID: title.tmdbID,
+                        showName: show.name,
+                        season: key.season,
+                        episode: key.episode,
+                        watchedAt: watchedAt
+                    ))
                 }
 
                 // The export has no "completed": a finished show just sits in
@@ -264,7 +300,9 @@ public enum LibraryImporter {
             } catch is CancellationError {
                 throw CancellationError()
             } catch {
-                summary.failedShows.append(title.name)
+                summary.unresolved.append(
+                    .title(name: title.name, tmdbID: title.tmdbID, isShow: true)
+                )
             }
         }
 
@@ -305,11 +343,123 @@ public enum LibraryImporter {
             } catch is CancellationError {
                 throw CancellationError()
             } catch {
-                summary.failedShows.append(title.name)
+                summary.unresolved.append(
+                    .title(name: title.name, tmdbID: title.tmdbID, isShow: false)
+                )
             }
         }
 
         return summary
+    }
+
+    /// Imports a title whose id in the export was wrong, using one chosen by
+    /// hand — and keeping the watch history that was recorded against the bad
+    /// id, which is the whole reason the title was worth rescuing.
+    @MainActor
+    public static func resolve(
+        _ item: UnresolvedItem,
+        toTMDBID correctedID: Int,
+        from export: LibraryExport,
+        apiKey: String,
+        into context: ModelContext
+    ) async throws {
+        guard !apiKey.isEmpty else { throw LibraryImportError.missingAPIKey }
+        guard case let .title(name, originalID, isShow) = item else { return }
+
+        let client = TMDBClient(apiKey: apiKey)
+
+        if isShow {
+            let watches = export.episodeWatches[originalID] ?? [:]
+            let wantsSpecials = watches.keys.contains { $0.season == 0 }
+            let (detail, episodes) = try await client.show(
+                id: correctedID,
+                includingSpecials: wantsSpecials
+            )
+
+            let show = Show(
+                tmdbID: correctedID,
+                name: detail.name.isEmpty ? name : detail.name,
+                overview: detail.overview,
+                posterPath: detail.posterPath
+            )
+            context.insert(show)
+
+            var watchedCount = 0
+            for tmdbEpisode in episodes {
+                let key = LibraryExport.EpisodeKey(
+                    season: tmdbEpisode.seasonNumber,
+                    episode: tmdbEpisode.episodeNumber
+                )
+                if tmdbEpisode.seasonNumber == 0, watches[key] == nil { continue }
+
+                let episode = Episode(
+                    tmdbID: tmdbEpisode.id,
+                    name: tmdbEpisode.name,
+                    seasonNumber: tmdbEpisode.seasonNumber,
+                    episodeNumber: tmdbEpisode.episodeNumber,
+                    airDate: tmdbEpisode.airDate
+                )
+                episode.show = show
+                context.insert(episode)
+
+                if let watchedAt = watches[key] {
+                    episode.setWatched(true, at: watchedAt)
+                    watchedCount += 1
+                }
+            }
+
+            let numbered = episodes.count(where: { $0.seasonNumber > 0 })
+            show.status = (numbered > 0 && watchedCount >= numbered) ? .completed : .watching
+        } else {
+            let detail = try await client.movieDetail(id: correctedID)
+            let movie = Movie(
+                tmdbID: correctedID,
+                title: detail.title.isEmpty ? name : detail.title,
+                overview: detail.overview,
+                posterPath: detail.posterPath,
+                releaseDate: detail.releaseDate,
+                runtime: detail.runtime
+            )
+            if let watchedAt = export.movieWatches[originalID] {
+                movie.setWatched(true, at: watchedAt)
+            }
+            context.insert(movie)
+        }
+
+        try context.save()
+    }
+
+    /// Searches for a replacement when the export's id is wrong.
+    ///
+    /// Deliberately not automatic: the top hit for "Monster (2022)" is Monster
+    /// High, and silently importing the wrong show is worse than reporting the
+    /// failure.
+    public static func candidates(
+        for item: UnresolvedItem,
+        query: String,
+        apiKey: String
+    ) async throws -> [(id: Int, name: String, subtitle: String, posterPath: String)] {
+        guard case let .title(_, _, isShow) = item else { return [] }
+        let client = TMDBClient(apiKey: apiKey)
+
+        if isShow {
+            return try await client.searchShows(query: query).map {
+                (
+                    $0.id,
+                    $0.name,
+                    $0.firstAirDate.map { d in d.formatted(.dateTime.year()) } ?? "",
+                    $0.posterPath
+                )
+            }
+        }
+        return try await client.searchMovies(query: query).map {
+            (
+                $0.id,
+                $0.title,
+                $0.releaseDate.map { d in d.formatted(.dateTime.year()) } ?? "",
+                $0.posterPath
+            )
+        }
     }
 
     // MARK: - Helpers
