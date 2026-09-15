@@ -50,19 +50,24 @@ movie,Spider-Man: Brand New Day,,969681,,,2026-09-01T20:00:00.000Z,2026-09-01T20
     let export = LibraryImporter.parse(libraryText: libraryCSV, watchesText: watchesCSV)
     let watches = try! #require(export.episodeWatches[4614])
 
-    #expect(watches.count == 2)
+    #expect(watches.count == 3)
     #expect(watches[.init(season: 1, episode: 1)] != nil)
     #expect(watches[.init(season: 1, episode: 2)] != nil)
 }
 
-@Test func countsSpecialsRatherThanDroppingThemSilently() {
-    // TMDB files season 0 outside the numbered seasons, so there is no episode
-    // to attach these to. Reporting the count is honest; discarding it quietly
-    // would make the totals look wrong for no visible reason.
+@Test func keepsWatchesOfSpecials() {
+    // Season 0 used to be discarded at parse time, which made a watched special
+    // unrecoverable later. It is kept now; the importer decides whether to pull
+    // the episode from TMDB, and only does so when one was actually watched.
     let export = LibraryImporter.parse(libraryText: libraryCSV, watchesText: watchesCSV)
 
-    #expect(export.specialsSkipped == 1)
-    #expect(export.episodeWatches[4614]?[.init(season: 0, episode: 4)] == nil)
+    #expect(export.episodeWatches[4614]?[.init(season: 0, episode: 4)] != nil)
+}
+
+@Test func countsEveryWatchIncludingSpecials() {
+    let export = LibraryImporter.parse(libraryText: libraryCSV, watchesText: watchesCSV)
+    // Two numbered episodes plus one special.
+    #expect(export.episodeWatches[4614]?.count == 3)
 }
 
 @Test func prefersLastWatchedOverFirstWatched() {

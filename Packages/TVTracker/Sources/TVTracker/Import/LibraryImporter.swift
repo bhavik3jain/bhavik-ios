@@ -8,13 +8,14 @@ public struct LibraryImportSummary: Sendable, Equatable {
     public var moviesImported = 0
     public var moviesAlreadyPresent = 0
     public var episodesMarkedWatched = 0
-    /// Watches of season 0 — trailers, recaps and behind-the-scenes clips.
-    /// TMDB files those outside the numbered seasons, so there is no episode to
-    /// attach them to.
-    public var specialsSkipped = 0
-    /// A watch that named an episode TMDB doesn't list, usually because the
-    /// show was renumbered upstream after it was watched.
-    public var unmatchedWatches = 0
+    public var moviesMarkedWatched = 0
+    /// Specials — season 0 — that were watched and so were pulled in even
+    /// though the numbered seasons are what normally count.
+    public var specialsImported = 0
+    /// Watches naming an episode TMDB doesn't list, usually because the show
+    /// was renumbered upstream after it was watched. Named rather than counted:
+    /// a bare number gives you nothing to act on.
+    public var unmatched: [String] = []
     public var failedShows: [String] = []
 
     public var totalImported: Int { showsImported + moviesImported }
@@ -57,8 +58,6 @@ public struct LibraryExport: Sendable, Equatable {
     public var movies: [Title] = []
     var episodeWatches: [Int: [EpisodeKey: Date]] = [:]
     var movieWatches: [Int: Date] = [:]
-    public var specialsSkipped = 0
-
     /// What the import will walk, and therefore how long it will take: one TMDB
     /// round trip per title, plus one per season for shows.
     public var titleCount: Int { shows.count + movies.count }
@@ -134,10 +133,6 @@ public enum LibraryImporter {
                 guard let season = Int(row["season_number"] ?? ""),
                       let episode = Int(row["episode_number"] ?? "")
                 else { continue }
-                guard season > 0 else {
-                    export.specialsSkipped += 1
-                    continue
-                }
                 let key = LibraryExport.EpisodeKey(season: season, episode: episode)
                 export.episodeWatches[tmdbID, default: [:]][key] = watchedAt ?? .now
             default:
@@ -166,10 +161,8 @@ public enum LibraryImporter {
 
         let client = TMDBClient(apiKey: apiKey)
         var summary = LibraryImportSummary()
-        summary.specialsSkipped = export.specialsSkipped
-
-        var knownShows = try existingShowIDs(in: context)
-        var knownMovies = try existingMovieIDs(in: context)
+        var knownShows = try existingShows(in: context)
+        var knownMovies = try existingMovies(in: context)
 
         let total = export.titleCount
         var done = 0
@@ -179,14 +172,27 @@ public enum LibraryImporter {
             done += 1
             progress(done, total, title.name)
 
-            guard !knownShows.contains(title.tmdbID) else {
+            // Already tracked: there is nothing to fetch, but the watch
+            // history still has to land — it is usually the whole reason for
+            // importing. Skipping the title outright silently dropped it.
+            if let existing = knownShows[title.tmdbID] {
                 summary.showsAlreadyPresent += 1
+                summary.episodesMarkedWatched += markWatched(
+                    existing, from: export.episodeWatches[title.tmdbID] ?? [:]
+                )
+                try context.save()
                 continue
             }
 
             do {
-                let (detail, episodes) = try await client.show(id: title.tmdbID)
                 let watches = export.episodeWatches[title.tmdbID] ?? [:]
+                // Season 0 is only worth the extra request when something in it
+                // was actually watched.
+                let wantsSpecials = watches.keys.contains { $0.season == 0 }
+                let (detail, episodes) = try await client.show(
+                    id: title.tmdbID,
+                    includingSpecials: wantsSpecials
+                )
 
                 let show = Show(
                     tmdbID: title.tmdbID,
@@ -200,7 +206,18 @@ public enum LibraryImporter {
                 context.insert(show)
 
                 var watchedCount = 0
+                var specialsKept = 0
+                var matched: Set<LibraryExport.EpisodeKey> = []
                 for tmdbEpisode in episodes {
+                    let key = LibraryExport.EpisodeKey(
+                        season: tmdbEpisode.seasonNumber,
+                        episode: tmdbEpisode.episodeNumber
+                    )
+                    // Season 0 holds trailers and recaps as well as real
+                    // specials. Keeping only the watched ones means progress
+                    // stays reachable instead of counting clips nobody watches.
+                    if tmdbEpisode.seasonNumber == 0, watches[key] == nil { continue }
+
                     let episode = Episode(
                         tmdbID: tmdbEpisode.id,
                         name: tmdbEpisode.name,
@@ -211,31 +228,37 @@ public enum LibraryImporter {
                     episode.show = show
                     context.insert(episode)
 
-                    let key = LibraryExport.EpisodeKey(
-                        season: tmdbEpisode.seasonNumber,
-                        episode: tmdbEpisode.episodeNumber
-                    )
                     if let watchedAt = watches[key] {
                         episode.setWatched(true, at: watchedAt)
                         watchedCount += 1
+                        matched.insert(key)
+                        if tmdbEpisode.seasonNumber == 0 { specialsKept += 1 }
                     }
                 }
 
                 summary.episodesMarkedWatched += watchedCount
-                summary.unmatchedWatches += max(0, watches.count - watchedCount)
+                summary.specialsImported += specialsKept
+                // Named, so an episode TMDB has renumbered can actually be
+                // found and fixed by hand rather than being a number.
+                for key in watches.keys where !matched.contains(key) {
+                    summary.unmatched.append(
+                        "\(title.name) S\(String(format: "%02d", key.season))E\(String(format: "%02d", key.episode))"
+                    )
+                }
 
                 // The export has no "completed": a finished show just sits in
                 // "watching" forever. Deriving it from the episodes is closer to
                 // what the library actually means.
                 if title.isDropped {
                     show.status = .dropped
-                } else if !episodes.isEmpty, watchedCount == episodes.count {
+                } else if !episodes.isEmpty,
+                          watchedCount >= episodes.count(where: { $0.seasonNumber > 0 }) {
                     show.status = .completed
                 } else {
                     show.status = .watching
                 }
 
-                knownShows.insert(title.tmdbID)
+                knownShows[title.tmdbID] = show
                 summary.showsImported += 1
                 try context.save()
             } catch is CancellationError {
@@ -250,8 +273,13 @@ public enum LibraryImporter {
             done += 1
             progress(done, total, title.name)
 
-            guard !knownMovies.contains(title.tmdbID) else {
+            if let existing = knownMovies[title.tmdbID] {
                 summary.moviesAlreadyPresent += 1
+                if let watchedAt = export.movieWatches[title.tmdbID], !existing.isWatched {
+                    existing.setWatched(true, at: watchedAt)
+                    summary.moviesMarkedWatched += 1
+                    try context.save()
+                }
                 continue
             }
 
@@ -267,10 +295,11 @@ public enum LibraryImporter {
                 )
                 if let watchedAt = export.movieWatches[title.tmdbID] {
                     movie.setWatched(true, at: watchedAt)
+                    summary.moviesMarkedWatched += 1
                 }
                 context.insert(movie)
 
-                knownMovies.insert(title.tmdbID)
+                knownMovies[title.tmdbID] = movie
                 summary.moviesImported += 1
                 try context.save()
             } catch is CancellationError {
@@ -286,13 +315,54 @@ public enum LibraryImporter {
     // MARK: - Helpers
 
     @MainActor
-    private static func existingShowIDs(in context: ModelContext) throws -> Set<Int> {
-        Set(try context.fetch(FetchDescriptor<Show>()).map(\.tmdbID).filter { $0 != 0 })
+    private static func existingShows(in context: ModelContext) throws -> [Int: Show] {
+        var byID: [Int: Show] = [:]
+        for show in try context.fetch(FetchDescriptor<Show>()) where show.tmdbID != 0 {
+            byID[show.tmdbID] = show
+        }
+        return byID
     }
 
     @MainActor
-    private static func existingMovieIDs(in context: ModelContext) throws -> Set<Int> {
-        Set(try context.fetch(FetchDescriptor<Movie>()).map(\.tmdbID).filter { $0 != 0 })
+    private static func existingMovies(in context: ModelContext) throws -> [Int: Movie] {
+        var byID: [Int: Movie] = [:]
+        for movie in try context.fetch(FetchDescriptor<Movie>()) where movie.tmdbID != 0 {
+            byID[movie.tmdbID] = movie
+        }
+        return byID
+    }
+
+    /// Applies the export's watch history to a show that is already tracked,
+    /// returning how many episodes changed.
+    ///
+    /// Anything already marked watched is left alone — the app is the authority
+    /// on what has been seen since the export was taken, so this only ever adds.
+    @MainActor
+    private static func markWatched(
+        _ show: Show,
+        from watches: [LibraryExport.EpisodeKey: Date]
+    ) -> Int {
+        guard !watches.isEmpty else { return 0 }
+
+        var changed = 0
+        for episode in show.episodes ?? [] {
+            let key = LibraryExport.EpisodeKey(
+                season: episode.seasonNumber,
+                episode: episode.episodeNumber
+            )
+            guard let watchedAt = watches[key], !episode.isWatched else { continue }
+            episode.setWatched(true, at: watchedAt)
+            changed += 1
+        }
+
+        // A show that just became fully watched shouldn't still say "Watching".
+        // A dropped one keeps its status: that was a deliberate choice.
+        let episodes = show.episodes ?? []
+        if changed > 0, show.status == .watching,
+           !episodes.isEmpty, episodes.allSatisfy(\.isWatched) {
+            show.status = .completed
+        }
+        return changed
     }
 
     /// Header-keyed rows, lowercased so a change of case upstream doesn't

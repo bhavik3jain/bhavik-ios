@@ -115,10 +115,15 @@ public struct TMDBClient: Sendable {
     /// away. An import walking a hundred shows would otherwise ask for each one
     /// twice.
     ///
-    /// Season 0 is skipped deliberately: TMDB files trailers, recaps and
+    /// Season 0 is omitted by default: TMDB files trailers, recaps and
     /// behind-the-scenes clips there, and counting those as episodes would make
-    /// every show's progress unreachable.
-    public func show(id: Int) async throws -> (summary: TMDBShowSummary, episodes: [TMDBEpisode]) {
+    /// every show's progress unreachable. Pass `includingSpecials` when
+    /// something has actually been watched from it — an import restoring a
+    /// watched special needs the episode to exist to attach it to.
+    public func show(
+        id: Int,
+        includingSpecials: Bool = false
+    ) async throws -> (summary: TMDBShowSummary, episodes: [TMDBEpisode]) {
         guard !apiKey.isEmpty else { throw TMDBError.missingAPIKey }
 
         var components = URLComponents(string: "https://api.themoviedb.org/3/tv/\(id)")!
@@ -126,7 +131,7 @@ public struct TMDBClient: Sendable {
         let detail: ShowDetailResponse = try await get(components)
 
         var episodes: [TMDBEpisode] = []
-        for season in detail.seasons where season.season_number > 0 {
+        for season in detail.seasons where season.season_number > 0 || includingSpecials {
             var seasonComponents = URLComponents(
                 string: "https://api.themoviedb.org/3/tv/\(id)/season/\(season.season_number)"
             )!

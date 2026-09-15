@@ -117,6 +117,10 @@ struct LibraryImportView: View {
             LabeledContent("Shows", value: "\(summary.showsImported)")
             LabeledContent("Movies", value: "\(summary.moviesImported)")
             LabeledContent("Episodes watched", value: "\(summary.episodesMarkedWatched)")
+            LabeledContent("Movies watched", value: "\(summary.moviesMarkedWatched)")
+            if summary.specialsImported > 0 {
+                LabeledContent("Specials", value: "\(summary.specialsImported)")
+            }
         }
 
         if summary.showsAlreadyPresent + summary.moviesAlreadyPresent > 0 {
@@ -130,22 +134,32 @@ struct LibraryImportView: View {
             }
         }
 
-        // Surfaced rather than swallowed: the totals won't match the export
-        // exactly, and it should be visible why.
-        if summary.specialsSkipped > 0 || summary.unmatchedWatches > 0 || !summary.failedShows.isEmpty {
-            Section("Couldn't be matched") {
-                if summary.specialsSkipped > 0 {
-                    LabeledContent(counted(summary.specialsSkipped, "special"), value: "skipped")
+        // Named rather than counted. A bare "6 watches — no episode" tells you
+        // something is wrong and gives you no way to do anything about it.
+        if !summary.unmatched.isEmpty {
+            Section {
+                ForEach(summary.unmatched, id: \.self) { name in
+                    Text(name)
+                        .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
-                if summary.unmatchedWatches > 0 {
-                    LabeledContent(counted(summary.unmatchedWatches, "watch"), value: "no episode")
-                        .foregroundStyle(.secondary)
-                }
+            } header: {
+                Text("Episodes TMDB doesn't list")
+            } footer: {
+                Text("Usually a show renumbered after you watched it. Mark these watched by hand if you still want them counted.")
+            }
+        }
+
+        if !summary.failedShows.isEmpty {
+            Section {
                 ForEach(summary.failedShows, id: \.self) { name in
-                    LabeledContent(name, value: "lookup failed")
+                    Label(name, systemImage: "exclamationmark.triangle")
                         .foregroundStyle(.orange)
                 }
+            } header: {
+                Text("Couldn't be looked up")
+            } footer: {
+                Text("The export's TMDB id for these doesn't resolve. Add them by hand from the Watching tab — searching by name will find the right one.")
             }
         }
     }
