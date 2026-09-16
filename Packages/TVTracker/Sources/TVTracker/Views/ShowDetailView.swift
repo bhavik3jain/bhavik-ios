@@ -55,6 +55,7 @@ struct ShowDetailView: View {
                 Section {
                     Button {
                         next.setWatched(true)
+                        show.refreshStatus()
                     } label: {
                         Label("Mark \(next.code) watched", systemImage: "checkmark.circle")
                     }
@@ -96,6 +97,10 @@ private struct EpisodeRow: View {
     var body: some View {
         Button {
             episode.setWatched(!episode.isWatched)
+            // Ticking the first episode should stop the show claiming you
+            // haven't started it, and unticking the last should stop it
+            // claiming you finished.
+            episode.show?.refreshStatus()
         } label: {
             HStack(spacing: 10) {
                 Image(systemName: episode.isWatched ? "checkmark.circle.fill" : "circle")

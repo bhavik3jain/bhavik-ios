@@ -165,3 +165,88 @@ private func makeShow(
     let results = try await TMDBClient(apiKey: "placeholder").searchShows(query: "   ")
     #expect(results.isEmpty)
 }
+
+// MARK: - Show status
+
+@MainActor
+@Test func aShowWithNothingWatchedHasNotBeenStarted() throws {
+    // The export tracks plenty of shows that were never begun. Filing those
+    // under "Watching" at 0% buries the ones actually in progress.
+    let context = try makeContext()
+    let show = makeShow(in: context, name: "Queued", episodes: [(1, 1, -10), (1, 2, -3)])
+
+    show.refreshStatus()
+    #expect(show.status == .notStarted)
+}
+
+@MainActor
+@Test func watchingOneEpisodeStartsTheShow() throws {
+    let context = try makeContext()
+    let show = makeShow(in: context, name: "Begun", status: .notStarted, episodes: [(1, 1, -10), (1, 2, -3)])
+
+    show.orderedEpisodes.first?.setWatched(true)
+    show.refreshStatus()
+    #expect(show.status == .watching)
+}
+
+@MainActor
+@Test func watchingEveryEpisodeCompletesTheShow() throws {
+    let context = try makeContext()
+    let show = makeShow(in: context, name: "Finished", episodes: [(1, 1, -10), (1, 2, -3)])
+
+    for episode in show.orderedEpisodes { episode.setWatched(true) }
+    show.refreshStatus()
+    #expect(show.status == .completed)
+}
+
+@MainActor
+@Test func unwatchingEverythingReturnsTheShowToNotStarted() throws {
+    let context = try makeContext()
+    let show = makeShow(in: context, name: "Reset", episodes: [(1, 1, -10), (1, 2, -3)])
+    for episode in show.orderedEpisodes { episode.setWatched(true) }
+    show.refreshStatus()
+
+    for episode in show.orderedEpisodes { episode.setWatched(false) }
+    show.refreshStatus()
+    #expect(show.status == .notStarted)
+}
+
+@MainActor
+@Test func specialsDontStandBetweenAShowAndCompletion() throws {
+    // Season 0 is trailers and recaps as often as it is real specials, so
+    // requiring them would put completion permanently out of reach.
+    let context = try makeContext()
+    let show = makeShow(in: context, name: "Bonus", episodes: [(0, 1, -20), (1, 1, -10), (1, 2, -3)])
+
+    for episode in show.orderedEpisodes where episode.seasonNumber > 0 {
+        episode.setWatched(true)
+    }
+    show.refreshStatus()
+    #expect(show.status == .completed)
+}
+
+@MainActor
+@Test func droppingAShowSurvivesWatchingMore() throws {
+    // Dropped is a decision, not something to infer from episode counts.
+    let context = try makeContext()
+    let show = makeShow(in: context, name: "Abandoned", status: .dropped, episodes: [(1, 1, -10), (1, 2, -3)])
+
+    show.orderedEpisodes.first?.setWatched(true)
+    show.refreshStatus()
+    #expect(show.status == .dropped)
+}
+
+@MainActor
+@Test func unstartedShowsStayOutOfUpNext() throws {
+    // Up Next is what to watch next in what you're watching. Thirty shows you
+    // never began would drown it.
+    let context = try makeContext()
+    _ = makeShow(in: context, name: "Active", status: .watching, episodes: [(1, 1, -10)])
+    _ = makeShow(in: context, name: "Queued", status: .notStarted, episodes: [(1, 1, -20)])
+
+    let shows = try context.fetch(FetchDescriptor<Show>())
+    let upNext = Schedule.readyToWatch(shows: shows, asOf: now)
+
+    #expect(!upNext.isEmpty)
+    #expect(upNext.allSatisfy { $0.showName == "Active" })
+}

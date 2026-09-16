@@ -3,12 +3,19 @@ import SwiftData
 
 public enum ShowStatus: String, Codable, CaseIterable, Sendable {
     case watching
+    /// In the library, but not begun. Without this everything you ever meant to
+    /// watch sits under "Watching" at 0%, which buries what you're actually
+    /// part-way through.
+    case notStarted
     case completed
     case dropped
 
+    /// Declaration order is section order in the Watching list, so what's in
+    /// progress comes first and what's abandoned comes last.
     public var displayName: String {
         switch self {
         case .watching: "Watching"
+        case .notStarted: "Haven't started"
         case .completed: "Completed"
         case .dropped: "Dropped"
         }
@@ -23,14 +30,14 @@ public final class Show {
     public var name: String = ""
     public var overview: String = ""
     public var posterPath: String = ""
-    public var statusRaw: String = ShowStatus.watching.rawValue
+    public var statusRaw: String = ShowStatus.notStarted.rawValue
     public var addedAt: Date = Date.now
 
     @Relationship(deleteRule: .cascade, inverse: \Episode.show)
     public var episodes: [Episode]? = []
 
     public var status: ShowStatus {
-        get { ShowStatus(rawValue: statusRaw) ?? .watching }
+        get { ShowStatus(rawValue: statusRaw) ?? .notStarted }
         set { statusRaw = newValue.rawValue }
     }
 
@@ -40,6 +47,32 @@ public final class Show {
         self.overview = overview
         self.posterPath = posterPath
         self.addedAt = .now
+    }
+
+    /// Re-derives the status from what's actually been watched.
+    ///
+    /// Ticking off the first episode should stop a show claiming you haven't
+    /// started, and ticking off the last should stop it claiming you're still
+    /// watching. Dropped is left alone — that was a deliberate choice, not
+    /// something to infer.
+    ///
+    /// Specials don't count towards finishing: they're bonus material, and
+    /// requiring them would put completion out of reach.
+    public func refreshStatus() {
+        guard status != .dropped else { return }
+
+        let episodes = self.episodes ?? []
+        let numbered = episodes.count { $0.seasonNumber > 0 }
+        guard numbered > 0 else { return }
+
+        let watched = episodes.count(where: \.isWatched)
+        if watched == 0 {
+            status = .notStarted
+        } else if watched >= numbered {
+            status = .completed
+        } else {
+            status = .watching
+        }
     }
 
     public var orderedEpisodes: [Episode] {

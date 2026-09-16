@@ -287,6 +287,10 @@ public enum LibraryImporter {
                 // what the library actually means.
                 if title.isDropped {
                     show.status = .dropped
+                } else if watchedCount == 0 {
+                    // In the library but never begun — the export tracks plenty
+                    // of these, and calling them "watching" is just wrong.
+                    show.status = .notStarted
                 } else if !episodes.isEmpty,
                           watchedCount >= episodes.count(where: { $0.seasonNumber > 0 }) {
                     show.status = .completed
@@ -408,8 +412,7 @@ public enum LibraryImporter {
                 }
             }
 
-            let numbered = episodes.count(where: { $0.seasonNumber > 0 })
-            show.status = (numbered > 0 && watchedCount >= numbered) ? .completed : .watching
+            show.refreshStatus()
         } else {
             let detail = try await client.movieDetail(id: correctedID)
             let movie = Movie(
@@ -538,6 +541,7 @@ public enum LibraryImporter {
             $0.seasonNumber == seasonNumber && $0.episodeNumber == episodeNumber
         }) {
             match.setWatched(true, at: watchedAt)
+            show.refreshStatus()
         }
         try context.save()
     }
@@ -612,13 +616,7 @@ public enum LibraryImporter {
             changed += 1
         }
 
-        // A show that just became fully watched shouldn't still say "Watching".
-        // A dropped one keeps its status: that was a deliberate choice.
-        let episodes = show.episodes ?? []
-        if changed > 0, show.status == .watching,
-           !episodes.isEmpty, episodes.allSatisfy(\.isWatched) {
-            show.status = .completed
-        }
+        if changed > 0 { show.refreshStatus() }
         return changed
     }
 

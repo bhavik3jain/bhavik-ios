@@ -265,6 +265,7 @@ struct ResolveItemView: View {
     private func markLocal(_ episode: Episode) {
         guard case let .episode(_, _, _, _, watchedAt) = item else { return }
         episode.setWatched(true, at: watchedAt)
+        episode.show?.refreshStatus()
         try? modelContext.save()
         onSettled()
         dismiss()
