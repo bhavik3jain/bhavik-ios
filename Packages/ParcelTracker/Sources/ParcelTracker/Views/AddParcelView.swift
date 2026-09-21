@@ -59,7 +59,7 @@ struct AddParcelView: View {
                     }
                 }
             }
-            .navigationTitle("Add Parcel")
+            .navigationTitle("Add Order")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {

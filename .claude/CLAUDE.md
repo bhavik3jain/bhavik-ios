@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-Multitrack — a personal iOS/macOS app, four tracker modules (Gym, TV, Fuel, Parcels) behind one home
+Multitrack — a personal iOS/macOS app, four tracker modules (Gym, TV, Fuel, Orders) behind one home
 screen. SwiftUI + SwiftData + CloudKit, live on TestFlight. `README.md` has what it does, the layout,
 credentials, the CloudKit Console ritual and how to run tests — read it rather than asking here. This
 file is only the things that will cost you an hour if you don't know them.
@@ -126,6 +126,10 @@ not change it.
   exceeds its own `line_length: 120` in both prose and code. Don't reflow user-facing `Text("…")`
   copy to satisfy a linter nobody runs.
 - Time-dependent functions take `asOf now: Date = .now` rather than a clock abstraction.
+- The Orders module is named **`ParcelTracker`** in code and **"Orders"** on screen. The rename was
+  user-facing copy only: `Parcel`/`ParcelEvent` are live CloudKit record types and renaming a record
+  type orphans every record already in Production. Grep for `Parcel` when you mean the code, `Orders`
+  when you mean the UI; new user-facing copy says order, never parcel.
 - Strings built outside a `Text` literal must use Core's `counted(_:_:plural:)` — SwiftUI's
   `^[…](inflect:)` markup only resolves when the literal reaches `Text` directly, and otherwise
   renders verbatim on screen.

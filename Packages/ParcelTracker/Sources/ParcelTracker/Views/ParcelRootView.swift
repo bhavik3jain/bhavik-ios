@@ -12,7 +12,7 @@ struct ParcelRootView: View {
             Tab("Home", systemImage: "house", value: ModuleTab.home) {
                 Color.clear
             }
-            Tab("Parcels", systemImage: "shippingbox", value: "parcels") {
+            Tab("Orders", systemImage: "shippingbox", value: "parcels") {
                 ParcelListView()
             }
             Tab("Settings", systemImage: "gear", value: "settings") {

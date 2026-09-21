@@ -21,11 +21,11 @@ struct ParcelListView: View {
             Group {
                 if parcels.isEmpty {
                     ContentUnavailableView {
-                        Label("No parcels", systemImage: "shippingbox")
+                        Label("No orders", systemImage: "shippingbox")
                     } description: {
                         Text("Add a tracking number and the carrier is worked out for you.")
                     } actions: {
-                        Button("Add Parcel") { showingAdd = true }
+                        Button("Add Order") { showingAdd = true }
                             .primaryActionStyle(tint: ParcelTrackerModule.accent.color)
                     }
                 } else {
@@ -50,7 +50,7 @@ struct ParcelListView: View {
                     .refreshable { await refreshAll() }
                 }
             }
-            .navigationTitle("Parcels")
+            .navigationTitle("Orders")
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
                     Button {

@@ -66,7 +66,7 @@ struct AppSettingsView: View {
                 TrackerRow(
                     accent: ParcelTrackerModule.accent,
                     icon: "shippingbox.fill",
-                    detail: counted(parcels.count, "parcel"),
+                    detail: counted(parcels.count, "order"),
                     syncState: syncState
                 )
                 TrackerRow(

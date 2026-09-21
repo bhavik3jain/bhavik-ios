@@ -3,7 +3,7 @@ import SwiftUI
 import Core
 
 public enum ParcelTrackerModule {
-    public static let accent = ModuleAccent(name: "Parcels", color: Color(red: 0.90, green: 0.49, blue: 0.13))
+    public static let accent = ModuleAccent(name: "Orders", color: Color(red: 0.90, green: 0.49, blue: 0.13))
 
     /// Carrier credentials live in user defaults rather than the source tree,
     /// so they never reach version control.

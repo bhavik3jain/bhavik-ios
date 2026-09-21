@@ -56,7 +56,7 @@ public enum CarrierError: LocalizedError, Equatable {
         case .missingCredentials(let carrier):
             "Add \(carrier.displayName) API credentials in Settings to track automatically."
         case .notSupported(let carrier):
-            "\(carrier.displayName) parcels are updated by hand — tap the parcel to open \(carrier.displayName)'s own tracking."
+            "\(carrier.displayName) orders are updated by hand — tap the order to open \(carrier.displayName)'s own tracking."
         case .notFound:
             "The carrier doesn't recognise that tracking number yet. New labels can take a day to appear."
         case .unauthorized:

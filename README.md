@@ -8,7 +8,7 @@ through TestFlight; also builds for the Mac.
 | Gym | Log workouts as weight × reps, save routines, track per-exercise progress |
 | TV | Track shows, episodes and films, with a catch-up backlog and an upcoming-episode schedule |
 | Fuel | Log fill-ups per vehicle, track MPG and cost, import a Fuelly CSV export |
-| Parcels | Track FedEx, UPS and USPS deliveries, with an in-app browser for the ones that can't be read automatically |
+| Orders | Track FedEx, UPS and USPS deliveries, with an in-app browser for the ones that can't be read automatically |
 
 Each tracker is its own local Swift package so the modules stay independent and can be developed —
 or removed — without disturbing the others.
@@ -65,11 +65,11 @@ devices, while your tracked data comes back separately from CloudKit.
 | Credential | Where you enter it | Keychain account |
 | --- | --- | --- |
 | TMDB API key | TV → Settings | `tmdb.apiKey` |
-| FedEx API key | Parcels → Settings | `fedex.apiKey` |
-| FedEx API secret | Parcels → Settings | `fedex.apiSecret` |
+| FedEx API key | Orders → Settings | `fedex.apiKey` |
+| FedEx API secret | Orders → Settings | `fedex.apiSecret` |
 
 Without a TMDB key the TV module still works — you can add shows by hand — you just lose search,
-episode lists and artwork. Without FedEx credentials, parcels fall back to manual status.
+episode lists and artwork. Without FedEx credentials, orders fall back to manual status.
 
 > This product uses the TMDB API but is not endorsed or certified by TMDB.
 

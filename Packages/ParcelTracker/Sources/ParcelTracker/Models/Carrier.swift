@@ -36,7 +36,7 @@ public enum Carrier: String, CaseIterable, Codable, Sendable {
         case .ups:
             "UPS tracking isn't wired up yet, so update this one yourself after checking UPS."
         case .usps:
-            "USPS only tells whoever shipped a parcel where it is, so update this one yourself after checking USPS."
+            "USPS only tells whoever shipped an order where it is, so update this one yourself after checking USPS."
         }
     }
 

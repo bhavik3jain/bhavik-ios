@@ -85,8 +85,8 @@ struct HomeView: View {
 
     private var parcelDetail: String {
         let onTheWay = parcels.count { !$0.status.isSettled }
-        if onTheWay > 0 { return "\(counted(onTheWay, "parcel")) on the way" }
-        return parcels.isEmpty ? "No parcels" : "Nothing on the way"
+        if onTheWay > 0 { return "\(counted(onTheWay, "order")) on the way" }
+        return parcels.isEmpty ? "No orders" : "Nothing on the way"
     }
 
     private var fuelDetail: String {
