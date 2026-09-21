@@ -16,6 +16,8 @@ struct HomeView: View {
     @Query private var shows: [Show]
     @Query(filter: #Predicate<Parcel> { !$0.isArchived }) private var parcels: [Parcel]
     @Query(sort: \Vehicle.createdAt) private var vehicles: [Vehicle]
+    /// Written by a Fuel peek's "Open My X3" so the module opens on that car.
+    @AppStorage(FuelTrackerModule.selectedVehicleDefaultsKey) private var selectedVehicleName = ""
 
     var body: some View {
         NavigationStack {
@@ -25,24 +27,56 @@ struct HomeView: View {
                     icon: "dumbbell.fill",
                     detail: gymDetail
                 ) { selectedModule = .gym }
+                // Each row peeks on a long press: the module's own summary card,
+                // fed from the queries above so no module reads another's data.
+                .contextMenu {
+                    openButton("Gym", .gym)
+                } preview: {
+                    GymTrackerModule.homePeek(sessions: sessions)
+                }
 
                 ModuleRow(
                     accent: TVTrackerModule.accent,
                     icon: "tv.fill",
                     detail: tvDetail
                 ) { selectedModule = .tv }
+                .contextMenu {
+                    openButton("TV", .tv)
+                } preview: {
+                    TVTrackerModule.homePeek(shows: shows)
+                }
 
                 ModuleRow(
                     accent: ParcelTrackerModule.accent,
                     icon: "shippingbox.fill",
                     detail: parcelDetail
                 ) { selectedModule = .parcels }
+                .contextMenu {
+                    openButton("Orders", .parcels)
+                } preview: {
+                    ParcelTrackerModule.homePeek(parcels: parcels)
+                }
 
                 ModuleRow(
                     accent: FuelTrackerModule.accent,
                     icon: "fuelpump.fill",
                     detail: fuelDetail
                 ) { selectedModule = .fuel }
+                .contextMenu {
+                    openButton("Fuel", .fuel)
+                    if vehicles.count > 1 {
+                        ForEach(VehicleSummary.fleet(vehicles)) { summary in
+                            Button {
+                                selectedVehicleName = summary.name
+                                selectedModule = .fuel
+                            } label: {
+                                Label("Open \(summary.name)", systemImage: "car.fill")
+                            }
+                        }
+                    }
+                } preview: {
+                    FuelTrackerModule.homePeek(vehicles: vehicles)
+                }
             }
             .navigationTitle("Trackers")
             .toolbar {
@@ -67,6 +101,14 @@ struct HomeView: View {
                     ParcelTrackerModule.rootView()
                 }
             }
+        }
+    }
+
+    private func openButton(_ name: String, _ module: SelectedModule) -> some View {
+        Button {
+            selectedModule = module
+        } label: {
+            Label("Open \(name)", systemImage: "arrow.up.forward.app")
         }
     }
 
