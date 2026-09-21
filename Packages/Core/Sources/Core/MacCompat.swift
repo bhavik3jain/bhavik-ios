@@ -94,6 +94,27 @@ public extension View {
     }
 }
 
+// MARK: - Stand-in UIKit types
+
+/// UIKit's `UIPasteboard`, as far as copying a string goes.
+///
+/// SwiftUI has no way to write to the clipboard — `PasteButton` only reads, and
+/// `.copyable` is Mac-only — so the Trips module's Codes screen copies through
+/// UIKit on iOS. On the Mac the same line lands here and goes through AppKit.
+public struct UIPasteboard: Sendable {
+    public static let general = UIPasteboard()
+
+    public var string: String? {
+        get { NSPasteboard.general.string(forType: .string) }
+        nonmutating set {
+            NSPasteboard.general.clearContents()
+            if let newValue {
+                NSPasteboard.general.setString(newValue, forType: .string)
+            }
+        }
+    }
+}
+
 // MARK: - Stand-in views
 
 /// SwiftUI's `EditButton` in name only.
