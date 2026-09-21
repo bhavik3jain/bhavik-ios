@@ -12,9 +12,16 @@
 	</array>
 	<key>com.apple.developer.ubiquity-kvstore-identifier</key>
 	<string>$(TeamIdentifierPrefix)$(CFBundleIdentifier)</string>
+	<!-- Trips and Explore forecasts. Only valid because WeatherKit is enabled
+	     for com.bhavikjain.trackers in the developer portal (both the
+	     Capabilities and App Services tabs): an entitlement the provisioning
+	     profile doesn't grant fails signing. Without it every WeatherKit call
+	     throws and both modules quietly show no weather at all. -->
+	<key>com.apple.developer.weatherkit</key>
+	<true/>
 	<!-- CloudKit refuses to hand a Mac app its private database unless the app
 	     is sandboxed, so the sandbox is a requirement here, not a hardening
-	     choice. The three keys below are what it then has to give back. -->
+	     choice. The keys below are what it then has to give back. -->
 	<key>com.apple.security.app-sandbox</key>
 	<true/>
 	<!-- Without this the sandbox denies every outbound connection and the TMDB
@@ -25,6 +32,12 @@
 	<!-- Lets the Fuelly CSV importer read the file the user picks in the open
 	     panel. Read-only is enough: the importer never writes back. -->
 	<key>com.apple.security.files.user-selected.read-only</key>
+	<true/>
+	<!-- Lets Explore's guide map show where you are. Without it the sandbox
+	     refuses Core Location outright: no permission prompt ever appears,
+	     the map never shows the blue dot, and the distance on a place's card
+	     simply never shows up, with nothing in the log to say why. -->
+	<key>com.apple.security.personal-information.location</key>
 	<true/>
 </dict>
 </plist>

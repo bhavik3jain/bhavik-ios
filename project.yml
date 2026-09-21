@@ -16,6 +16,10 @@ packages:
     path: Packages/TVTracker
   ParcelTracker:
     path: Packages/ParcelTracker
+  TripTracker:
+    path: Packages/TripTracker
+  ExploreTracker:
+    path: Packages/ExploreTracker
 
 targets:
   bhavik-ios:
@@ -49,6 +53,8 @@ targets:
       - package: FuelTracker
       - package: TVTracker
       - package: ParcelTracker
+      - package: TripTracker
+      - package: ExploreTracker
     info:
       path: App/Resources/Info.plist
       properties:
@@ -63,6 +69,9 @@ targets:
         # declaring this stops App Store Connect asking the export-compliance
         # question on every single upload.
         ITSAppUsesNonExemptEncryption: false
+        # Asked for only when a guide's map opens, never at launch. Without the
+        # key the request is dropped silently and the blue dot never appears.
+        NSLocationWhenInUseUsageDescription: Shows how far you are from the places in a guide.
 
   # Same code, same packages, same bundle id — only the platform chrome differs.
   # Sources and dependencies are aliased from the iOS target rather than copied
@@ -107,3 +116,6 @@ targets:
         # would only get as far as a dyld crash.
         LSMinimumSystemVersion: $(MACOSX_DEPLOYMENT_TARGET)
         ITSAppUsesNonExemptEncryption: false
+        # Same prompt as on iPhone; see also the location key in
+        # App-macOS.entitlements, which the sandbox needs as well.
+        NSLocationWhenInUseUsageDescription: Shows how far you are from the places in a guide.

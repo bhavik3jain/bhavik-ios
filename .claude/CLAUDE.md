@@ -1,12 +1,12 @@
 # CLAUDE.md
 
-Multitrack — a personal iOS/macOS app, four tracker modules (Gym, TV, Fuel, Orders) behind one home
-screen. SwiftUI + SwiftData + CloudKit, live on TestFlight. `README.md` has what it does, the layout,
+Multitrack — a personal iOS/macOS app, six tracker modules (Trips, Explore, Gym, TV, Orders, Fuel)
+behind one home screen. SwiftUI + SwiftData + CloudKit, live on TestFlight. `README.md` has what it does, the layout,
 credentials, the CloudKit Console ritual and how to run tests — read it rather than asking here. This
 file is only the things that will cost you an hour if you don't know them.
 
 Repo slug `bhavik3jain/bhavik-ios`. Needs the iOS 26 SDK to compile at all (Xcode 26 or newer; CI selects the
-newest installed Xcode at run time). Core depends on nothing, the four trackers depend only on Core,
+newest installed Xcode at run time). Core depends on nothing, the six trackers depend only on Core,
 no feature package imports another, zero remote dependencies — keep it that way. Each module's
 namespace is a `<Module>TrackerModule` caseless enum (`models`, `accent`, `rootView()`).
 
@@ -29,7 +29,7 @@ Only ever edit `project.yml`, files under `App/` and `Packages/`, the two workfl
 
 ## CloudKit is the trap
 
-`ModelContainer` is built in `BhavikApp.init()` from the four modules' `models` arrays. Any violation
+`ModelContainer` is built in `BhavikApp.init()` from the six modules' `models` arrays. Any violation
 below fails at **container load — a `fatalError` on launch**, never at compile time. The message
 interpolates the underlying SwiftData error, which names the offending model: read it.
 
@@ -60,11 +60,12 @@ through its marked parent. Then the Console ritual: steps are in the seeder's do
 `-SeedCloudKitSchema YES` and **leave it running** — the local save is synchronous, the upload is
 not. Nothing in CI does any of this.
 
-**Adding a whole module** needs five further edits, none optional: `packages:` **and** the
+**Adding a whole module** needs these further edits, none optional: `packages:` **and** the
 `&appDependencies` anchor in `project.yml` (the anchor covers both targets, so the Mac build follows
-for free); the hardcoded sum in `BhavikApp.swift`; a fifth `ModuleRow` in `HomeView.swift`; a fifth
-case in its private `SelectedModule` enum **and** the `fullScreenCover` switch arm; a seed/purge pair
-in `CloudKitSchemaSeeder.swift`.
+for free); the hardcoded sum in `BhavikApp.swift`; a `ModuleRow` (with its `.contextMenu` peek) in
+`HomeView.swift`; a case in its private `SelectedModule` enum **and** the `fullScreenCover` switch
+arm; a seed/purge pair in `CloudKitSchemaSeeder.swift`; a `TrackerRow` in `AppSettingsView.swift`;
+the package loop in `tests.yml` — leave it out and CI never runs that suite, silently.
 
 ## Module chrome — a new root view can ship with no way back
 
@@ -74,17 +75,18 @@ view must therefore be a `TabView(selection:)` over `String` tab values that ope
 deliberate, selecting it dismisses rather than showing a screen — and ends with
 `.tint(<Module>TrackerModule.accent.color)`, `.minimizesTabBarOnScroll()` and
 `.dismissesOnHomeTab($selection, restoringTo: "<this module's own first tab>")`. `restoringTo:` must
-name a real tab, never `ModuleTab.home`, or the module reopens blank. All four root views do this
+name a real tab, never `ModuleTab.home`, or the module reopens blank. All six root views do this
 identically, and nothing can catch a violation: views are untested by policy.
 
 ## macOS: one file holds every platform conditional
 
 Feature packages contain **zero** `#if os(...)`. It all lives in Core: `MacCompat.swift` (no-op shims
 for `keyboardType`, `textInputAutocapitalization`, `navigationBarTitleDisplayMode`, `EditButton`, and
-`fullScreenCover` → `.sheet`), `SafariView.swift`, `GlassEffects.swift`. An iOS-only SwiftUI modifier
+`fullScreenCover` → `.sheet`, plus a `UIPasteboard` stand-in backed by `NSPasteboard` for Trips'
+tap-to-copy), `SafariView.swift`, `GlassEffects.swift`. An iOS-only SwiftUI modifier
 needed in a feature package means **adding a shim to MacCompat.swift**, not a `#if` at the call site.
 
-- Nine view files carry `import Core // Only reached on macOS, …`. The import looks unused on iOS;
+- Eighteen view files carry `import Core // Only reached on macOS, …`. The import looks unused on iOS;
   **deleting it breaks only the Mac build**, the last CI step. Keep the marker comment on new ones.
 - Never use `SafariView` directly — it doesn't exist on macOS. Go through `WebPage` +
   `.webSheet(_:tint:)`.
@@ -108,7 +110,10 @@ logic into a value type and leave the view declarative.**
 
 Debug launch arguments, all `#if DEBUG`: `-SeedCloudKitSchema YES` / `-PurgeCloudKitSchema YES`, plus
 the module seeders that are the only way to get a simulator into a state worth looking at —
-`-TVSeedShows` (needs a TMDB key, no-ops if any `Show` exists), `-FuelSeedCSV`, `-ParcelSeed`.
+`-TVSeedShows` (needs a TMDB key, no-ops if any `Show` exists), `-FuelSeedCSV`, `-ParcelSeed`,
+`-TripSeed`, `-ExploreSeed` (each no-ops once its store has a record). Seeders run from the module
+root view's `.task`, so nothing happens until the module is opened. `-WeatherStub YES` injects
+`StubWeatherProvider` at the app root — the only way to see weather on a simulator today.
 
 ## CI and release — what README doesn't say
 
@@ -133,6 +138,20 @@ not change it.
 - Strings built outside a `Text` literal must use Core's `counted(_:_:plural:)` — SwiftUI's
   `^[…](inflect:)` markup only resolves when the literal reaches `Text` directly, and otherwise
   renders verbatim on screen.
+
+## Weather fails quietly
+
+Trips and Explore read `@Environment(\.weatherProvider)`, which defaults to the live
+`WeatherKitProvider`. WeatherKit is enabled for the app ID in the developer portal and
+`com.apple.developer.weatherkit` is in **both** entitlements files — remove either and every call
+throws. The modules treat any error as "no weather" and show nothing, so a broken setup looks like a
+quiet day, not a failure. A simulator build signed to run locally may get no weather either; use
+`-WeatherStub YES` there. Apple's weather attribution (`WeatherAttributionView`) must appear wherever
+weather is shown.
+
+Explore's map asks for location only when it opens. That needs `NSLocationWhenInUseUsageDescription`
+in **both** targets' `info.properties`, plus `com.apple.security.personal-information.location` in
+`App-macOS.entitlements` — without either, the request is dropped and no blue dot ever appears.
 
 ## Known-stale things in the tree
 

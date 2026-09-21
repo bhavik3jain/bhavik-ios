@@ -1,10 +1,12 @@
 # Multitrack
 
-A personal app with four self-contained tracker modules behind one home screen. Ships to iPhone
+A personal app with six self-contained tracker modules behind one home screen. Ships to iPhone
 through TestFlight; also builds for the Mac.
 
 | Module | What it does |
 | --- | --- |
+| Trips | Plan a trip day by day — itinerary, flights, bookings and door codes — with a map, the forecast, and a PDF itinerary to share |
+| Explore | Keep guides of places to eat, see and do in an area, mark them tried and rated, and see how far away they are |
 | Gym | Log workouts as weight × reps, save routines, track per-exercise progress |
 | TV | Track shows, episodes and films, with a catch-up backlog and an upcoming-episode schedule |
 | Fuel | Log fill-ups per vehicle, track MPG and cost, import a Fuelly CSV export |
@@ -45,7 +47,9 @@ brew install xcodegen
 ```
 App/              Thin app shell — entry point, home screen, settings, schema seeder
 Packages/
-  Core/           Shared types: module chrome, glass effects, CSV parser, keychain, macOS shims
+  Core/           Shared types: module chrome, glass effects, CSV parser, keychain, weather, macOS shims
+  TripTracker/    Trips, itinerary, flights, bookings, day plan, forecast, PDF itinerary
+  ExploreTracker/ Guides, places, category guessing, map with walking distance
   GymTracker/     Workouts, routines, exercise library
   TVTracker/      Shows, episodes, films, schedule, TMDB lookup, library import
   FuelTracker/    Vehicles, fill-ups, MPG, Fuelly import
@@ -125,6 +129,33 @@ harmless.
 
 Both accept files dropped into the app's folder from Finder or the Files app.
 
+## Weather
+
+Trips and Explore show a forecast through **WeatherKit** (`Packages/Core/Sources/Core/Weather.swift`).
+It needs two things, both in place: the WeatherKit capability enabled for `com.bhavikjain.trackers` in
+the developer portal (on both the Capabilities and App Services tabs), and the
+`com.apple.developer.weatherkit` entitlement in both entitlements files. If either goes missing, every
+request throws and both modules quietly show no weather — no card, no spinner.
+
+A simulator build that isn't signed with the team may get no weather; launch a debug build with
+`-WeatherStub YES` to swap in made-up but deterministic weather for the whole app.
+
+## Debug launch arguments
+
+All debug-only, and inert unless passed (Product → Scheme → Edit Scheme → Run → Arguments):
+
+| Argument | What it does |
+| --- | --- |
+| `-SeedCloudKitSchema YES` / `-PurgeCloudKitSchema YES` | The schema ritual above |
+| `-TVSeedShows YES` | Adds sample shows, looked up on TMDB (needs a key; does nothing if any show exists) |
+| `-FuelSeedCSV YES` | Imports a sample Fuelly export |
+| `-ParcelSeed YES` | Adds sample orders |
+| `-TripSeed YES` | Adds four trips, one under way today (does nothing if any trip exists) |
+| `-ExploreSeed YES` | Adds three guides with real places (does nothing if any guide exists) |
+| `-WeatherStub YES` | Made-up weather in place of WeatherKit |
+
+The module seeders run when their module is first opened, not at launch.
+
 ## Tests
 
 Each module carries its own suite. Run one the way CI does:
@@ -133,7 +164,7 @@ Each module carries its own suite. Run one the way CI does:
 cd Packages/FuelTracker && xcodebuild test -scheme FuelTracker -destination 'platform=iOS Simulator,name=iPhone 17 Pro'
 ```
 
-Swap in `Core`, `GymTracker`, `TVTracker` or `ParcelTracker` for the others.
+Swap in `Core`, `GymTracker`, `TVTracker`, `ParcelTracker`, `TripTracker` or `ExploreTracker` for the others.
 
 The TV suite also carries tests that hit the real TMDB API. They are skipped by default and report
 *why* they skipped, so a missing key can never read as a pass. To run them, put a key in a file and
@@ -143,7 +174,7 @@ into the simulator, so exporting the variable in a shell will not work.
 
 ## Releasing
 
-`Tests` runs on every push to `main`: the five package suites, an iOS app build, and an unsigned macOS
+`Tests` runs on every push to `main`: the seven package suites, an iOS app build, and an unsigned macOS
 build.
 
 `TestFlight` ships. It is deliberately **not** triggered by every push — otherwise each
@@ -169,7 +200,7 @@ distribution certificate through the App Store Connect API key.
 ## macOS
 
 `bhavik-macOS` builds and runs, sharing every source file with the iPhone app and the same CloudKit
-container — so the two see the same data. The UI is still iPhone-shaped: all four modules use a
+container — so the two see the same data. The UI is still iPhone-shaped: every module uses a
 `TabView` that renders as a segmented strip on a Mac, and the hub-and-module navigation wants to be a
 `NavigationSplitView`. Treat it as working but unfinished.
 

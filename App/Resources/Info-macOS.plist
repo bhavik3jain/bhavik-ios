@@ -24,5 +24,7 @@
 	<false/>
 	<key>LSMinimumSystemVersion</key>
 	<string>$(MACOSX_DEPLOYMENT_TARGET)</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Shows how far you are from the places in a guide.</string>
 </dict>
 </plist>

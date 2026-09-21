@@ -1,9 +1,11 @@
 import Core
+import ExploreTracker
 import FuelTracker
 import GymTracker
 import ParcelTracker
 import SwiftData
 import SwiftUI
+import TripTracker
 import TVTracker
 
 struct AppSettingsView: View {
@@ -17,6 +19,9 @@ struct AppSettingsView: View {
     @Query private var parcels: [Parcel]
     @Query private var vehicles: [Vehicle]
     @Query private var fuelEntries: [FuelEntry]
+    @Query private var trips: [Trip]
+    @Query private var guides: [Guide]
+    @Query private var guidePlaces: [GuidePlace]
 
     var body: some View {
         Form {
@@ -51,6 +56,18 @@ struct AppSettingsView: View {
             }
 
             Section {
+                TrackerRow(
+                    accent: TripTrackerModule.accent,
+                    icon: "suitcase.rolling.fill",
+                    detail: counted(trips.count, "trip"),
+                    syncState: syncState
+                )
+                TrackerRow(
+                    accent: ExploreTrackerModule.accent,
+                    icon: "map.fill",
+                    detail: "\(counted(guides.count, "guide")), \(counted(guidePlaces.count, "place"))",
+                    syncState: syncState
+                )
                 TrackerRow(
                     accent: GymTrackerModule.accent,
                     icon: "dumbbell.fill",

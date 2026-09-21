@@ -1,9 +1,11 @@
 #if DEBUG
+import ExploreTracker
 import Foundation
 import FuelTracker
 import GymTracker
 import ParcelTracker
 import SwiftData
+import TripTracker
 import TVTracker
 
 /// Creates one throwaway record of every model so CloudKit materialises the
@@ -77,6 +79,36 @@ enum CloudKitSchemaSeeder {
         let event = ParcelEvent(occurredAt: .now, detail: marker)
         event.parcel = parcel
 
+        // Trips. Every optional field is filled in too: a field only enters the
+        // schema once some record carries a value for it. Booking.secureNote is
+        // cloud-encrypted, so it lands as an encrypted field that has to be
+        // deployed like any other.
+        let trip = Trip(title: marker, destination: marker, startDate: .now, endDate: .now)
+        trip.notes = marker
+        trip.latitude = 0
+        trip.longitude = 0
+        let item = ItineraryItem(title: marker, kind: .other, dayIndex: 0, startTime: .now)
+        item.address = marker
+        item.latitude = 0
+        item.longitude = 0
+        item.doneAt = .now
+        item.trip = trip
+        let flight = Flight(airlineCode: marker, number: marker, originCode: marker, destinationCode: marker, dayIndex: 0)
+        flight.departsAt = .now
+        flight.arrivesAt = .now
+        flight.trip = trip
+        let booking = Booking(title: marker, kind: .other, code: marker, provider: marker)
+        booking.startsAt = .now
+        booking.endsAt = .now
+        booking.secureNote = marker
+        booking.trip = trip
+
+        // Explore
+        let guide = Guide(name: marker, areaLabel: marker, notes: marker)
+        let place = GuidePlace(name: marker, category: .places, note: marker, address: marker, latitude: 0, longitude: 0)
+        place.triedAt = .now
+        place.guide = guide
+
         context.insert(show)
         context.insert(episode)
         context.insert(movie)
@@ -89,6 +121,12 @@ enum CloudKitSchemaSeeder {
         context.insert(fuelEntry)
         context.insert(parcel)
         context.insert(event)
+        context.insert(trip)
+        context.insert(item)
+        context.insert(flight)
+        context.insert(booking)
+        context.insert(guide)
+        context.insert(place)
 
         try context.save()
     }
@@ -144,6 +182,28 @@ enum CloudKitSchemaSeeder {
         for parcel in try context.fetch(
             FetchDescriptor<Parcel>(predicate: #Predicate { $0.name == marker })
         ) { context.delete(parcel) }
+
+        // Children first, each matched on its own marker, so one left orphaned
+        // by an interrupted purge is still found; the trip and guide follow.
+        for item in try context.fetch(
+            FetchDescriptor<ItineraryItem>(predicate: #Predicate { $0.title == marker })
+        ) { context.delete(item) }
+        for flight in try context.fetch(
+            FetchDescriptor<Flight>(predicate: #Predicate { $0.airlineCode == marker })
+        ) { context.delete(flight) }
+        for booking in try context.fetch(
+            FetchDescriptor<Booking>(predicate: #Predicate { $0.title == marker })
+        ) { context.delete(booking) }
+        for trip in try context.fetch(
+            FetchDescriptor<Trip>(predicate: #Predicate { $0.title == marker })
+        ) { context.delete(trip) }
+
+        for place in try context.fetch(
+            FetchDescriptor<GuidePlace>(predicate: #Predicate { $0.name == marker })
+        ) { context.delete(place) }
+        for guide in try context.fetch(
+            FetchDescriptor<Guide>(predicate: #Predicate { $0.name == marker })
+        ) { context.delete(guide) }
 
         try context.save()
     }

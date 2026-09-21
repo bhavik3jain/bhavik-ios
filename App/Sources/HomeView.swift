@@ -1,9 +1,11 @@
 import Core
+import ExploreTracker
 import FuelTracker
 import GymTracker
 import ParcelTracker
 import SwiftData
 import SwiftUI
+import TripTracker
 import TVTracker
 
 struct HomeView: View {
@@ -16,6 +18,10 @@ struct HomeView: View {
     @Query private var shows: [Show]
     @Query(filter: #Predicate<Parcel> { !$0.isArchived }) private var parcels: [Parcel]
     @Query(sort: \Vehicle.createdAt) private var vehicles: [Vehicle]
+    // Phase (under way, upcoming, finished) is worked out from the dates in
+    // Swift; only the stored archive flag can go in the predicate.
+    @Query(filter: #Predicate<Trip> { !$0.isArchived }) private var trips: [Trip]
+    @Query(sort: \Guide.createdAt, order: .reverse) private var guides: [Guide]
     /// Written by a Fuel peek's "Open My X3" so the module opens on that car.
     @AppStorage(FuelTrackerModule.selectedVehicleDefaultsKey) private var selectedVehicleName = ""
 
@@ -23,12 +29,34 @@ struct HomeView: View {
         NavigationStack {
             List {
                 ModuleRow(
+                    accent: TripTrackerModule.accent,
+                    icon: "suitcase.rolling.fill",
+                    detail: TripTrackerModule.homeDetail(trips: trips)
+                ) { selectedModule = .trips }
+                // Each row peeks on a long press: the module's own summary card,
+                // fed from the queries above so no module reads another's data.
+                .contextMenu {
+                    openButton("Trips", .trips)
+                } preview: {
+                    TripTrackerModule.homePeek(trips: trips)
+                }
+
+                ModuleRow(
+                    accent: ExploreTrackerModule.accent,
+                    icon: "map.fill",
+                    detail: GuideSummary.homeDetail(for: GuideSummary.all(guides))
+                ) { selectedModule = .explore }
+                .contextMenu {
+                    openButton("Explore", .explore)
+                } preview: {
+                    ExploreTrackerModule.homePeek(guides: guides)
+                }
+
+                ModuleRow(
                     accent: GymTrackerModule.accent,
                     icon: "dumbbell.fill",
                     detail: gymDetail
                 ) { selectedModule = .gym }
-                // Each row peeks on a long press: the module's own summary card,
-                // fed from the queries above so no module reads another's data.
                 .contextMenu {
                     openButton("Gym", .gym)
                 } preview: {
@@ -99,6 +127,10 @@ struct HomeView: View {
                     TVTrackerModule.rootView()
                 case .parcels:
                     ParcelTrackerModule.rootView()
+                case .trips:
+                    TripTrackerModule.rootView()
+                case .explore:
+                    ExploreTrackerModule.rootView()
                 }
             }
         }
@@ -143,6 +175,8 @@ private enum SelectedModule: String, Identifiable {
     case fuel
     case tv
     case parcels
+    case trips
+    case explore
     var id: String { rawValue }
 }
 

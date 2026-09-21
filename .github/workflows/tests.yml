@@ -53,7 +53,7 @@ jobs:
       - name: Test each package
         run: |
           set -euo pipefail
-          for package in Core GymTracker FuelTracker TVTracker ParcelTracker; do
+          for package in Core GymTracker FuelTracker TVTracker ParcelTracker TripTracker ExploreTracker; do
             echo "::group::$package"
             ( cd "Packages/$package" && xcodebuild test -scheme "$package" -destination "platform=iOS Simulator,id=${{ steps.simulator.outputs.udid }},arch=${{ steps.simulator.outputs.arch }}" -quiet )
             echo "::endgroup::"

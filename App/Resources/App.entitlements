@@ -12,5 +12,12 @@
 	</array>
 	<key>com.apple.developer.ubiquity-kvstore-identifier</key>
 	<string>$(TeamIdentifierPrefix)$(CFBundleIdentifier)</string>
+	<!-- Trips and Explore forecasts. Only valid because WeatherKit is enabled
+	     for com.bhavikjain.trackers in the developer portal (both the
+	     Capabilities and App Services tabs): an entitlement the provisioning
+	     profile doesn't grant fails signing. Without it every WeatherKit call
+	     throws and both modules quietly show no weather at all. -->
+	<key>com.apple.developer.weatherkit</key>
+	<true/>
 </dict>
 </plist>
