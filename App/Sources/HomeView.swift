@@ -89,12 +89,10 @@ struct HomeView: View {
         return parcels.isEmpty ? "No orders" : "Nothing on the way"
     }
 
+    // Used to describe `vehicles.first` alone, so a second car never appeared
+    // on the hub. The string is built in FuelTracker, where it can be tested.
     private var fuelDetail: String {
-        guard let vehicle = vehicles.first else { return "No vehicles yet" }
-        guard let mpg = FuelStatistics.averageMPG(for: vehicle.orderedFillUps) else {
-            return vehicle.name
-        }
-        return "\(vehicle.name) · \(mpg.formatted(.number.precision(.fractionLength(1)))) mpg"
+        VehicleSummary.homeDetail(for: VehicleSummary.fleet(vehicles))
     }
 }
 

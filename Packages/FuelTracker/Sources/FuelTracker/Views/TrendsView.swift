@@ -4,6 +4,9 @@ import SwiftUI
 
 struct TrendsView: View {
     let vehicle: Vehicle?
+    let summary: VehicleSummary?
+    let summaries: [VehicleSummary]
+    let perform: (VehicleChipAction, VehicleSummary) -> Void
 
     private var points: [MPGPoint] {
         FuelStatistics.mpgPoints(for: vehicle?.orderedFillUps ?? [])
@@ -45,72 +48,88 @@ struct TrendsView: View {
 
     var body: some View {
         NavigationStack {
-            Group {
-                if points.isEmpty {
-                    ContentUnavailableView(
-                        "Not enough data",
-                        systemImage: "chart.xyaxis.line",
-                        description: Text("Log at least two full fill-ups to see fuel economy over time.")
-                    )
-                } else {
-                    List {
-                        Section("MPG over time") {
-                            // Plotted against distance travelled rather than date: exported
-                            // logs occasionally carry a mistyped year, which would send a
-                            // date-based line doubling back on itself.
-                            Chart(points) { point in
-                                LineMark(
-                                    x: .value("Odometer", point.odometer),
-                                    y: .value("MPG", point.mpg)
-                                )
-                                .foregroundStyle(FuelTrackerModule.accent.color)
-                                .interpolationMethod(.monotone)
+            VStack(spacing: 0) {
+                VehicleChipStrip(
+                    summaries: summaries,
+                    selectedID: summary?.id,
+                    perform: perform
+                )
 
-                                if let average = FuelStatistics.averageMPG(for: vehicle?.orderedFillUps ?? []) {
-                                    RuleMark(y: .value("Average", average))
-                                        .foregroundStyle(.secondary.opacity(0.4))
-                                        .lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 4]))
-                                }
-                            }
-                            .chartXScale(domain: odometerRange)
-                            .chartYScale(domain: mpgRange)
-                            .chartXAxisLabel("Odometer")
-                            .frame(height: 200)
-                            .padding(.vertical, 8)
-                        }
-
-                        if !monthlySpend.isEmpty {
-                            Section("Monthly fuel spend") {
-                                Chart(monthlySpend, id: \.month) { item in
-                                    BarMark(
-                                        x: .value("Month", item.month, unit: .month),
-                                        y: .value("Spend", item.total)
+                Group {
+                    if vehicle == nil {
+                        // Distinct from "not enough data": with no vehicle at all
+                        // the old copy told you to log fill-ups against nothing.
+                        ContentUnavailableView(
+                            "No vehicles",
+                            systemImage: "car",
+                            description: Text("Add a vehicle in the Garage tab, or import a Fuelly export.")
+                        )
+                    } else if points.isEmpty {
+                        ContentUnavailableView(
+                            "Not enough data",
+                            systemImage: "chart.xyaxis.line",
+                            description: Text("Log at least two full fill-ups to see fuel economy over time.")
+                        )
+                    } else {
+                        List {
+                            Section("MPG over time") {
+                                // Plotted against distance travelled rather than date: exported
+                                // logs occasionally carry a mistyped year, which would send a
+                                // date-based line doubling back on itself.
+                                Chart(points) { point in
+                                    LineMark(
+                                        x: .value("Odometer", point.odometer),
+                                        y: .value("MPG", point.mpg)
                                     )
                                     .foregroundStyle(FuelTrackerModule.accent.color)
+                                    .interpolationMethod(.monotone)
+
+                                    if let average = summary?.averageMPG {
+                                        RuleMark(y: .value("Average", average))
+                                            .foregroundStyle(.secondary.opacity(0.4))
+                                            .lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 4]))
+                                    }
                                 }
-                                .frame(height: 180)
+                                .chartXScale(domain: odometerRange)
+                                .chartYScale(domain: mpgRange)
+                                .chartXAxisLabel("Odometer")
+                                .frame(height: 200)
                                 .padding(.vertical, 8)
                             }
-                        }
 
-                        Section("Best and worst tanks") {
-                            if let best = points.max(by: { $0.mpg < $1.mpg }) {
-                                TankRow(label: "Best", point: best)
+                            if !monthlySpend.isEmpty {
+                                Section("Monthly fuel spend") {
+                                    Chart(monthlySpend, id: \.month) { item in
+                                        BarMark(
+                                            x: .value("Month", item.month, unit: .month),
+                                            y: .value("Spend", item.total)
+                                        )
+                                        .foregroundStyle(FuelTrackerModule.accent.color)
+                                    }
+                                    .frame(height: 180)
+                                    .padding(.vertical, 8)
+                                }
                             }
-                            if let worst = points.min(by: { $0.mpg < $1.mpg }) {
-                                TankRow(label: "Worst", point: worst)
-                            }
-                        }
 
-                        if !outOfOrderDates.isEmpty {
-                            Section("Check these dates") {
-                                ForEach(outOfOrderDates) { entry in
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text(entry.date, format: .dateTime.month().day().year())
-                                            .font(.subheadline)
-                                        Text("\(entry.odometer.formatted()) mi — dated out of order against the odometer")
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
+                            Section("Best and worst tanks") {
+                                if let best = points.max(by: { $0.mpg < $1.mpg }) {
+                                    TankRow(label: "Best", point: best)
+                                }
+                                if let worst = points.min(by: { $0.mpg < $1.mpg }) {
+                                    TankRow(label: "Worst", point: worst)
+                                }
+                            }
+
+                            if !outOfOrderDates.isEmpty {
+                                Section("Check these dates") {
+                                    ForEach(outOfOrderDates) { entry in
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text(entry.date, format: .dateTime.month().day().year())
+                                                .font(.subheadline)
+                                            Text("\(entry.odometer.formatted()) mi — dated out of order against the odometer")
+                                                .font(.caption)
+                                                .foregroundStyle(.secondary)
+                                        }
                                     }
                                 }
                             }
@@ -118,7 +137,10 @@ struct TrendsView: View {
                     }
                 }
             }
-            .navigationTitle("Trends")
+            // Named after the vehicle: this screen drew one car's charts under a
+            // flat "Trends" title, with no picker and nothing saying whose data
+            // it was.
+            .navigationTitle(summary?.name ?? "Trends")
         }
     }
 }

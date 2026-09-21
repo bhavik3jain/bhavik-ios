@@ -186,3 +186,149 @@ private func fixtureText() throws -> String {
     #expect(points.allSatisfy { $0.miles > 0 })
     #expect(points.allSatisfy { $0.mpg > 5 && $0.mpg < 60 })
 }
+
+// MARK: - Vehicle selection and summaries
+
+private func day(_ year: Int, _ month: Int, _ day: Int) -> Date {
+    var calendar = Calendar(identifier: .gregorian)
+    calendar.timeZone = TimeZone(identifier: "UTC")!
+    return calendar.date(from: DateComponents(year: year, month: month, day: day))!
+}
+
+@MainActor
+private func addVehicle(_ name: String, fills: [(odometer: Int, date: Date)], to context: ModelContext) -> Vehicle {
+    let vehicle = Vehicle(name: name)
+    context.insert(vehicle)
+    for fill in fills {
+        let entry = FuelEntry(date: fill.date, odometer: fill.odometer, gallons: 10, totalCost: 40)
+        entry.vehicle = vehicle
+        context.insert(entry)
+    }
+    return vehicle
+}
+
+@MainActor
+private func importedFleet() throws -> [VehicleSummary] {
+    let context = try makeContext()
+    _ = try FuellyImporter.importCSV(text: fixtureText(), into: context)
+    try context.save()
+    return VehicleSummary.fleet(try context.fetch(FetchDescriptor<Vehicle>(sortBy: [SortDescriptor(\.createdAt)])))
+}
+
+@MainActor
+@Test func selectionDefaultsToTheMostRecentlyFilledVehicle() throws {
+    // The reported bug: the module opened on the Q5 because it came first in the
+    // CSV, while the X3 is the car with the most recent fill-up.
+    let fleet = try importedFleet()
+    #expect(VehicleSelection.resolve(storedName: nil, among: fleet)?.name == "My X3")
+}
+
+@MainActor
+@Test func selectionHonoursAStoredNameThatStillExists() throws {
+    let fleet = try importedFleet()
+    #expect(VehicleSelection.resolve(storedName: "My Q5", among: fleet)?.name == "My Q5")
+}
+
+@MainActor
+@Test func selectionFallsBackWhenTheStoredVehicleIsGone() throws {
+    let fleet = try importedFleet()
+    #expect(VehicleSelection.resolve(storedName: "Sold Car", among: fleet)?.name == "My X3")
+}
+
+@Test func selectionOfAnEmptyGarageIsNil() {
+    #expect(VehicleSelection.resolve(storedName: "My Q5", among: []) == nil)
+    #expect(VehicleSelection.resolve(storedName: nil, among: []) == nil)
+}
+
+@MainActor
+@Test func fleetIsOrderedByMostRecentFillUp() throws {
+    let fleet = try importedFleet()
+    #expect(fleet.map(\.name) == ["My X3", "My Q5"])
+}
+
+@MainActor
+@Test func fleetOrderIgnoresAMistypedDateOnAnEarlierFillUp() throws {
+    let context = try makeContext()
+    _ = addVehicle("Daily", fills: [(1000, day(2026, 1, 1)), (1300, day(2026, 9, 1))], to: context)
+    // A typo'd year on an early fill-up. Ordering by the latest *date* would
+    // pin this car to the top forever; the odometer-last fill-up is March.
+    _ = addVehicle("Typo", fills: [(5000, day(2027, 1, 1)), (5300, day(2026, 3, 1))], to: context)
+    try context.save()
+
+    let fleet = VehicleSummary.fleet(try context.fetch(FetchDescriptor<Vehicle>()))
+    #expect(fleet.map(\.name) == ["Daily", "Typo"])
+}
+
+@MainActor
+@Test func summarySeparatesFuelSpendFromServiceSpend() throws {
+    let fleet = try importedFleet()
+    let q5 = try #require(fleet.first { $0.name == "My Q5" })
+    let x3 = try #require(fleet.first { $0.name == "My X3" })
+
+    #expect(q5.serviceSpend > 0, "The Q5 carries service records")
+    #expect(q5.serviceCount > 0)
+    #expect(abs(q5.totalSpend - (q5.fuelSpend + q5.serviceSpend)) < 0.001)
+    #expect(q5.fuelSpend < q5.totalSpend, "Fuel spend must not silently include service work")
+
+    #expect(x3.serviceSpend == 0)
+    #expect(x3.serviceCount == 0)
+    #expect(x3.totalSpend == x3.fuelSpend)
+}
+
+@MainActor
+@Test func summaryReportsTheOdometerLastFillUp() throws {
+    let fleet = try importedFleet()
+    let q5 = try #require(fleet.first { $0.name == "My Q5" })
+    let x3 = try #require(fleet.first { $0.name == "My X3" })
+
+    #expect(q5.lastOdometer == 66_359)
+    #expect(x3.lastOdometer == 14_437)
+    #expect(try #require(x3.lastFillUp) > (try #require(q5.lastFillUp)))
+}
+
+@MainActor
+@Test func summaryOfAVehicleWithNoFillUpsReportsUnknownRatherThanZero() throws {
+    let context = try makeContext()
+    let vehicle = addVehicle("New", fills: [], to: context)
+    try context.save()
+
+    let summary = VehicleSummary.summarize(vehicle)
+    #expect(summary.averageMPG == nil)
+    #expect(summary.averagePricePerGallon == nil)
+    #expect(summary.lastFillUp == nil)
+    #expect(summary.lastOdometer == nil)
+    #expect(summary.fillUpCount == 0)
+}
+
+@MainActor
+@Test func homeDetailNamesEveryVehicle() throws {
+    let detail = VehicleSummary.homeDetail(for: try importedFleet())
+    // Used to name only the first vehicle, leaving the second invisible from the hub.
+    #expect(detail.contains("My X3"))
+    #expect(detail.contains("My Q5"))
+    #expect(detail.hasSuffix(" mpg"))
+    #expect(detail.firstRange(of: "My X3")!.lowerBound < detail.firstRange(of: "My Q5")!.lowerBound,
+            "Most recently filled first")
+}
+
+@MainActor
+@Test func homeDetailDescribesASingleVehicleAndAnEmptyGarage() throws {
+    #expect(VehicleSummary.homeDetail(for: []) == "No vehicles yet")
+
+    let context = try makeContext()
+    let vehicle = addVehicle("Solo", fills: [(1000, day(2026, 1, 1)), (1300, day(2026, 2, 1))], to: context)
+    try context.save()
+    // 300 miles on the 10 gallons that closed the second tank.
+    #expect(VehicleSummary.homeDetail(for: [VehicleSummary.summarize(vehicle)]) == "Solo · 30.0 mpg")
+
+    let fresh = addVehicle("Fresh", fills: [], to: context)
+    try context.save()
+    #expect(VehicleSummary.homeDetail(for: [VehicleSummary.summarize(fresh)]) == "Fresh")
+}
+
+@Test func pricePerGallonKeepsTheThirdDecimal() {
+    // A plain currency format rounds $5.739 to $5.74 — the digit the importer
+    // deliberately preserves.
+    #expect(VehicleSummary.pricePerGallonText(5.739) == "$5.739")
+    #expect(VehicleSummary.pricePerGallonText(nil) == "—")
+}

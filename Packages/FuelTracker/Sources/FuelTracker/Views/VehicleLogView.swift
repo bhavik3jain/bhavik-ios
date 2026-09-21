@@ -4,10 +4,10 @@ import SwiftUI
 
 struct VehicleLogView: View {
     let vehicle: Vehicle?
-    let vehicles: [Vehicle]
-    @Binding var selectedVehicleID: PersistentIdentifier?
-
-    @State private var showingAddEntry = false
+    let summary: VehicleSummary?
+    let summaries: [VehicleSummary]
+    @Binding var showingAddEntry: Bool
+    let perform: (VehicleChipAction, VehicleSummary) -> Void
 
     private var fillUps: [FuelEntry] {
         (vehicle?.orderedFillUps ?? []).reversed()
@@ -23,66 +23,55 @@ struct VehicleLogView: View {
 
     var body: some View {
         NavigationStack {
-            Group {
-                if let vehicle {
-                    List {
-                        Section {
-                            SummaryTiles(vehicle: vehicle)
-                                .listRowInsets(EdgeInsets())
-                                .listRowBackground(Color.clear)
-                        }
+            VStack(spacing: 0) {
+                VehicleChipStrip(
+                    summaries: summaries,
+                    selectedID: summary?.id,
+                    perform: perform
+                )
 
-                        Section("Fill-ups") {
-                            if fillUps.isEmpty {
-                                ContentUnavailableView(
-                                    "No fill-ups yet",
-                                    systemImage: "fuelpump",
-                                    description: Text("Add one with the + button, or import a Fuelly export from the Garage tab.")
-                                )
-                            } else {
-                                ForEach(fillUps) { entry in
-                                    FillUpRow(entry: entry, mpg: mpgByOdometer[entry.odometer])
+                Group {
+                    if let vehicle, let summary {
+                        List {
+                            Section {
+                                SummaryTiles(summary: summary)
+                                    .listRowInsets(EdgeInsets())
+                                    .listRowBackground(Color.clear)
+                            }
+
+                            Section("Fill-ups") {
+                                if fillUps.isEmpty {
+                                    ContentUnavailableView(
+                                        "No fill-ups yet",
+                                        systemImage: "fuelpump",
+                                        description: Text("Add one with the + button, or import a Fuelly export from the Garage tab.")
+                                    )
+                                } else {
+                                    ForEach(fillUps) { entry in
+                                        FillUpRow(entry: entry, mpg: mpgByOdometer[entry.odometer])
+                                    }
+                                }
+                            }
+
+                            if !vehicle.orderedServices.isEmpty {
+                                Section("Service") {
+                                    ForEach(vehicle.orderedServices) { entry in
+                                        ServiceRow(entry: entry)
+                                    }
                                 }
                             }
                         }
-
-                        if !vehicle.orderedServices.isEmpty {
-                            Section("Service") {
-                                ForEach(vehicle.orderedServices) { entry in
-                                    ServiceRow(entry: entry)
-                                }
-                            }
-                        }
+                    } else {
+                        ContentUnavailableView(
+                            "No vehicles",
+                            systemImage: "car",
+                            description: Text("Add a vehicle in the Garage tab, or import a Fuelly export.")
+                        )
                     }
-                } else {
-                    ContentUnavailableView(
-                        "No vehicles",
-                        systemImage: "car",
-                        description: Text("Add a vehicle in the Garage tab, or import a Fuelly export.")
-                    )
                 }
             }
-            .navigationTitle(vehicle?.name ?? "Fuel")
+            .navigationTitle(summary?.name ?? "Fuel")
             .toolbar {
-                if vehicles.count > 1 {
-                    ToolbarItem(placement: .primaryAction) {
-                        Menu {
-                            Picker("Vehicle", selection: $selectedVehicleID) {
-                                ForEach(vehicles) { candidate in
-                                    Text(candidate.name).tag(Optional(candidate.persistentModelID))
-                                }
-                            }
-                        } label: {
-                            Image(systemName: "car.2.fill")
-                        }
-                    }
-                    // Switching vehicle and adding a fill-up are unrelated, so
-                    // they sit in separate glass groups rather than reading as
-                    // one control.
-                    if #available(iOS 26, macOS 26, *) {
-                        ToolbarSpacer(.fixed, placement: .primaryAction)
-                    }
-                }
                 if vehicle != nil {
                     ToolbarItem(placement: .primaryAction) {
                         Button {
@@ -90,6 +79,7 @@ struct VehicleLogView: View {
                         } label: {
                             Image(systemName: "plus")
                         }
+                        .accessibilityLabel("Add fill-up")
                     }
                 }
             }
@@ -103,25 +93,25 @@ struct VehicleLogView: View {
 }
 
 private struct SummaryTiles: View {
-    let vehicle: Vehicle
-
-    private var averageMPG: Double? {
-        FuelStatistics.averageMPG(for: vehicle.orderedFillUps)
-    }
-
-    private var averagePrice: Double? {
-        FuelStatistics.averagePricePerGallon(for: vehicle.orderedFillUps)
-    }
-
-    private var totalSpend: Double {
-        FuelStatistics.totalSpend(for: vehicle.entries ?? [])
-    }
+    let summary: VehicleSummary
 
     var body: some View {
-        HStack(spacing: 10) {
-            Tile(value: averageMPG.map { $0.formatted(.number.precision(.fractionLength(1))) } ?? "—", label: "Avg MPG")
-            Tile(value: averagePrice.map { $0.formatted(.currency(code: "USD")) } ?? "—", label: "Avg $/gal")
-            Tile(value: totalSpend.formatted(.currency(code: "USD").precision(.fractionLength(0))), label: "Total spend")
+        VStack(spacing: 6) {
+            HStack(spacing: 10) {
+                Tile(value: VehicleSummary.mpgText(summary.averageMPG), label: "Avg MPG")
+                Tile(value: VehicleSummary.pricePerGallonText(summary.averagePricePerGallon), label: "Avg $/gal")
+                Tile(value: VehicleSummary.spendText(summary.fuelSpend), label: "Fuel spend")
+            }
+
+            // The third tile used to read "Total spend" and summed service work
+            // as well, while the two tiles beside it were fuel-only — $13,928
+            // against $5,245 of fuel, with nothing on screen saying so. Both
+            // figures are now named rather than one standing for the other.
+            if summary.serviceSpend > 0 {
+                Text("+ \(VehicleSummary.spendText(summary.serviceSpend)) service · \(VehicleSummary.spendText(summary.totalSpend)) all-in")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
         }
         .padding(.horizontal)
         .padding(.vertical, 8)
