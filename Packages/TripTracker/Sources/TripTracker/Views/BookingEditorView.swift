@@ -1,14 +1,14 @@
 import Core // Only reached on macOS, where Core stands in for the iOS-only SwiftUI API below.
-import SwiftData
+import CoreData
 import SwiftUI
 
 /// Adds a booking — a stay, a car, tickets — or edits one.
 struct BookingEditorView: View {
-    let trip: Trip
-    let booking: Booking?
+    let trip: SharedTrip
+    let booking: SharedBooking?
 
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.modelContext) private var modelContext
+    @Environment(\.managedObjectContext) private var modelContext
 
     @State private var title = ""
     @State private var kind: BookingKind = .lodging
@@ -23,7 +23,7 @@ struct BookingEditorView: View {
     @State private var secureNote = ""
     @State private var confirmingDelete = false
 
-    init(trip: Trip, booking: Booking?) {
+    init(trip: SharedTrip, booking: SharedBooking?) {
         self.trip = trip
         self.booking = booking
         _startsAt = State(initialValue: booking?.startsAt ?? trip.startDate)
@@ -122,7 +122,10 @@ struct BookingEditorView: View {
             }
             .confirmationDialog("Delete \(title)?", isPresented: $confirmingDelete, titleVisibility: .visible) {
                 Button("Delete", role: .destructive) {
-                    if let booking { modelContext.delete(booking) }
+                    if let booking {
+                        modelContext.delete(booking)
+                        try? modelContext.saveIfNeeded()
+                    }
                     dismiss()
                 }
             }
@@ -130,7 +133,7 @@ struct BookingEditorView: View {
     }
 
     private func save() {
-        let target = booking ?? Booking(title: "", kind: kind)
+        let target = booking ?? SharedBooking(context: modelContext, title: "", kind: kind)
         if booking == nil {
             target.sortOrder = ((trip.bookings ?? []).map(\.sortOrder).max() ?? -1) + 1
         }
@@ -144,9 +147,9 @@ struct BookingEditorView: View {
         target.notes = notes
         target.secureNote = secureNote
         if booking == nil {
-            modelContext.insert(target)
             target.trip = trip
         }
+        try? modelContext.saveIfNeeded()
         dismiss()
     }
 }

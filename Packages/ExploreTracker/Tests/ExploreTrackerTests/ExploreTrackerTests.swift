@@ -1,16 +1,41 @@
 import Core
+import CoreData
 import Foundation
 import MapKit
-import SwiftData
+import ObjectiveC
 import Testing
 @testable import ExploreTracker
 
+/// Associated-object key for tying a returned context's lifetime to the
+/// container that built it — see `makeContext()`. `objc_setAssociatedObject`
+/// only ever uses this variable's fixed address, as a `&`-taken pointer, never
+/// its value — `nonisolated(unsafe)` is safe here for exactly that reason.
+private nonisolated(unsafe) var associatedContainerKey: UInt8 = 0
+
 @MainActor
-private func makeContext() throws -> ModelContext {
-    let schema = Schema(ExploreTrackerModule.models)
-    let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
-    let container = try ModelContainer(for: schema, configurations: [configuration])
-    return ModelContext(container)
+private func makeContext() throws -> NSManagedObjectContext {
+    // A fresh, uniquely-named container per call, not one fixed name shared by
+    // every test: Swift Testing runs test functions in parallel by default,
+    // and two containers built from the same name resolve to the same default
+    // store URL — even the in-memory store type keeps that URL as the
+    // coordinator's registration key, so two tests racing to add their own
+    // in-memory store "at" it corrupted each other's data intermittently.
+    let container = CloudSharedStore.makeContainer(
+        name: "ExploreStoreTests-\(UUID().uuidString)",
+        model: GuideModel.make(),
+        containerID: "iCloud.com.bhavikjain.trackers.tests",
+        inMemory: true
+    )
+    let context = container.viewContext
+    // Apple's own documented gotcha: nothing else keeps `container` alive once
+    // this function returns just its `viewContext` — a context does NOT retain
+    // its own container — so without this, ARC was free to deallocate it right
+    // after `makeContext()` returned, and every test reading back through the
+    // context afterward (which is all of them) was working against a
+    // half-torn-down store. Tying its lifetime to the context it handed out
+    // fixes that without changing every test's signature.
+    objc_setAssociatedObject(context, &associatedContainerKey, container, .OBJC_ASSOCIATION_RETAIN)
+    return context
 }
 
 @MainActor
@@ -18,15 +43,14 @@ private func makeContext() throws -> ModelContext {
 private func addPlace(
     _ name: String,
     _ category: PlaceCategory,
-    to guide: Guide,
-    in context: ModelContext,
+    to guide: SharedGuide,
+    in context: NSManagedObjectContext,
     at point: GeoPoint? = nil,
     rating: Int? = nil,
     addedAt: Date = .now
-) -> GuidePlace {
-    let place = GuidePlace(name: name, category: category, latitude: point?.latitude, longitude: point?.longitude)
+) -> SharedGuidePlace {
+    let place = SharedGuidePlace(context: context, name: name, category: category, latitude: point?.latitude, longitude: point?.longitude)
     place.addedAt = addedAt
-    context.insert(place)
     place.guide = guide
     if let rating {
         place.setTried(true)
@@ -74,8 +98,7 @@ private func addPlace(
 @MainActor
 @Test func theGuideRegionIgnoresPlacesAddedByHandAndItsCentreIsWhereWeatherComesFrom() throws {
     let context = try makeContext()
-    let guide = Guide(name: "Kyoto", areaLabel: "Kyoto, Japan")
-    context.insert(guide)
+    let guide = SharedGuide(context: context, name: "Kyoto", areaLabel: "Kyoto, Japan")
     addPlace("Somewhere I was told about", .places, to: guide, in: context)
     #expect(GuideSummary.summarize(guide).region == nil)
 
@@ -112,8 +135,10 @@ func guessesCategoryFromMapsPointOfInterest(_ poi: MKPointOfInterestCategory, _ 
     #expect(PlaceCategory.guess(from: nil) == .places)
 }
 
-@Test func anUnknownStoredCategoryFallsBackToPlaces() {
-    let place = GuidePlace(name: "x", category: .activities)
+@MainActor
+@Test func anUnknownStoredCategoryFallsBackToPlaces() throws {
+    let context = try makeContext()
+    let place = SharedGuidePlace(context: context, name: "x", category: .activities)
     place.categoryRaw = "somethingNewer"
     #expect(place.category == .places)
 }
@@ -123,8 +148,7 @@ func guessesCategoryFromMapsPointOfInterest(_ poi: MKPointOfInterestCategory, _ 
 @MainActor
 @Test func countsPlacesPerCategoryAndTried() throws {
     let context = try makeContext()
-    let guide = Guide(name: "Gion & Higashiyama", areaLabel: "Kyoto, Japan")
-    context.insert(guide)
+    let guide = SharedGuide(context: context, name: "Gion & Higashiyama", areaLabel: "Kyoto, Japan")
     addPlace("Duck noodles", .foodAndDrinks, to: guide, in: context)
     addPlace("Kagizen", .foodAndDrinks, to: guide, in: context, rating: 5)
     addPlace("Pontocho", .foodAndDrinks, to: guide, in: context, rating: 0)
@@ -144,10 +168,8 @@ func guessesCategoryFromMapsPointOfInterest(_ poi: MKPointOfInterestCategory, _ 
 @MainActor
 @Test func summaryLinesReadNaturallyAtTheEdges() throws {
     let context = try makeContext()
-    let empty = Guide(name: "Empty", areaLabel: "")
-    let untried = Guide(name: "Big Sur drive", areaLabel: "California")
-    context.insert(empty)
-    context.insert(untried)
+    let empty = SharedGuide(context: context, name: "Empty", areaLabel: "")
+    let untried = SharedGuide(context: context, name: "Big Sur drive", areaLabel: "California")
     addPlace("Bixby Bridge", .places, to: untried, in: context)
 
     #expect(GuideSummary.summarize(empty).detailLine == "No places yet")
@@ -169,10 +191,8 @@ func guessesCategoryFromMapsPointOfInterest(_ poi: MKPointOfInterestCategory, _ 
     #expect(GuideSummary.homeDetail(for: []) == "No guides yet")
     #expect(GuideSummary.overview([]) == "")
 
-    let kyoto = Guide(name: "Kyoto")
-    let soma = Guide(name: "SoMa")
-    context.insert(kyoto)
-    context.insert(soma)
+    let kyoto = SharedGuide(context: context, name: "Kyoto")
+    let soma = SharedGuide(context: context, name: "SoMa")
     addPlace("A", .places, to: kyoto, in: context)
     addPlace("B", .places, to: kyoto, in: context)
     addPlace("C", .foodAndDrinks, to: soma, in: context)
@@ -185,30 +205,27 @@ func guessesCategoryFromMapsPointOfInterest(_ poi: MKPointOfInterestCategory, _ 
 @MainActor
 @Test func guidesAreListedNewestFirst() throws {
     let context = try makeContext()
-    let older = Guide(name: "Older")
+    let older = SharedGuide(context: context, name: "Older")
     older.createdAt = Date(timeIntervalSince1970: 1_000)
-    let newer = Guide(name: "Newer")
+    let newer = SharedGuide(context: context, name: "Newer")
     newer.createdAt = Date(timeIntervalSince1970: 2_000)
-    context.insert(older)
-    context.insert(newer)
     #expect(GuideSummary.all([older, newer]).map(\.name) == ["Newer", "Older"])
 }
 
 @MainActor
 @Test func weatherCaptionUsesTheTownOnly() throws {
-    let context = try PersistentIdentifierFixture.make()
-    #expect(GuideSummary(id: context, name: "", areaLabel: "Kyoto, Japan", placeCount: 0, triedCount: 0, counts: [:], region: nil).weatherCaption == "Weather in Kyoto now")
-    #expect(GuideSummary(id: context, name: "", areaLabel: "", placeCount: 0, triedCount: 0, counts: [:], region: nil).weatherCaption == "Weather here now")
+    let id = try PersistentIdentifierFixture.make()
+    #expect(GuideSummary(id: id, name: "", areaLabel: "Kyoto, Japan", placeCount: 0, triedCount: 0, counts: [:], region: nil).weatherCaption == "Weather in Kyoto now")
+    #expect(GuideSummary(id: id, name: "", areaLabel: "", placeCount: 0, triedCount: 0, counts: [:], region: nil).weatherCaption == "Weather here now")
 }
 
-/// A `PersistentIdentifier` for building a `GuideSummary` by hand.
+/// An `NSManagedObjectID` for building a `GuideSummary` by hand.
 private enum PersistentIdentifierFixture {
     @MainActor
-    static func make() throws -> PersistentIdentifier {
+    static func make() throws -> NSManagedObjectID {
         let context = try makeContext()
-        let guide = Guide(name: "fixture")
-        context.insert(guide)
-        return guide.persistentModelID
+        let guide = SharedGuide(context: context, name: "fixture")
+        return guide.objectID
     }
 }
 
@@ -230,8 +247,7 @@ private enum PersistentIdentifierFixture {
 @MainActor
 @Test func aGuideListsOneCategoryInOrder() throws {
     let context = try makeContext()
-    let guide = Guide(name: "Kyoto")
-    context.insert(guide)
+    let guide = SharedGuide(context: context, name: "Kyoto")
     let base = Date(timeIntervalSince1970: 0)
     addPlace("Kagizen", .foodAndDrinks, to: guide, in: context, rating: 5, addedAt: base)
     addPlace("Duck noodles", .foodAndDrinks, to: guide, in: context, addedAt: base.addingTimeInterval(10))
@@ -244,8 +260,10 @@ private enum PersistentIdentifierFixture {
 
 // MARK: - Tried state
 
-@Test func untryingAPlaceClearsItsRatingAndDate() {
-    let place = GuidePlace(name: "Kagizen", category: .foodAndDrinks)
+@MainActor
+@Test func untryingAPlaceClearsItsRatingAndDate() throws {
+    let context = try makeContext()
+    let place = SharedGuidePlace(context: context, name: "Kagizen", category: .foodAndDrinks)
     let day = Date(timeIntervalSince1970: 1_000_000)
     place.setTried(true, asOf: day)
     place.rating = 4
@@ -263,15 +281,14 @@ private enum PersistentIdentifierFixture {
 @MainActor
 @Test func deletingAGuideDeletesItsPlaces() throws {
     let context = try makeContext()
-    let guide = Guide(name: "Kyoto")
-    context.insert(guide)
+    let guide = SharedGuide(context: context, name: "Kyoto")
     addPlace("Yasaka", .places, to: guide, in: context)
     addPlace("Kagizen", .foodAndDrinks, to: guide, in: context)
     try context.save()
 
     context.delete(guide)
     try context.save()
-    #expect(try context.fetchCount(FetchDescriptor<GuidePlace>()) == 0)
+    #expect(try context.count(for: SharedGuidePlace.fetchRequest()) == 0)
 }
 
 // MARK: - Distance and walking time
@@ -335,7 +352,7 @@ private let germany = Locale(identifier: "de_DE")
     ExploreDebugSeed.run(context: context)
     ExploreDebugSeed.run(context: context)
 
-    let guides = try context.fetch(FetchDescriptor<Guide>())
+    let guides = try context.fetch(SharedGuide.fetchRequest())
     #expect(guides.count == 3)
     for guide in guides {
         #expect((5...12).contains(guide.allPlaces.count))
@@ -352,13 +369,12 @@ private let germany = Locale(identifier: "de_DE")
 @Test func pinnedGuidesComeFirstInTheOrderTheyWerePinned() throws {
     let context = try makeContext()
     let base = Date(timeIntervalSince1970: 1_800_000_000)
-    let oldest = Guide(name: "Oldest")
+    let oldest = SharedGuide(context: context, name: "Oldest")
     oldest.createdAt = base
-    let middle = Guide(name: "Middle")
+    let middle = SharedGuide(context: context, name: "Middle")
     middle.createdAt = base.addingTimeInterval(100)
-    let newest = Guide(name: "Newest")
+    let newest = SharedGuide(context: context, name: "Newest")
     newest.createdAt = base.addingTimeInterval(200)
-    [oldest, middle, newest].forEach(context.insert)
 
     // Unpinned: newest first.
     #expect(GuideSummary.all([oldest, middle, newest]).map(\.name) == ["Newest", "Middle", "Oldest"])
@@ -374,8 +390,7 @@ private let germany = Locale(identifier: "de_DE")
 @MainActor
 @Test func repinningKeepsTheOriginalDateAndUnpinningClearsIt() throws {
     let context = try makeContext()
-    let guide = Guide(name: "Kyoto")
-    context.insert(guide)
+    let guide = SharedGuide(context: context, name: "Kyoto")
     let first = Date(timeIntervalSince1970: 1_800_000_000)
 
     guide.setPinned(true, asOf: first)

@@ -1,4 +1,5 @@
 import Core
+import CoreData
 import ExploreTracker
 import FuelTracker
 import GymTracker
@@ -17,11 +18,34 @@ struct AppSettingsView: View {
     @Query private var shows: [Show]
     @Query private var movies: [Movie]
     @Query private var parcels: [Parcel]
-    @Query private var vehicles: [Vehicle]
-    @Query private var fuelEntries: [FuelEntry]
-    @Query private var trips: [Trip]
-    @Query private var guides: [Guide]
-    @Query private var guidePlaces: [GuidePlace]
+    // Trips moved to Core Data — see HomeView.swift's own `tripResults` for
+    // why this is a @FetchRequest rather than a @Query now. The environment
+    // value it reads comes down from BhavikApp's WindowGroup-level
+    // `.environment(\.managedObjectContext, tripContainer.viewContext)`, the
+    // same as it reaches HomeView — this view is pushed inside the same
+    // NavigationStack/NavigationSplitView, not presented across a module
+    // boundary, so nothing extra needs to thread it here.
+    @FetchRequest(sortDescriptors: []) private var tripResults: FetchedResults<SharedTrip>
+    private var trips: [SharedTrip] { Array(tripResults) }
+    // Fuel moved to Core Data too. Unlike `tripResults` above, this can't be a
+    // plain `@FetchRequest`: that property wrapper only ever reads
+    // `\.managedObjectContext`, which on this view already resolves to Trips'
+    // container (same reasoning as HomeView's own `vehicleFetch` — see its
+    // doc comment on `ManagedObjectFetch`), so a second `@FetchRequest` here
+    // would silently query the wrong store for each entity.
+    @Environment(\.fuelManagedObjectContext) private var fuelContext
+    @StateObject private var vehicleFetch = ManagedObjectFetch<SharedVehicle>(SharedVehicle.fetchRequest())
+    @StateObject private var fuelEntryFetch = ManagedObjectFetch<SharedFuelEntry>(SharedFuelEntry.fetchRequest())
+    private var vehicles: [SharedVehicle] { vehicleFetch.results }
+    private var fuelEntries: [SharedFuelEntry] { fuelEntryFetch.results }
+    // Explore moved to Core Data too — same reasoning as Fuel's fetches above:
+    // this view already resolves `\.managedObjectContext` to Trips' container,
+    // so a plain `@FetchRequest` here would silently query the wrong store.
+    @Environment(\.exploreManagedObjectContext) private var exploreContext
+    @StateObject private var guideFetch = ManagedObjectFetch<SharedGuide>(SharedGuide.fetchRequest())
+    @StateObject private var guidePlaceFetch = ManagedObjectFetch<SharedGuidePlace>(SharedGuidePlace.fetchRequest())
+    private var guides: [SharedGuide] { guideFetch.results }
+    private var guidePlaces: [SharedGuidePlace] { guidePlaceFetch.results }
 
     var body: some View {
         Form {
@@ -104,6 +128,16 @@ struct AppSettingsView: View {
         .navigationBarTitleDisplayMode(.inline)
         .task {
             syncState = await CloudSync.state(containerID: BhavikApp.cloudContainerID)
+        }
+        .task(id: fuelContext) {
+            guard let fuelContext else { return }
+            vehicleFetch.start(context: fuelContext)
+            fuelEntryFetch.start(context: fuelContext)
+        }
+        .task(id: exploreContext) {
+            guard let exploreContext else { return }
+            guideFetch.start(context: exploreContext)
+            guidePlaceFetch.start(context: exploreContext)
         }
     }
 }

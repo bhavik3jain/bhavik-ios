@@ -5,7 +5,7 @@ public extension ExploreTrackerModule {
     /// What long-pressing Explore on the home screen shows: the newest guides,
     /// how big each is and how much of it has been tried.
     @MainActor
-    static func homePeek(guides: [Guide]) -> some View {
+    static func homePeek(guides: [SharedGuide]) -> some View {
         ExploreHomePeek(summaries: GuideSummary.all(guides))
     }
 }

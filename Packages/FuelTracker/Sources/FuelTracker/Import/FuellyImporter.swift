@@ -1,6 +1,6 @@
 import Core
+import CoreData
 import Foundation
-import SwiftData
 
 public struct ImportSummary: Sendable, Equatable {
     public var fillUpsImported = 0
@@ -39,7 +39,7 @@ public enum FuellyImporter {
     @MainActor
     public static func importCSV(
         at url: URL,
-        into context: ModelContext
+        into context: NSManagedObjectContext
     ) throws -> ImportSummary {
         let didAccess = url.startAccessingSecurityScopedResource()
         defer { if didAccess { url.stopAccessingSecurityScopedResource() } }
@@ -54,7 +54,7 @@ public enum FuellyImporter {
     }
 
     @MainActor
-    public static func importCSV(text: String, into context: ModelContext) throws -> ImportSummary {
+    public static func importCSV(text: String, into context: NSManagedObjectContext) throws -> ImportSummary {
         let rows = CSVParser.rows(from: text)
         guard let header = rows.first else { throw ImportError.unreadableFile }
 
@@ -92,18 +92,18 @@ public enum FuellyImporter {
                 continue
             }
 
-            let vehicle: Vehicle
+            let vehicle: SharedVehicle
             if let existing = vehiclesByName[vehicleName] {
                 vehicle = existing
             } else {
-                let created = Vehicle(name: vehicleName)
-                context.insert(created)
+                let created = SharedVehicle(context: context, name: vehicleName)
                 vehiclesByName[vehicleName] = created
                 vehicle = created
                 summary.vehicleNames.append(vehicleName)
             }
 
-            let entry = FuelEntry(
+            let entry = SharedFuelEntry(
+                context: context,
                 kind: isService ? .service : .fillUp,
                 date: date,
                 odometer: odometer,
@@ -117,7 +117,6 @@ public enum FuellyImporter {
                 services: value("Services")
             )
             entry.vehicle = vehicle
-            context.insert(entry)
             seen.insert(key)
 
             if isService {
@@ -127,7 +126,7 @@ public enum FuellyImporter {
             }
         }
 
-        try context.save()
+        try context.saveIfNeeded()
         return summary
     }
 
@@ -141,14 +140,14 @@ public enum FuellyImporter {
     }
 
     @MainActor
-    private static func existingVehiclesByName(in context: ModelContext) throws -> [String: Vehicle] {
-        let vehicles = try context.fetch(FetchDescriptor<Vehicle>())
+    private static func existingVehiclesByName(in context: NSManagedObjectContext) throws -> [String: SharedVehicle] {
+        let vehicles = try context.fetch(SharedVehicle.fetchRequest())
         return Dictionary(vehicles.map { ($0.name, $0) }, uniquingKeysWith: { first, _ in first })
     }
 
     @MainActor
-    private static func existingEntryKeys(in context: ModelContext) throws -> Set<EntryKey> {
-        let entries = try context.fetch(FetchDescriptor<FuelEntry>())
+    private static func existingEntryKeys(in context: NSManagedObjectContext) throws -> Set<EntryKey> {
+        let entries = try context.fetch(SharedFuelEntry.fetchRequest())
         return Set(entries.map {
             EntryKey(
                 vehicle: $0.vehicle?.name ?? "",

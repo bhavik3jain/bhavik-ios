@@ -74,9 +74,11 @@ public struct ItineraryDocument: Sendable, Equatable {
 
     /// Builds the document for `trip`: a cover, a page per day (more when a day
     /// runs long) and the confirmation codes.
-    public init(trip: Trip, linesPerPage: Int = ItineraryDocument.linesPerPage, calendar: Calendar = .current) {
+    public init(trip: SharedTrip, linesPerPage: Int = ItineraryDocument.linesPerPage, calendar: Calendar = .current) {
         let dates = TripDates(start: trip.startDate, end: trip.endDate, calendar: calendar)
-        let flights = trip.flights ?? []
+        // Core Data's to-many relationships are `Set<T>?`, not `[T]?` — turned
+        // into an array once here rather than at every use below.
+        let flights = Array(trip.flights ?? [])
         var pages: [Page] = []
 
         let facts = [
@@ -92,7 +94,7 @@ public struct ItineraryDocument: Sendable, Equatable {
         )))
 
         for index in 0..<dates.dayCount {
-            let plan = DayPlan(dayIndex: index, items: trip.items ?? [], flights: flights, dates: dates)
+            let plan = DayPlan(dayIndex: index, items: Array(trip.items ?? []), flights: flights, dates: dates)
             let lines = plan.entries.map { ItineraryFormat.line(for: $0, in: plan) }
             let runs = Self.chunks(lines.count, size: linesPerPage)
             for (offset, run) in runs.enumerated() {
@@ -118,7 +120,7 @@ public struct ItineraryDocument: Sendable, Equatable {
     }
 
     /// Flights, then bookings by kind. Reads `code` and never `secureNote`.
-    static func confirmations(for trip: Trip, dates: TripDates) -> [Confirmation] {
+    static func confirmations(for trip: SharedTrip, dates: TripDates) -> [Confirmation] {
         let flights = (trip.flights ?? [])
             .sorted { ($0.departsAt ?? dates.date(forDay: $0.dayIndex)) < ($1.departsAt ?? dates.date(forDay: $1.dayIndex)) }
             .map { flight in
@@ -129,7 +131,7 @@ public struct ItineraryDocument: Sendable, Equatable {
                     code: flight.confirmationCode
                 )
             }
-        let bookings = BookingGroups.ordered(trip.bookings ?? []).flatMap { group in
+        let bookings = BookingGroups.ordered(Array(trip.bookings ?? [])).flatMap { group in
             group.bookings.map { booking in
                 Confirmation(
                     section: group.kind.displayName,
@@ -148,10 +150,10 @@ public struct ItineraryDocument: Sendable, Equatable {
 public enum BookingGroups {
     public struct Group {
         public let kind: BookingKind
-        public let bookings: [Booking]
+        public let bookings: [SharedBooking]
     }
 
-    public static func ordered(_ bookings: [Booking]) -> [Group] {
+    public static func ordered(_ bookings: [SharedBooking]) -> [Group] {
         BookingKind.allCases.compactMap { kind in
             let matching = bookings
                 .filter { $0.kind == kind }
@@ -191,7 +193,7 @@ public enum ItineraryFormat {
     }
 
     /// "Sun 14 Jun · 18:40–20:25 · Seat 32K".
-    public static func flightWhen(_ flight: Flight, dates: TripDates) -> String {
+    public static func flightWhen(_ flight: SharedFlight, dates: TripDates) -> String {
         var parts: [String] = []
         let day = flight.departsAt ?? dates.date(forDay: flight.dayIndex)
         parts.append(day.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated)))
@@ -207,7 +209,7 @@ public enum ItineraryFormat {
     }
 
     /// "Rome · in Sat 6 · out Wed 10".
-    public static func bookingDetail(_ booking: Booking) -> String {
+    public static func bookingDetail(_ booking: SharedBooking) -> String {
         var parts: [String] = []
         if !booking.provider.isEmpty { parts.append(booking.provider) }
         let day = Date.FormatStyle().weekday(.abbreviated).day()

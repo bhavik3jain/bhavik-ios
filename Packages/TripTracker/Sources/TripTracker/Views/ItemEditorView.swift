@@ -1,15 +1,15 @@
 import Core // Only reached on macOS, where Core stands in for the iOS-only SwiftUI API below.
+import CoreData
 import MapKit
-import SwiftData
 import SwiftUI
 
 /// Adds something to a day of the plan, or edits it.
 struct ItemEditorView: View {
-    let trip: Trip
-    let item: ItineraryItem?
+    let trip: SharedTrip
+    let item: SharedItineraryItem?
 
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.modelContext) private var modelContext
+    @Environment(\.managedObjectContext) private var modelContext
 
     @State private var title = ""
     @State private var kind: ItemKind = .sight
@@ -22,7 +22,7 @@ struct ItemEditorView: View {
     @State private var search: PlaceSearch
     @State private var confirmingDelete = false
 
-    init(trip: Trip, item: ItineraryItem?, day: Int) {
+    init(trip: SharedTrip, item: SharedItineraryItem?, day: Int) {
         self.trip = trip
         self.item = item
         _day = State(initialValue: day)
@@ -126,6 +126,7 @@ struct ItemEditorView: View {
                     Section {
                         Button(item.isDone ? "Mark as Not Done" : "Mark as Done") {
                             item.toggleDone()
+                            try? modelContext.saveIfNeeded()
                             dismiss()
                         }
                         Button("Delete", role: .destructive) { confirmingDelete = true }
@@ -146,7 +147,10 @@ struct ItemEditorView: View {
             }
             .confirmationDialog("Delete \(title)?", isPresented: $confirmingDelete, titleVisibility: .visible) {
                 Button("Delete", role: .destructive) {
-                    if let item { modelContext.delete(item) }
+                    if let item {
+                        modelContext.delete(item)
+                        try? modelContext.saveIfNeeded()
+                    }
                     dismiss()
                 }
             }
@@ -154,7 +158,7 @@ struct ItemEditorView: View {
     }
 
     private func save() {
-        let target = item ?? ItineraryItem(title: "", dayIndex: day)
+        let target = item ?? SharedItineraryItem(context: modelContext, title: "", dayIndex: day)
         if item == nil {
             // After everything already on the day, so a new untimed item joins
             // the end of Anytime rather than jumping the queue.
@@ -171,9 +175,9 @@ struct ItemEditorView: View {
         target.latitude = place?.latitude
         target.longitude = place?.longitude
         if item == nil {
-            modelContext.insert(target)
             target.trip = trip
         }
+        try? modelContext.saveIfNeeded()
         dismiss()
     }
 }

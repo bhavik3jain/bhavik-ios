@@ -8,13 +8,13 @@ import Foundation
 /// filtered on dates freezes "today" at the moment the view was built, so a list
 /// left open past midnight kept yesterday's trip in progress.
 public struct TripGroups {
-    public let inProgress: [Trip]
-    public let upcoming: [Trip]
-    public let finished: [Trip]
+    public let inProgress: [SharedTrip]
+    public let upcoming: [SharedTrip]
+    public let finished: [SharedTrip]
 
-    public init(_ trips: [Trip], asOf now: Date = .now, calendar: Calendar = .current) {
+    public init(_ trips: [SharedTrip], asOf now: Date = .now, calendar: Calendar = .current) {
         let live = trips.filter { !$0.isArchived }
-        func phase(_ trip: Trip) -> TripPhase { TripPhase.of(trip, asOf: now, calendar: calendar) }
+        func phase(_ trip: SharedTrip) -> TripPhase { TripPhase.of(trip, asOf: now, calendar: calendar) }
         inProgress = live.filter { phase($0) == .inProgress }.sorted { $0.startDate < $1.startDate }
         upcoming = live.filter { phase($0) == .upcoming }.sorted { $0.startDate < $1.startDate }
         // Most recent first: the trip you just got back from is the one you look up.
@@ -41,7 +41,7 @@ public enum TripOverview {
 
     /// The line under "Trips" on the home screen. Lives here rather than in
     /// `HomeView` so it can be tested — the app target carries no suite.
-    public static func homeDetail(trips: [Trip], asOf now: Date = .now, calendar: Calendar = .current) -> String {
+    public static func homeDetail(trips: [SharedTrip], asOf now: Date = .now, calendar: Calendar = .current) -> String {
         let groups = TripGroups(trips, asOf: now, calendar: calendar)
         if let current = groups.inProgress.first {
             let dates = TripDates(start: current.startDate, end: current.endDate, calendar: calendar)
@@ -56,7 +56,7 @@ public enum TripOverview {
 
     /// The next flight still ahead of `now`. A flight with a departure time
     /// counts until it leaves; one without counts through the day it sits under.
-    public static func nextFlight(in trip: Trip, asOf now: Date = .now) -> Flight? {
+    public static func nextFlight(in trip: SharedTrip, asOf now: Date = .now) -> SharedFlight? {
         let dates = trip.dates
         let today = dates.offset(of: now)
         return (trip.flights ?? [])

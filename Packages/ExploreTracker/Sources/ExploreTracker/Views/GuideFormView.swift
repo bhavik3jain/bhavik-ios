@@ -1,5 +1,5 @@
 import Core // Only reached on macOS, where Core stands in for the iOS-only SwiftUI API below.
-import SwiftData
+import CoreData
 import SwiftUI
 
 /// New Guide, or editing an existing one's name and area.
@@ -7,10 +7,10 @@ import SwiftUI
 /// There is no location field on purpose: a guide's map and weather come from
 /// its places, so the area is only a label and is never looked up.
 struct GuideFormView: View {
-    let guide: Guide?
+    let guide: SharedGuide?
 
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.modelContext) private var modelContext
+    @Environment(\.managedObjectContext) private var modelContext
 
     @State private var name = ""
     @State private var areaLabel = ""
@@ -60,8 +60,9 @@ struct GuideFormView: View {
             guide.name = trimmedName
             guide.areaLabel = area
         } else {
-            modelContext.insert(Guide(name: trimmedName, areaLabel: area))
+            _ = SharedGuide(context: modelContext, name: trimmedName, areaLabel: area)
         }
+        try? modelContext.saveIfNeeded()
         dismiss()
     }
 }

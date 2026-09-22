@@ -1,6 +1,9 @@
 import Foundation
 import SwiftData
 
+/// The original SwiftData model, under its exact original name. See `Trip`'s
+/// (in `SwiftDataTrip.swift`) doc comment for why this still exists, must not
+/// be deleted, and must not be renamed.
 @Model
 public final class Flight {
     /// "BA".
@@ -29,22 +32,5 @@ public final class Flight {
         self.originCode = originCode
         self.destinationCode = destinationCode
         self.dayIndex = dayIndex
-    }
-
-    /// "BA 286", or whatever part of it exists.
-    public var designator: String {
-        [airlineCode, number].filter { !$0.isEmpty }.joined(separator: " ")
-    }
-
-    /// "FCO → LHR".
-    public var route: String {
-        guard !originCode.isEmpty || !destinationCode.isEmpty else { return "" }
-        return "\(originCode.isEmpty ? "?" : originCode) → \(destinationCode.isEmpty ? "?" : destinationCode)"
-    }
-
-    /// "BA 286 · FCO → LHR".
-    public var headline: String {
-        let parts = [designator, route].filter { !$0.isEmpty }
-        return parts.isEmpty ? "Flight" : parts.joined(separator: " · ")
     }
 }

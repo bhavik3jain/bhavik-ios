@@ -2,49 +2,27 @@ import Core
 import Foundation
 import SwiftData
 
-/// The three shelves every guide is split into.
-public enum PlaceCategory: String, Codable, CaseIterable, Identifiable, Sendable {
-    case foodAndDrinks
-    case places
-    case activities
-
-    public var id: String { rawValue }
-
-    public var displayName: String {
-        switch self {
-        case .foodAndDrinks: "Food & Drinks"
-        case .places: "Places"
-        case .activities: "Activities"
-        }
-    }
-
-    /// The map's filter chips are narrower than the segmented control.
-    public var shortName: String {
-        switch self {
-        case .foodAndDrinks: "Food"
-        case .places: "Places"
-        case .activities: "Activities"
-        }
-    }
-
-    public var symbolName: String {
-        switch self {
-        case .foodAndDrinks: "fork.knife"
-        case .places: "building.columns.fill"
-        case .activities: "figure.walk"
-        }
-    }
-
-    /// "6 food & drinks", "1 place", "2 activities" — the chips on a guide card.
-    public func countText(_ count: Int) -> String {
-        switch self {
-        case .foodAndDrinks: counted(count, "food & drink", plural: "food & drinks")
-        case .places: counted(count, "place")
-        case .activities: counted(count, "activity", plural: "activities")
-        }
-    }
-}
-
+/// The original SwiftData models. These keep their original class names —
+/// `Guide` / `GuidePlace` — because SwiftData ties a model's identity, and its
+/// CloudKit record type (`CD_Guide` / `CD_GuidePlace`), directly to the Swift
+/// class name, with no way to preserve identity across a rename without an
+/// explicit `VersionedSchema`/`SchemaMigrationPlan` (this repo has never used
+/// one). Renaming this class would make SwiftData treat it as a brand-new,
+/// unrelated entity and orphan every already-synced `CD_Guide` record in
+/// Production. This is the new Core Data side that got the `Shared` prefix
+/// instead — see `SharedGuide.swift`/`SharedGuidePlace.swift`. This file is a
+/// pure rename of the SwiftData models — every stored property, relationship
+/// and annotation is byte-for-byte what they have always been — so it is safe
+/// against the schema already deployed to Production.
+///
+/// `ExploreTrackerModule.models` still registers these types (as
+/// `Guide.self`/`GuidePlace.self`) so `AppSchema.models` keeps them in
+/// `BhavikApp`'s SwiftData container: the one-time importer in
+/// `ExploreLegacyMigration.swift` reads through them to copy real guides into
+/// the new Core Data store. Do NOT remove them from `AppSchema.models` — that
+/// is a separate, later, human-gated step, only once the user has confirmed
+/// on a real device that their existing data survived that import.
+///
 /// A named collection of places: somewhere to eat, something to see, something
 /// to do.
 ///
@@ -89,8 +67,20 @@ public final class Guide {
     }
 
     /// One category's places in the order the guide lists them.
+    ///
+    /// Inlined against `PlaceOrdering.Key`/`.precedes` rather than calling
+    /// `PlaceOrdering.ordered(_:)` — that helper is typed for the new Core
+    /// Data `GuidePlace`, and this legacy model has nothing left to migrate
+    /// to that type for.
     public func places(in category: PlaceCategory) -> [GuidePlace] {
-        PlaceOrdering.ordered(allPlaces.filter { $0.category == category })
+        allPlaces
+            .filter { $0.category == category }
+            .sorted {
+                PlaceOrdering.precedes(
+                    PlaceOrdering.Key(name: $0.name, isTried: $0.isTried, rating: $0.rating, addedAt: $0.addedAt),
+                    PlaceOrdering.Key(name: $1.name, isTried: $1.isTried, rating: $1.rating, addedAt: $1.addedAt)
+                )
+            }
     }
 }
 

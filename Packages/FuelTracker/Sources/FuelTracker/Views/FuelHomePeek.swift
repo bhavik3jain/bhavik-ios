@@ -5,7 +5,7 @@ public extension FuelTrackerModule {
     /// What long-pressing Fuel on the home screen shows: every vehicle at once,
     /// most recently filled first, without opening the module.
     @MainActor
-    static func homePeek(vehicles: [Vehicle]) -> some View {
+    static func homePeek(vehicles: [SharedVehicle]) -> some View {
         FuelHomePeek(summaries: VehicleSummary.fleet(vehicles))
     }
 }

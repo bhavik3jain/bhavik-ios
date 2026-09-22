@@ -19,7 +19,7 @@ final class PlaceSearch: NSObject {
         var id: String { "\(title)\n\(subtitle)" }
     }
 
-    /// What resolving a result produced: everything a `GuidePlace` stores.
+    /// What resolving a result produced: everything a `SharedGuidePlace` stores.
     struct Resolved: Equatable {
         let name: String
         let address: String

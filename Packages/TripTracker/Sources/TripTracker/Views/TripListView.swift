@@ -1,28 +1,34 @@
 import Core
-import SwiftData
+import CoreData
 import SwiftUI
 
 struct TripListView: View {
-    @Environment(\.modelContext) private var modelContext
+    @Environment(\.managedObjectContext) private var modelContext
 
-    // Only the archive flag is filtered in the query. The phase can't be: a
-    // `#Predicate` on dates captures "today" when the view is built, so a list
+    // Only the archive flag is filtered in the fetch. The phase can't be: an
+    // `NSPredicate` on dates captures "today" when the view is built, so a list
     // left open across midnight would keep a finished trip in progress. The
     // grouping happens in Swift below, fresh on every redraw.
-    @Query(filter: #Predicate<Trip> { !$0.isArchived }, sort: \Trip.startDate)
-    private var trips: [Trip]
-    @Query(filter: #Predicate<Trip> { $0.isArchived }, sort: \Trip.startDate, order: .reverse)
-    private var archived: [Trip]
+    @FetchRequest(
+        sortDescriptors: [NSSortDescriptor(keyPath: \SharedTrip.startDate, ascending: true)],
+        predicate: NSPredicate(format: "isArchived == NO")
+    )
+    private var trips: FetchedResults<SharedTrip>
+    @FetchRequest(
+        sortDescriptors: [NSSortDescriptor(keyPath: \SharedTrip.startDate, ascending: false)],
+        predicate: NSPredicate(format: "isArchived == YES")
+    )
+    private var archived: FetchedResults<SharedTrip>
 
     @State private var showingAdd = false
-    @State private var pendingDelete: Trip?
+    @State private var pendingDelete: SharedTrip?
 
     var body: some View {
         NavigationStack {
             // Re-read the clock once a minute, so "In progress" moves on at
             // midnight without anyone touching the screen.
             TimelineView(.everyMinute) { context in
-                content(groups: TripGroups(trips, asOf: context.date), now: context.date)
+                content(groups: TripGroups(Array(trips), asOf: context.date), now: context.date)
             }
             .navigationTitle("Trips")
             .toolbar {
@@ -38,7 +44,7 @@ struct TripListView: View {
             .sheet(isPresented: $showingAdd) {
                 TripEditorView(trip: nil)
             }
-            .navigationDestination(for: Trip.self) { trip in
+            .navigationDestination(for: SharedTrip.self) { trip in
                 TripDetailView(trip: trip)
             }
             .confirmationDialog(
@@ -49,6 +55,7 @@ struct TripListView: View {
                 Button("Delete Trip", role: .destructive) {
                     if let trip = pendingDelete {
                         modelContext.delete(trip)
+                        try? modelContext.saveIfNeeded()
                     }
                     pendingDelete = nil
                 }
@@ -111,7 +118,7 @@ struct TripListView: View {
         }
     }
 
-    private func row(for trip: Trip, @ViewBuilder label: () -> some View) -> some View {
+    private func row(for trip: SharedTrip, @ViewBuilder label: () -> some View) -> some View {
         NavigationLink(value: trip) {
             label()
         }
@@ -123,6 +130,7 @@ struct TripListView: View {
             }
             Button {
                 trip.isArchived = true
+                try? modelContext.saveIfNeeded()
             } label: {
                 Label("Archive", systemImage: "archivebox")
             }
@@ -134,7 +142,7 @@ struct TripListView: View {
 // MARK: - Rows
 
 struct InProgressTripCard: View {
-    let trip: Trip
+    let trip: SharedTrip
     let now: Date
 
     @State private var weather: [DayWeather] = []
@@ -218,7 +226,7 @@ struct InProgressTripCard: View {
 }
 
 struct UpcomingTripRow: View {
-    let trip: Trip
+    let trip: SharedTrip
     let now: Date
 
     var body: some View {
@@ -256,7 +264,7 @@ struct UpcomingTripRow: View {
 }
 
 struct FinishedTripRow: View {
-    let trip: Trip
+    let trip: SharedTrip
 
     var body: some View {
         HStack(spacing: 10) {
@@ -281,9 +289,12 @@ struct FinishedTripRow: View {
 }
 
 struct ArchivedTripsView: View {
-    @Environment(\.modelContext) private var modelContext
-    @Query(filter: #Predicate<Trip> { $0.isArchived }, sort: \Trip.startDate, order: .reverse)
-    private var trips: [Trip]
+    @Environment(\.managedObjectContext) private var modelContext
+    @FetchRequest(
+        sortDescriptors: [NSSortDescriptor(keyPath: \SharedTrip.startDate, ascending: false)],
+        predicate: NSPredicate(format: "isArchived == YES")
+    )
+    private var trips: FetchedResults<SharedTrip>
 
     var body: some View {
         List {
@@ -294,6 +305,7 @@ struct ArchivedTripsView: View {
                 .swipeActions(edge: .leading) {
                     Button {
                         trip.isArchived = false
+                        try? modelContext.saveIfNeeded()
                     } label: {
                         Label("Unarchive", systemImage: "tray.and.arrow.up")
                     }
@@ -304,6 +316,7 @@ struct ArchivedTripsView: View {
                 for index in offsets {
                     modelContext.delete(trips[index])
                 }
+                try? modelContext.saveIfNeeded()
             }
         }
         .overlay {

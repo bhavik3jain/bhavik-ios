@@ -1,7 +1,7 @@
 import Core
+import CoreData
 import CoreLocation
 import MapKit
-import SwiftData
 import SwiftUI
 
 /// Every place in a guide on one map, with the reader's own position shown as
@@ -12,29 +12,29 @@ import SwiftUI
 /// and updates stop the moment it closes, because the `.task` that reads them
 /// is cancelled with the view.
 struct GuideMapView: View {
-    let guide: Guide
+    let guide: SharedGuide
 
     @Environment(\.openURL) private var openURL
     @State private var filter: PlaceCategory?
-    @State private var selectedID: PersistentIdentifier?
+    @State private var selectedID: NSManagedObjectID?
     @State private var position: MapCameraPosition = .automatic
     @State private var userPoint: GeoPoint?
-    @State private var detailPlace: GuidePlace?
+    @State private var detailPlace: SharedGuidePlace?
     @State private var showsWeather = false
     @State private var locationManager = CLLocationManager()
 
-    private var mapped: [GuidePlace] {
+    private var mapped: [SharedGuidePlace] {
         guide.allPlaces.filter { $0.point != nil }
     }
 
-    private var visible: [GuidePlace] {
+    private var visible: [SharedGuidePlace] {
         guard let filter else { return mapped }
         return mapped.filter { $0.category == filter }
     }
 
-    private var selected: GuidePlace? {
+    private var selected: SharedGuidePlace? {
         guard let selectedID else { return nil }
-        return mapped.first { $0.persistentModelID == selectedID }
+        return mapped.first { $0.objectID == selectedID }
     }
 
     private var region: GuideRegion? {
@@ -48,7 +48,7 @@ struct GuideMapView: View {
                 if let point = place.point {
                     Marker(place.name, systemImage: place.category.symbolName, coordinate: point.coordinate)
                         .tint(place.category.tint)
-                        .tag(place.persistentModelID)
+                        .tag(place.objectID)
                 }
             }
         }
@@ -152,12 +152,12 @@ struct GuideMapView: View {
     /// Distance is worked out here, in Swift, from the latest fix — it depends
     /// on where the reader is standing, so it can never be a stored value or a
     /// query.
-    private func estimate(to place: GuidePlace) -> WalkingEstimate? {
+    private func estimate(to place: SharedGuidePlace) -> WalkingEstimate? {
         guard let userPoint, let point = place.point else { return nil }
         return WalkingEstimate(from: userPoint, to: point)
     }
 
-    private func openDirections(to place: GuidePlace) {
+    private func openDirections(to place: SharedGuidePlace) {
         PlaceDirections.open(place, walking: estimate(to: place)?.prefersWalkingDirections ?? false, openURL: openURL)
     }
 
@@ -180,7 +180,7 @@ struct GuideMapView: View {
 
 /// The card that rises from the bottom when a pin is tapped.
 struct PlaceMapCard: View {
-    let place: GuidePlace
+    let place: SharedGuidePlace
     let estimate: WalkingEstimate?
     let directions: () -> Void
     let details: () -> Void

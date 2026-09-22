@@ -12,6 +12,9 @@ let package = Package(
     ],
     targets: [
         .target(name: "TripTracker", dependencies: ["Core"]),
-        .testTarget(name: "TripTrackerTests", dependencies: ["TripTracker"])
+        // "Core" too, not just "TripTracker" — Support.swift's makeContext()
+        // builds an in-memory store straight off CloudSharedStore.makeContainer(),
+        // the same way the app itself does, rather than duplicating that setup.
+        .testTarget(name: "TripTrackerTests", dependencies: ["TripTracker", "Core"])
     ]
 )

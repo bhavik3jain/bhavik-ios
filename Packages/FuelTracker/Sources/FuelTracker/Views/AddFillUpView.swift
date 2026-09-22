@@ -1,12 +1,12 @@
 import Core // Only reached on macOS, where Core stands in for the iOS-only SwiftUI API below.
-import SwiftData
+import CoreData
 import SwiftUI
 
 struct AddFillUpView: View {
-    let vehicle: Vehicle
+    let vehicle: SharedVehicle
 
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.modelContext) private var modelContext
+    @Environment(\.managedObjectContext) private var modelContext
 
     @State private var date = Date.now
     @State private var odometerText = ""
@@ -116,7 +116,8 @@ struct AddFillUpView: View {
 
     private func save() {
         guard let odometer else { return }
-        let entry = FuelEntry(
+        let entry = SharedFuelEntry(
+            context: modelContext,
             date: date,
             odometer: odometer,
             gallons: gallons ?? 0,
@@ -126,7 +127,7 @@ struct AddFillUpView: View {
             station: station
         )
         entry.vehicle = vehicle
-        modelContext.insert(entry)
+        try? modelContext.saveIfNeeded()
         dismiss()
     }
 }

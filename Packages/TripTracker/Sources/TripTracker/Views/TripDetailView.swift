@@ -1,5 +1,5 @@
 import Core // Only reached on macOS, where Core stands in for the iOS-only SwiftUI API below.
-import SwiftData
+import CoreData
 import SwiftUI
 
 /// The three faces of one trip.
@@ -22,28 +22,32 @@ enum TripSection: String, CaseIterable, Identifiable {
 /// What the trip screen can present over itself.
 enum TripSheet: Identifiable {
     case newItem(day: Int)
-    case item(ItineraryItem)
+    case item(SharedItineraryItem)
     case newFlight(day: Int)
-    case flight(Flight)
+    case flight(SharedFlight)
     case newBooking
-    case booking(Booking)
+    case booking(SharedBooking)
     case editTrip
 
     var id: String {
         switch self {
         case .newItem(let day): "new-item-\(day)"
-        case .item(let item): "item-\(item.persistentModelID.hashValue)"
+        case .item(let item): "item-\(item.objectID.hashValue)"
         case .newFlight(let day): "new-flight-\(day)"
-        case .flight(let flight): "flight-\(flight.persistentModelID.hashValue)"
+        case .flight(let flight): "flight-\(flight.objectID.hashValue)"
         case .newBooking: "new-booking"
-        case .booking(let booking): "booking-\(booking.persistentModelID.hashValue)"
+        case .booking(let booking): "booking-\(booking.objectID.hashValue)"
         case .editTrip: "edit-trip"
         }
     }
 }
 
 struct TripDetailView: View {
-    @Bindable var trip: Trip
+    // NSManagedObject conforms to `ObservableObject`, not the newer `Observable`
+    // macro protocol `@Bindable` requires on this SDK (it's `unavailable` for
+    // ObservableObject types here) — `@ObservedObject` is Core Data's actual
+    // equivalent, and nothing below binds through `$trip` anyway.
+    @ObservedObject var trip: SharedTrip
 
     // A segmented control rather than a nested TabView: the module's tab bar is
     // already on screen, and a second bar of tabs inside a pushed screen reads as
@@ -53,7 +57,7 @@ struct TripDetailView: View {
     @State private var weather: [DayWeather] = []
     @State private var sheet: TripSheet?
 
-    init(trip: Trip) {
+    init(trip: SharedTrip) {
         self.trip = trip
         _selectedDay = State(initialValue: TripDates.initialDay(for: trip))
     }

@@ -1,11 +1,9 @@
 import Foundation
 import SwiftData
 
-public enum EntryKind: String, Codable, CaseIterable, Sendable {
-    case fillUp
-    case service
-}
-
+/// The original SwiftData model. See `Vehicle`'s doc comment (in
+/// `SwiftDataVehicle.swift`) for why this still exists, under its exact
+/// original name, and must not be deleted.
 @Model
 public final class FuelEntry {
     public var kindRaw: String = EntryKind.fillUp.rawValue

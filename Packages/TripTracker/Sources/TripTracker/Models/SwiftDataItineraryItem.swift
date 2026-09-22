@@ -1,37 +1,9 @@
 import Foundation
 import SwiftData
 
-public enum ItemKind: String, Codable, CaseIterable, Sendable {
-    case sight
-    case food
-    case activity
-    case lodging
-    case transit
-    case other
-
-    public var displayName: String {
-        switch self {
-        case .sight: "Sight"
-        case .food: "Food & drink"
-        case .activity: "Activity"
-        case .lodging: "Stay"
-        case .transit: "Getting around"
-        case .other: "Other"
-        }
-    }
-
-    public var symbolName: String {
-        switch self {
-        case .sight: "building.columns"
-        case .food: "fork.knife"
-        case .activity: "figure.walk"
-        case .lodging: "bed.double"
-        case .transit: "tram"
-        case .other: "mappin"
-        }
-    }
-}
-
+/// The original SwiftData model, under its exact original name. See `Trip`'s
+/// (in `SwiftDataTrip.swift`) doc comment for why this still exists, must not
+/// be deleted, and must not be renamed.
 @Model
 public final class ItineraryItem {
     public var title: String = ""
@@ -68,12 +40,5 @@ public final class ItineraryItem {
         self.dayIndex = dayIndex
         self.startTime = startTime
         self.sortOrder = sortOrder
-    }
-
-    /// Ticks or unticks, stamping when — the stamp is what a finished trip's log
-    /// reads back.
-    public func toggleDone(asOf now: Date = .now) {
-        isDone.toggle()
-        doneAt = isDone ? now : nil
     }
 }

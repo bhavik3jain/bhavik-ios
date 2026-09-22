@@ -1,13 +1,13 @@
 import Core // Only reached on macOS, where Core stands in for the iOS-only SwiftUI API below.
-import SwiftData
+import CoreData
 import SwiftUI
 
 /// Adds a trip, or edits one when given it.
 struct TripEditorView: View {
-    let trip: Trip?
+    let trip: SharedTrip?
 
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.modelContext) private var modelContext
+    @Environment(\.managedObjectContext) private var modelContext
 
     @State private var title = ""
     @State private var destination = ""
@@ -102,7 +102,7 @@ struct TripEditorView: View {
 
     private func save() {
         let calendar = Calendar.current
-        let target = trip ?? Trip(title: "", startDate: startDate, endDate: endDate)
+        let target = trip ?? SharedTrip(context: modelContext, title: "", startDate: startDate, endDate: endDate)
         target.title = title.trimmingCharacters(in: .whitespaces)
         target.destination = destination
         target.latitude = latitude
@@ -111,9 +111,7 @@ struct TripEditorView: View {
         target.endDate = calendar.startOfDay(for: max(startDate, endDate))
         target.notes = notes
         target.clampPlanToDates()
-        if trip == nil {
-            modelContext.insert(target)
-        }
+        try? modelContext.saveIfNeeded()
         dismiss()
     }
 }

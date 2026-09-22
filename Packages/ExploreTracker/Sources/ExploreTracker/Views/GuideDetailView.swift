@@ -1,19 +1,19 @@
 import Core
+import CoreData
 import MapKit
-import SwiftData
 import SwiftUI
 
 struct GuideDetailView: View {
-    let guide: Guide
+    let guide: SharedGuide
 
-    @Environment(\.modelContext) private var modelContext
+    @Environment(\.managedObjectContext) private var modelContext
     @State private var category: PlaceCategory = .foodAndDrinks
     @State private var showingAddPlace = false
     @State private var showingEdit = false
     @State private var showingMap = false
 
     private var summary: GuideSummary { GuideSummary.summarize(guide) }
-    private var shown: [GuidePlace] { guide.places(in: category) }
+    private var shown: [SharedGuidePlace] { guide.places(in: category) }
 
     var body: some View {
         let summary = summary
@@ -59,6 +59,7 @@ struct GuideDetailView: View {
                         .swipeActions(edge: .leading) {
                             Button(place.isTried ? "To try" : "Tried", systemImage: place.isTried ? "arrow.uturn.backward" : "checkmark") {
                                 place.setTried(!place.isTried)
+                                try? modelContext.saveIfNeeded()
                             }
                             .tint(ExploreTrackerModule.accent.color)
                         }
@@ -68,6 +69,7 @@ struct GuideDetailView: View {
                         for index in offsets {
                             modelContext.delete(places[index])
                         }
+                        try? modelContext.saveIfNeeded()
                     }
                 }
             }
@@ -91,6 +93,7 @@ struct GuideDetailView: View {
                     systemImage: guide.isPinned ? "pin.slash" : "pin"
                 ) {
                     guide.setPinned(!guide.isPinned)
+                    try? modelContext.saveIfNeeded()
                 }
             }
         }
@@ -140,7 +143,7 @@ struct GuideDetailView: View {
 /// A place in a guide's list: what it is, why it's there, and whether it's
 /// been tried.
 struct PlaceRow: View {
-    let place: GuidePlace
+    let place: SharedGuidePlace
 
     var body: some View {
         HStack(spacing: 12) {
@@ -172,7 +175,7 @@ struct PlaceRow: View {
 
 /// "To try", or once tried its stars — or "Tried" when no rating was given.
 struct PlaceStatusBadge: View {
-    let place: GuidePlace
+    let place: SharedGuidePlace
 
     var body: some View {
         if place.isTried, place.rating > 0 {
@@ -211,7 +214,7 @@ enum PlaceDirections {
     /// default mode. A place added by hand has no coordinates, so Maps is asked
     /// to find its address instead.
     @MainActor
-    static func open(_ place: GuidePlace, walking: Bool, openURL: OpenURLAction) {
+    static func open(_ place: SharedGuidePlace, walking: Bool, openURL: OpenURLAction) {
         if let point = place.point {
             let item = MKMapItem(placemark: MKPlacemark(coordinate: point.coordinate))
             item.name = place.name
@@ -223,11 +226,11 @@ enum PlaceDirections {
         }
     }
 
-    static func canOpen(_ place: GuidePlace) -> Bool {
+    static func canOpen(_ place: SharedGuidePlace) -> Bool {
         place.point != nil || !place.address.isEmpty
     }
 
-    private static func searchURL(for place: GuidePlace) -> URL? {
+    private static func searchURL(for place: SharedGuidePlace) -> URL? {
         guard !place.address.isEmpty else { return nil }
         var components = URLComponents(string: "https://maps.apple.com/")
         components?.queryItems = [URLQueryItem(name: "daddr", value: "\(place.name), \(place.address)")]

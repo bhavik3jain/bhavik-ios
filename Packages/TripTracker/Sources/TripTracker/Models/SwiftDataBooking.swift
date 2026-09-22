@@ -1,37 +1,9 @@
 import Foundation
 import SwiftData
 
-public enum BookingKind: String, Codable, CaseIterable, Sendable {
-    case lodging
-    case car
-    case train
-    case tickets
-    case restaurant
-    case other
-
-    public var displayName: String {
-        switch self {
-        case .lodging: "Lodging"
-        case .car: "Car"
-        case .train: "Train & bus"
-        case .tickets: "Tickets"
-        case .restaurant: "Restaurant"
-        case .other: "Other"
-        }
-    }
-
-    public var symbolName: String {
-        switch self {
-        case .lodging: "bed.double.fill"
-        case .car: "car.fill"
-        case .train: "tram.fill"
-        case .tickets: "ticket.fill"
-        case .restaurant: "fork.knife"
-        case .other: "doc.text.fill"
-        }
-    }
-}
-
+/// The original SwiftData model, under its exact original name. See `Trip`'s
+/// (in `SwiftDataTrip.swift`) doc comment for why this still exists, must not
+/// be deleted, and must not be renamed.
 @Model
 public final class Booking {
     /// "Hotel de Russie".

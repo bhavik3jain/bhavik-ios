@@ -1,4 +1,5 @@
 import Core
+import CoreData
 import ExploreTracker
 import FuelTracker
 import GymTracker
@@ -26,7 +27,36 @@ struct BhavikApp: App {
     static let cloudContainerID = "iCloud.com.bhavikjain.trackers"
 
     let container: ModelContainer
+    /// Trips' own Core Data store — the first of the three modules (Trips,
+    /// Fuel, Explore) moving off SwiftData onto `CloudSharedStore` for CKShare
+    /// support. Threaded to `HomeView` via `.environment(\.managedObjectContext, _)`
+    /// below, the same way `.modelContainer(container)` threads the SwiftData
+    /// container — see `HomeView.swift` and `TripTrackerModule.rootView(context:)`.
+    let tripContainer: NSPersistentCloudKitContainer
+    /// Fuel's own Core Data store — the second of the three modules moving
+    /// off SwiftData onto `CloudSharedStore`. Threaded to `HomeView` via the
+    /// `\.fuelManagedObjectContext` environment key (`Core`'s
+    /// `ModuleManagedObjectContexts.swift`) rather than the standard
+    /// `\.managedObjectContext` Trips already occupies at this level — see
+    /// that file's doc comment for why a second module needs a key of its
+    /// own here.
+    let fuelContainer: NSPersistentCloudKitContainer
+    /// Explore's own Core Data store — the third and last of the three
+    /// modules moving off SwiftData onto `CloudSharedStore`. Threaded to
+    /// `HomeView` via its own `\.exploreManagedObjectContext` key, the same
+    /// reason `fuelContainer` needed one rather than sharing Trips'
+    /// `\.managedObjectContext`.
+    let exploreContainer: NSPersistentCloudKitContainer
     @AppStorage(Appearance.defaultsKey) private var appearanceRaw = Appearance.system.rawValue
+
+    // Only reason for an app/scene delegate in an otherwise pure SwiftUI App:
+    // CKShare-accept has no SwiftUI-native entry point on either platform.
+    // See ShareAcceptDelegate.swift.
+    #if os(iOS)
+    @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+    #elseif os(macOS)
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+    #endif
 
     init() {
         do {
@@ -38,6 +68,27 @@ struct BhavikApp: App {
             if CloudKitSchemaInitializer.isRequested {
                 let scratch = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true, cloudKitDatabase: .none)
                 container = try ModelContainer(for: schema, configurations: [scratch])
+                // Same reasoning, for Trips' and Fuel's Core Data stores: a
+                // schema-probing launch must never touch the real store,
+                // these included.
+                tripContainer = CloudSharedStore.makeContainer(
+                    name: "TripStore",
+                    model: TripModel.make(),
+                    containerID: Self.cloudContainerID,
+                    inMemory: true
+                )
+                fuelContainer = CloudSharedStore.makeContainer(
+                    name: "FuelStore",
+                    model: FuelModel.make(),
+                    containerID: Self.cloudContainerID,
+                    inMemory: true
+                )
+                exploreContainer = CloudSharedStore.makeContainer(
+                    name: "ExploreStore",
+                    model: GuideModel.make(),
+                    containerID: Self.cloudContainerID,
+                    inMemory: true
+                )
                 return
             }
             #endif
@@ -46,6 +97,38 @@ struct BhavikApp: App {
                 cloudKitDatabase: .private(Self.cloudContainerID)
             )
             container = try ModelContainer(for: schema, configurations: [configuration])
+
+            tripContainer = CloudSharedStore.makeContainer(
+                name: "TripStore",
+                model: TripModel.make(),
+                containerID: Self.cloudContainerID
+            )
+            // "CD_SharedTrip" — CloudKitSchemaInitializer.swift's own "CD_" +
+            // entity name convention for Core Data record types (TripModel's
+            // Trip entity is named "SharedTrip", not "Trip" — see
+            // TripModel.swift), so an incoming share invitation for a Trip
+            // routes to this container.
+            ShareAcceptRouter.shared.register(recordTypePrefix: "CD_SharedTrip", container: tripContainer)
+
+            fuelContainer = CloudSharedStore.makeContainer(
+                name: "FuelStore",
+                model: FuelModel.make(),
+                containerID: Self.cloudContainerID
+            )
+            // "CD_SharedVehicle" — same "CD_" + entity name convention, for
+            // Fuel's CKShare root (FuelModel's Vehicle entity is named
+            // "SharedVehicle", not "Vehicle" — see FuelModel.swift).
+            ShareAcceptRouter.shared.register(recordTypePrefix: "CD_SharedVehicle", container: fuelContainer)
+
+            exploreContainer = CloudSharedStore.makeContainer(
+                name: "ExploreStore",
+                model: GuideModel.make(),
+                containerID: Self.cloudContainerID
+            )
+            // "CD_SharedGuide" — same "CD_" + entity name convention, for
+            // Explore's CKShare root (GuideModel's Guide entity is named
+            // "SharedGuide", not "Guide" — see GuideModel.swift).
+            ShareAcceptRouter.shared.register(recordTypePrefix: "CD_SharedGuide", container: exploreContainer)
         } catch {
             fatalError("Failed to create ModelContainer: \(error)")
         }
@@ -73,6 +156,16 @@ struct BhavikApp: App {
             #endif
         }
         .modelContainer(container)
+        // Threads Trips' Core Data context to HomeView (its own @FetchRequest,
+        // and what it passes on explicitly to TripTrackerModule.rootView(context:))
+        // and to the module itself once opened, the same way .modelContainer
+        // above threads the SwiftData context to every other module's @Query.
+        .environment(\.managedObjectContext, tripContainer.viewContext)
+        // Fuel's own key — see `fuelContainer`'s doc comment above for why
+        // this isn't also `\.managedObjectContext`.
+        .environment(\.fuelManagedObjectContext, fuelContainer.viewContext)
+        // Explore's own key — same reasoning as Fuel's.
+        .environment(\.exploreManagedObjectContext, exploreContainer.viewContext)
         #if os(macOS)
         // A left-over default-sized window reads as an unfinished iPhone app
         // squeezed onto a Mac; a sidebar layout wants the width to show it.

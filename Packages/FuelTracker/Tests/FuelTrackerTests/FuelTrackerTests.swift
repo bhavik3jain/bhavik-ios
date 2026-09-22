@@ -1,15 +1,40 @@
 import Core
+import CoreData
 import Foundation
-import SwiftData
+import ObjectiveC
 import Testing
 @testable import FuelTracker
 
+/// Associated-object key for tying a returned context's lifetime to the
+/// container that built it — see `makeContext()`. `objc_setAssociatedObject`
+/// only ever uses this variable's fixed address, as a `&`-taken pointer, never
+/// its value — `nonisolated(unsafe)` is safe here for exactly that reason.
+private nonisolated(unsafe) var associatedContainerKey: UInt8 = 0
+
 @MainActor
-private func makeContext() throws -> ModelContext {
-    let schema = Schema(FuelTrackerModule.models)
-    let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
-    let container = try ModelContainer(for: schema, configurations: [configuration])
-    return ModelContext(container)
+private func makeContext() throws -> NSManagedObjectContext {
+    // A fresh, uniquely-named container per call, not one fixed name shared by
+    // every test: Swift Testing runs test functions in parallel by default,
+    // and two containers built from the same name resolve to the same default
+    // store URL — even the in-memory store type keeps that URL as the
+    // coordinator's registration key, so two tests racing to add their own
+    // in-memory store "at" it corrupted each other's data intermittently.
+    let container = CloudSharedStore.makeContainer(
+        name: "FuelStoreTests-\(UUID().uuidString)",
+        model: FuelModel.make(),
+        containerID: "iCloud.com.bhavikjain.trackers.tests",
+        inMemory: true
+    )
+    let context = container.viewContext
+    // Apple's own documented gotcha: nothing else keeps `container` alive once
+    // this function returns just its `viewContext` — a context does NOT retain
+    // its own container — so without this, ARC was free to deallocate it right
+    // after `makeContext()` returned, and every test reading back through the
+    // context afterward (which is all of them) was working against a
+    // half-torn-down store. Tying its lifetime to the context it handed out
+    // fixes that without changing every test's signature.
+    objc_setAssociatedObject(context, &associatedContainerKey, container, .OBJC_ASSOCIATION_RETAIN)
+    return context
 }
 
 private func fixtureText() throws -> String {
@@ -56,7 +81,7 @@ private func fixtureText() throws -> String {
     let context = try makeContext()
     _ = try FuellyImporter.importCSV(text: fixtureText(), into: context)
 
-    let vehicles = try context.fetch(FetchDescriptor<Vehicle>())
+    let vehicles = try context.fetch(SharedVehicle.fetchRequest())
     #expect(vehicles.count == 2)
 
     let q5 = try #require(vehicles.first { $0.name == "My Q5" })
@@ -76,7 +101,7 @@ private func fixtureText() throws -> String {
 
     #expect(second.totalImported == 0)
     #expect(second.duplicatesSkipped == first.totalImported)
-    #expect(try context.fetchCount(FetchDescriptor<FuelEntry>()) == first.totalImported)
+    #expect(try context.count(for: SharedFuelEntry.fetchRequest()) == first.totalImported)
 }
 
 @MainActor
@@ -84,7 +109,7 @@ private func fixtureText() throws -> String {
     let context = try makeContext()
     _ = try FuellyImporter.importCSV(text: fixtureText(), into: context)
 
-    let entries = try context.fetch(FetchDescriptor<FuelEntry>())
+    let entries = try context.fetch(SharedFuelEntry.fetchRequest())
     let entry = try #require(entries.first { $0.odometer == 37_057 })
 
     #expect(entry.gallons == 16.095)
@@ -105,7 +130,7 @@ private func fixtureText() throws -> String {
     let context = try makeContext()
     _ = try FuellyImporter.importCSV(text: fixtureText(), into: context)
 
-    let entries = try context.fetch(FetchDescriptor<FuelEntry>())
+    let entries = try context.fetch(SharedFuelEntry.fetchRequest())
     let partials = entries.filter { $0.kind == .fillUp && !$0.isFullTank }
     #expect(partials.count == 2)
     #expect(partials.allSatisfy { $0.gallons > 0 })
@@ -114,10 +139,12 @@ private func fixtureText() throws -> String {
 
 // MARK: - Fuel economy
 
-@Test func mpgIsMeasuredBetweenFullTanks() {
+@MainActor
+@Test func mpgIsMeasuredBetweenFullTanks() throws {
+    let context = try makeContext()
     let entries = [
-        FuelEntry(date: .now, odometer: 1000, gallons: 10, isFullTank: true),
-        FuelEntry(date: .now, odometer: 1300, gallons: 10, isFullTank: true)
+        SharedFuelEntry(context: context, date: .now, odometer: 1000, gallons: 10, isFullTank: true),
+        SharedFuelEntry(context: context, date: .now, odometer: 1300, gallons: 10, isFullTank: true)
     ]
     let points = FuelStatistics.mpgPoints(for: entries)
 
@@ -126,11 +153,13 @@ private func fixtureText() throws -> String {
     #expect(points[0].mpg == 30)
 }
 
-@Test func partialFillRollsIntoTheNextFullTank() {
+@MainActor
+@Test func partialFillRollsIntoTheNextFullTank() throws {
+    let context = try makeContext()
     let entries = [
-        FuelEntry(date: .now, odometer: 1000, gallons: 10, isFullTank: true),
-        FuelEntry(date: .now, odometer: 1150, gallons: 4, isFullTank: false),
-        FuelEntry(date: .now, odometer: 1300, gallons: 6, isFullTank: true)
+        SharedFuelEntry(context: context, date: .now, odometer: 1000, gallons: 10, isFullTank: true),
+        SharedFuelEntry(context: context, date: .now, odometer: 1150, gallons: 4, isFullTank: false),
+        SharedFuelEntry(context: context, date: .now, odometer: 1300, gallons: 6, isFullTank: true)
     ]
     let points = FuelStatistics.mpgPoints(for: entries)
 
@@ -140,11 +169,13 @@ private func fixtureText() throws -> String {
     #expect(points[0].mpg == 30)
 }
 
-@Test func serviceRecordsAreIgnoredByFuelEconomy() {
+@MainActor
+@Test func serviceRecordsAreIgnoredByFuelEconomy() throws {
+    let context = try makeContext()
     let entries = [
-        FuelEntry(date: .now, odometer: 1000, gallons: 10, isFullTank: true),
-        FuelEntry(kind: .service, date: .now, odometer: 1100, totalCost: 500),
-        FuelEntry(date: .now, odometer: 1300, gallons: 10, isFullTank: true)
+        SharedFuelEntry(context: context, date: .now, odometer: 1000, gallons: 10, isFullTank: true),
+        SharedFuelEntry(context: context, kind: .service, date: .now, odometer: 1100, totalCost: 500),
+        SharedFuelEntry(context: context, date: .now, odometer: 1300, gallons: 10, isFullTank: true)
     ]
     let points = FuelStatistics.mpgPoints(for: entries)
 
@@ -157,7 +188,7 @@ private func fixtureText() throws -> String {
     let context = try makeContext()
     _ = try FuellyImporter.importCSV(text: fixtureText(), into: context)
 
-    let vehicles = try context.fetch(FetchDescriptor<Vehicle>())
+    let vehicles = try context.fetch(SharedVehicle.fetchRequest())
     let q5 = try #require(vehicles.first { $0.name == "My Q5" })
     let x3 = try #require(vehicles.first { $0.name == "My X3" })
 
@@ -177,7 +208,7 @@ private func fixtureText() throws -> String {
     let context = try makeContext()
     _ = try FuellyImporter.importCSV(text: fixtureText(), into: context)
 
-    let vehicles = try context.fetch(FetchDescriptor<Vehicle>())
+    let vehicles = try context.fetch(SharedVehicle.fetchRequest())
     let q5 = try #require(vehicles.first { $0.name == "My Q5" })
 
     // The export carries a row dated 2025-12-31 that sits between December 2024
@@ -196,13 +227,12 @@ private func day(_ year: Int, _ month: Int, _ day: Int) -> Date {
 }
 
 @MainActor
-private func addVehicle(_ name: String, fills: [(odometer: Int, date: Date)], to context: ModelContext) -> Vehicle {
-    let vehicle = Vehicle(name: name)
-    context.insert(vehicle)
+@discardableResult
+private func addVehicle(_ name: String, fills: [(odometer: Int, date: Date)], to context: NSManagedObjectContext) -> SharedVehicle {
+    let vehicle = SharedVehicle(context: context, name: name)
     for fill in fills {
-        let entry = FuelEntry(date: fill.date, odometer: fill.odometer, gallons: 10, totalCost: 40)
+        let entry = SharedFuelEntry(context: context, date: fill.date, odometer: fill.odometer, gallons: 10, totalCost: 40)
         entry.vehicle = vehicle
-        context.insert(entry)
     }
     return vehicle
 }
@@ -211,8 +241,10 @@ private func addVehicle(_ name: String, fills: [(odometer: Int, date: Date)], to
 private func importedFleet() throws -> [VehicleSummary] {
     let context = try makeContext()
     _ = try FuellyImporter.importCSV(text: fixtureText(), into: context)
-    try context.save()
-    return VehicleSummary.fleet(try context.fetch(FetchDescriptor<Vehicle>(sortBy: [SortDescriptor(\.createdAt)])))
+    try context.saveIfNeeded()
+    return VehicleSummary.fleet(
+        try context.fetch(SharedVehicle.fetchRequest(sortDescriptors: [NSSortDescriptor(keyPath: \SharedVehicle.createdAt, ascending: true)]))
+    )
 }
 
 @MainActor
@@ -253,9 +285,9 @@ private func importedFleet() throws -> [VehicleSummary] {
     // A typo'd year on an early fill-up. Ordering by the latest *date* would
     // pin this car to the top forever; the odometer-last fill-up is March.
     _ = addVehicle("Typo", fills: [(5000, day(2027, 1, 1)), (5300, day(2026, 3, 1))], to: context)
-    try context.save()
+    try context.saveIfNeeded()
 
-    let fleet = VehicleSummary.fleet(try context.fetch(FetchDescriptor<Vehicle>()))
+    let fleet = VehicleSummary.fleet(try context.fetch(SharedVehicle.fetchRequest()))
     #expect(fleet.map(\.name) == ["Daily", "Typo"])
 }
 
@@ -290,7 +322,7 @@ private func importedFleet() throws -> [VehicleSummary] {
 @Test func summaryOfAVehicleWithNoFillUpsReportsUnknownRatherThanZero() throws {
     let context = try makeContext()
     let vehicle = addVehicle("New", fills: [], to: context)
-    try context.save()
+    try context.saveIfNeeded()
 
     let summary = VehicleSummary.summarize(vehicle)
     #expect(summary.averageMPG == nil)
@@ -317,12 +349,12 @@ private func importedFleet() throws -> [VehicleSummary] {
 
     let context = try makeContext()
     let vehicle = addVehicle("Solo", fills: [(1000, day(2026, 1, 1)), (1300, day(2026, 2, 1))], to: context)
-    try context.save()
+    try context.saveIfNeeded()
     // 300 miles on the 10 gallons that closed the second tank.
     #expect(VehicleSummary.homeDetail(for: [VehicleSummary.summarize(vehicle)]) == "Solo · 30.0 mpg")
 
     let fresh = addVehicle("Fresh", fills: [], to: context)
-    try context.save()
+    try context.saveIfNeeded()
     #expect(VehicleSummary.homeDetail(for: [VehicleSummary.summarize(fresh)]) == "Fresh")
 }
 

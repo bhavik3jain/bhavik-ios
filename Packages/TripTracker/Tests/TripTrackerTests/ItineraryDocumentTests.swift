@@ -1,5 +1,5 @@
+import CoreData
 import Foundation
-import SwiftData
 import Testing
 @testable import TripTracker
 
@@ -87,10 +87,9 @@ private extension ItineraryDocument {
     let context = try makeContext()
     let trip = makeRome(in: context)
     addFlight(("BA", "286"), to: trip, in: context, day: 8, departs: day(6, 14, 18, 40), code: "ABC123")
-    let car = Booking(title: "Avis", kind: .car, code: "IT-77301")
-    let hotel = Booking(title: "Hotel de Russie", kind: .lodging, code: "RM-88412")
+    let car = SharedBooking(context: context, title: "Avis", kind: .car, code: "IT-77301")
+    let hotel = SharedBooking(context: context, title: "Hotel de Russie", kind: .lodging, code: "RM-88412")
     for booking in [car, hotel] {
-        context.insert(booking)
         booking.trip = trip
     }
 
@@ -103,10 +102,9 @@ private extension ItineraryDocument {
 @Test func aSecureNoteNeverReachesThePageModel() throws {
     let context = try makeContext()
     let trip = makeRome(in: context)
-    let flat = Booking(title: "Amalfi apartment", kind: .lodging, code: "HMX4920")
+    let flat = SharedBooking(context: context, title: "Amalfi apartment", kind: .lodging, code: "HMX4920")
     flat.secureNote = "DOOR-4471#"
     flat.notes = "Buzz twice"
-    context.insert(flat)
     flat.trip = trip
     addItem("Arrive", to: trip, in: context, day: 4, at: (14, 0))
 
