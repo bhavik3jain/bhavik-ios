@@ -79,13 +79,25 @@ deliberate, selecting it dismisses rather than showing a screen — and ends wit
 name a real tab, never `ModuleTab.home`, or the module reopens blank. All six root views do this
 identically, and nothing can catch a violation: views are untested by policy.
 
-## macOS: one file holds every platform conditional
+## macOS: one file holds every platform conditional *inside a module*
 
 Feature packages contain **zero** `#if os(...)`. It all lives in Core: `MacCompat.swift` (no-op shims
 for `keyboardType`, `textInputAutocapitalization`, `navigationBarTitleDisplayMode`, `EditButton`, and
 `fullScreenCover` → `.sheet`, plus a `UIPasteboard` stand-in backed by `NSPasteboard` for Trips'
 tap-to-copy), `SafariView.swift`, `GlassEffects.swift`. An iOS-only SwiftUI modifier
 needed in a feature package means **adding a shim to MacCompat.swift**, not a `#if` at the call site.
+
+This rule is scoped to `Packages/<Module>` — a module's own screens genuinely are identical on both
+platforms. `App/Sources/HomeView.swift` and `BhavikApp.swift` are the composition root, not a feature
+package, and **do** carry `#if os(macOS)` directly: the hub itself is platform-specific by design —
+iOS gets the hub list + `fullScreenCover`, macOS gets a `NavigationSplitView` sidebar with each
+module's `rootView()` embedded straight into the detail pane (no sheet), plus a `⌘1`–`⌘6` Trackers
+menu that reaches `HomeView`'s selection via a `Notification.Name` (a Scene's `.commands` sits outside
+the `WindowGroup` and has no other way in). Don't move this into Core — it isn't a shim for
+iOS-only API, it's the two platforms genuinely wanting different navigation, and it belongs where the
+hub itself lives. A module's internal "Home" tab still exists on macOS, unmodified — embedded in a
+split view's detail pane it has nothing to dismiss, so tapping it just bounces back to that module's
+own first tab. That's a known, accepted quirk, not a bug to "fix" by touching the module.
 
 - Eighteen view files carry `import Core // Only reached on macOS, …`. The import looks unused on iOS;
   **deleting it breaks only the Mac build**, the last CI step. Keep the marker comment on new ones.
@@ -122,6 +134,14 @@ root view's `.task`, so nothing happens until the module is opened. `-WeatherStu
 is `github.run_number + 100` (`BUILD_OFFSET`), passed only as `CURRENT_PROJECT_VERSION` on the
 archive command line; marketing version is hardcoded `"1.0"` in `project.yml`, and a tag name does
 not change it.
+
+`mac-release.yml` is the Mac equivalent, manual-only (`workflow_dispatch`), producing a notarized
+`.dmg` as a run artifact rather than shipping anywhere. It reuses the `testflight` GitHub environment
+and its App Store Connect key — the same Admin-role key that signs iOS builds also mints a Developer
+ID certificate and authorizes notarization, so there's a second signing identity on the same account
+now, but no second secret to manage. A Developer ID export is **signed but not notarized** on its own;
+Gatekeeper refuses to launch it on any Mac but the one that built it until the notary step staples a
+ticket to it, which is why that step exists and can't be skipped for "just testing."
 
 ## Conventions
 

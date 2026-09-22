@@ -60,15 +60,53 @@ struct BhavikApp: App {
                 HomeView()
                     .preferredColorScheme(Appearance.stored(appearanceRaw).colorScheme)
                     .modifier(WeatherStub())
+                    #if os(macOS)
+                    .frame(minWidth: 860, minHeight: 560)
+                    #endif
             }
             #else
             HomeView()
                 .preferredColorScheme(Appearance.stored(appearanceRaw).colorScheme)
+                #if os(macOS)
+                .frame(minWidth: 860, minHeight: 560)
+                #endif
             #endif
         }
         .modelContainer(container)
+        #if os(macOS)
+        // A left-over default-sized window reads as an unfinished iPhone app
+        // squeezed onto a Mac; a sidebar layout wants the width to show it.
+        .defaultSize(width: 1100, height: 700)
+        .commands { TrackerCommands() }
+        #endif
     }
 }
+
+#if os(macOS)
+/// The Trackers menu: ⌘1–⌘6 jump straight to a tracker. A Scene's `.commands`
+/// sits outside the WindowGroup's view hierarchy, so it can't reach into
+/// HomeView's own `@State` — it posts a notification instead, which
+/// `HomeView.macBody` listens for.
+private struct TrackerCommands: Commands {
+    var body: some Commands {
+        CommandMenu("Trackers") {
+            item("Trips", .trips, "1")
+            item("Explore", .explore, "2")
+            item("Gym", .gym, "3")
+            item("TV", .tv, "4")
+            item("Orders", .parcels, "5")
+            item("Fuel", .fuel, "6")
+        }
+    }
+
+    private func item(_ name: String, _ module: SelectedModule, _ key: KeyEquivalent) -> some View {
+        Button(name) {
+            NotificationCenter.default.post(name: .selectTracker, object: nil, userInfo: ["module": module.rawValue])
+        }
+        .keyboardShortcut(key, modifiers: .command)
+    }
+}
+#endif
 
 #if DEBUG
 /// `-WeatherStub YES` swaps in made-up weather for the whole app.

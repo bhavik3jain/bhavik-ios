@@ -204,10 +204,27 @@ distribution certificate through the App Store Connect API key.
 ## macOS
 
 `bhavik-macOS` builds and runs, sharing every source file with the iPhone app and the same CloudKit
-container — so the two see the same data. The UI is still iPhone-shaped: every module uses a
-`TabView` that renders as a segmented strip on a Mac, and the hub-and-module navigation wants to be a
-`NavigationSplitView`. Treat it as working but unfinished.
+container — so the two see the same data. The hub is a `NavigationSplitView`: a sidebar lists the six
+trackers, and the selected one's content sits in the detail pane — no sheet, no segmented strip.
+`⌘1`–`⌘6` (the Trackers menu) jump straight to a tracker. Each module's own screens are otherwise
+identical to iOS, including its internal "Home" tab, which has nothing to dismiss once embedded in
+the detail pane and just bounces back to the module's own first tab — leaving a tracker is what the
+sidebar is for now. Only `App/Sources/HomeView.swift` and `BhavikApp.swift` know about any of this;
+no feature package changed.
 
-Platform differences are handled in `Packages/Core/Sources/Core/MacCompat.swift`, which provides
-`#if os(macOS)` no-op shims so the feature packages compile unchanged. Files relying on those shims
-must `import Core`.
+Platform differences inside a module are handled in `Packages/Core/Sources/Core/MacCompat.swift`,
+which provides `#if os(macOS)` no-op shims so the feature packages compile unchanged. Files relying on
+those shims must `import Core`.
+
+### Installing it
+
+There's no App Store listing, so `gh workflow run "Mac Release"` (or a manual dispatch from the
+Actions tab) is how you get a build: it archives `bhavik-macOS`, signs it with a Developer ID
+certificate, notarizes it with Apple's notary service, and uploads a `Multitrack.dmg` as the run's
+artifact. Download it, open it, drag Multitrack into Applications. It's signed for **Production**
+CloudKit — the same real data as your phone — unlike a debug build run from Xcode, which always
+talks to Development regardless of what account is signed in.
+
+The workflow reuses the `testflight` environment and its App Store Connect key: the same Admin-role
+key that signs iOS builds can also mint a Developer ID certificate and authorize notarization, so
+nothing new had to be set up in the developer portal for this.
