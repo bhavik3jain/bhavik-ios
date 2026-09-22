@@ -136,12 +136,17 @@ archive command line; marketing version is hardcoded `"1.0"` in `project.yml`, a
 not change it.
 
 `mac-release.yml` is the Mac equivalent, manual-only (`workflow_dispatch`), producing a notarized
-`.dmg` as a run artifact rather than shipping anywhere. It reuses the `testflight` GitHub environment
-and its App Store Connect key — the same Admin-role key that signs iOS builds also mints a Developer
-ID certificate and authorizes notarization, so there's a second signing identity on the same account
-now, but no second secret to manage. A Developer ID export is **signed but not notarized** on its own;
-Gatekeeper refuses to launch it on any Mac but the one that built it until the notary step staples a
-ticket to it, which is why that step exists and can't be skipped for "just testing."
+`.dmg` as a run artifact rather than shipping anywhere. **Cloud-managed signing does not cover
+Developer ID** — that was the first thing tried, and it fails with `Cloud signing permission error` /
+`No profiles for 'com.bhavikjain.trackers' were found`, because Apple never holds a Developer ID
+private key on your behalf the way it does for App Store distribution; the whole point of Developer
+ID is that you hold it. So the workflow imports a real certificate (exported from Xcode once, stored
+as `MAC_DEVELOPER_ID_P12` + `MAC_DEVELOPER_ID_P12_PASSWORD` in the `testflight` environment) into a
+disposable keychain each run; the existing App Store Connect key still handles matching it to a
+Developer ID provisioning profile and authorizing notarization. A Developer ID export is **signed but
+not notarized** on its own; Gatekeeper refuses to launch it on any Mac but the one that built it until
+the notary step staples a ticket to it, which is why that step exists and can't be skipped for "just
+testing."
 
 ## Conventions
 
