@@ -8,6 +8,17 @@ import SwiftUI
 import TripTracker
 import TVTracker
 
+/// Every module's models: the one list both the real container and the
+/// CloudKit schema initializer are built from, so the two can't drift apart.
+/// Outside `BhavikApp` because an `App` is main-actor isolated and the
+/// initializer reads this from a background task.
+enum AppSchema {
+    static var models: [any PersistentModel.Type] {
+        GymTrackerModule.models + FuelTrackerModule.models + TVTrackerModule.models
+            + ParcelTrackerModule.models + TripTrackerModule.models + ExploreTrackerModule.models
+    }
+}
+
 @main
 struct BhavikApp: App {
     /// Named once so the settings screen can ask CloudKit about the same
@@ -19,18 +30,22 @@ struct BhavikApp: App {
 
     init() {
         do {
-            let schema = Schema(
-                GymTrackerModule.models + FuelTrackerModule.models + TVTrackerModule.models
-                    + ParcelTrackerModule.models + TripTrackerModule.models + ExploreTrackerModule.models
-            )
+            let schema = Schema(AppSchema.models)
+            #if DEBUG
+            // A schema-initialising launch must never open the real store: the
+            // point is that it's safe to run on a phone holding real data. An
+            // empty in-memory container keeps SwiftUI's environment satisfied.
+            if CloudKitSchemaInitializer.isRequested {
+                let scratch = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true, cloudKitDatabase: .none)
+                container = try ModelContainer(for: schema, configurations: [scratch])
+                return
+            }
+            #endif
             let configuration = ModelConfiguration(
                 schema: schema,
                 cloudKitDatabase: .private(Self.cloudContainerID)
             )
             container = try ModelContainer(for: schema, configurations: [configuration])
-            #if DEBUG
-            CloudKitSchemaSeeder.runIfRequested(in: ModelContext(container))
-            #endif
         } catch {
             fatalError("Failed to create ModelContainer: \(error)")
         }
@@ -38,11 +53,18 @@ struct BhavikApp: App {
 
     var body: some Scene {
         WindowGroup {
+            #if DEBUG
+            if CloudKitSchemaInitializer.isRequested {
+                CloudKitSchemaInitializerView(containerID: Self.cloudContainerID)
+            } else {
+                HomeView()
+                    .preferredColorScheme(Appearance.stored(appearanceRaw).colorScheme)
+                    .modifier(WeatherStub())
+            }
+            #else
             HomeView()
                 .preferredColorScheme(Appearance.stored(appearanceRaw).colorScheme)
-                #if DEBUG
-                .modifier(WeatherStub())
-                #endif
+            #endif
         }
         .modelContainer(container)
     }

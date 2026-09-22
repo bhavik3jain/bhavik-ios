@@ -52,19 +52,20 @@ No `VersionedSchema` or migration plan exists; every change so far has been addi
 
 **Adding a @Model.** Write it under `Packages/<Module>/Sources/<Module>/Models/`; add it to that
 module's `models` array — the **only** registration point, and a type left out compiles and runs,
-then fails the moment anything queries it; add it to `CloudKitSchemaSeeder.seed(in:)` **and wire
-every relationship** (a relationship only enters the schema once a record carries it) with
-`CloudKitSchemaSeeder.marker` in some string field, plus the matching fetch-and-delete in
-`purge(in:)` — a join-style model with no string field (`WorkoutSet`, `RoutineExercise`) is reached
-through its marked parent. Then the Console ritual: steps are in the seeder's docstring. Launch with
-`-SeedCloudKitSchema YES` and **leave it running** — the local save is synchronous, the upload is
-not. Nothing in CI does any of this.
+then fails the moment anything queries it. Then the Console ritual (README → Data and sync): launch a
+debug build signed in to iCloud with `-InitializeCloudKitSchema YES`, check the types in the
+Development environment, **Deploy Schema Changes** to Production. The initializer builds its schema
+from `AppSchema.models` via `NSManagedObjectModel.makeManagedObjectModel(for:)` and Core Data's
+`initializeCloudKitSchema()` on a throwaway store, so there's no seed code to keep in step with the
+models, and that launch opens an in-memory container instead of the real store. Nothing in CI does
+any of this. (It replaced a seed-then-purge seeder whose comment claimed SwiftData had no bridge to
+Core Data — it has had one since iOS 17.)
 
 **Adding a whole module** needs these further edits, none optional: `packages:` **and** the
 `&appDependencies` anchor in `project.yml` (the anchor covers both targets, so the Mac build follows
-for free); the hardcoded sum in `BhavikApp.swift`; a `ModuleRow` (with its `.contextMenu` peek) in
+for free); the `AppSchema.models` sum in `BhavikApp.swift`; a `ModuleRow` (with its `.contextMenu` peek) in
 `HomeView.swift`; a case in its private `SelectedModule` enum **and** the `fullScreenCover` switch
-arm; a seed/purge pair in `CloudKitSchemaSeeder.swift`; a `TrackerRow` in `AppSettingsView.swift`;
+arm; a `TrackerRow` in `AppSettingsView.swift`;
 the package loop in `tests.yml` — leave it out and CI never runs that suite, silently.
 
 ## Module chrome — a new root view can ship with no way back
@@ -108,7 +109,7 @@ logic into a value type and leave the view declarative.**
 - `#expect(throws: SomeError.someCase)` needs the error type `Equatable`. `CarrierError` is;
   `TMDBError` is not, which is why TV tests can only assert `.self`.
 
-Debug launch arguments, all `#if DEBUG`: `-SeedCloudKitSchema YES` / `-PurgeCloudKitSchema YES`, plus
+Debug launch arguments, all `#if DEBUG`: `-InitializeCloudKitSchema YES`, plus
 the module seeders that are the only way to get a simulator into a state worth looking at —
 `-TVSeedShows` (needs a TMDB key, no-ops if any `Show` exists), `-FuelSeedCSV`, `-ParcelSeed`,
 `-TripSeed`, `-ExploreSeed` (each no-ops once its store has a record). Seeders run from the module

@@ -45,7 +45,7 @@ brew install xcodegen
 ## Layout
 
 ```
-App/              Thin app shell — entry point, home screen, settings, schema seeder
+App/              Thin app shell — entry point, home screen, settings, CloudKit schema initializer
 Packages/
   Core/           Shared types: module chrome, glass effects, CSV parser, keychain, weather, macOS shims
   TripTracker/    Trips, itinerary, flights, bookings, day plan, forecast, PDF itinerary
@@ -104,13 +104,17 @@ Breaking either one fails at launch when the container loads, not at compile tim
 record of that type first syncs, and it never creates schema in Production — so a new model silently
 fails to sync until the schema is deployed. The ritual:
 
-1. Run a debug build with `-SeedCloudKitSchema YES`, which writes one throwaway record of every model
-2. Let it sync, then confirm the record types appear in the CloudKit Console's **Development** environment
+1. On a device or simulator signed in to your iCloud account, run a debug build with
+   `-InitializeCloudKitSchema YES`. The app opens a status screen instead of itself, sends every
+   model's record type to the **Development** environment, and lists them when it's done. It never
+   opens the app's real database, so it's safe on a phone holding real data.
+2. In the CloudKit Console's **Development** environment, confirm the record types are there
 3. Hit **Deploy Schema Changes** to promote them to Production
-4. Run again with `-PurgeCloudKitSchema YES` to delete the throwaways
+4. Remove the launch argument
 
-See `App/Sources/CloudKitSchemaSeeder.swift`. Adding a case to an enum stored as a `String` raw value
-is *not* a schema change and needs none of this.
+There are no records to create or clean up: it uses Core Data's `initializeCloudKitSchema()` on a
+throwaway store (`App/Sources/CloudKitSchemaInitializer.swift`). Adding a case to an enum stored as
+a `String` raw value is *not* a schema change and needs none of this.
 
 Development and Production are separate **data** stores as well as separate schemas, so a debug build
 and a TestFlight build never see each other's records.
@@ -146,7 +150,7 @@ All debug-only, and inert unless passed (Product → Scheme → Edit Scheme → 
 
 | Argument | What it does |
 | --- | --- |
-| `-SeedCloudKitSchema YES` / `-PurgeCloudKitSchema YES` | The schema ritual above |
+| `-InitializeCloudKitSchema YES` | The schema ritual above — opens a status screen, not the app |
 | `-TVSeedShows YES` | Adds sample shows, looked up on TMDB (needs a key; does nothing if any show exists) |
 | `-FuelSeedCSV YES` | Imports a sample Fuelly export |
 | `-ParcelSeed YES` | Adds sample orders |
