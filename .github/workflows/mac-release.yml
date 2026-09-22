@@ -119,9 +119,13 @@ jobs:
             CURRENT_PROJECT_VERSION="$build_number"
 
       - name: Export, signed for Developer ID
-        env:
-          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
-          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        # No -allowProvisioningUpdates and no -authenticationKey* here, on
+        # purpose: passing them is what caused "Cloud signing permission
+        # error" even with the real certificate already imported — Apple's
+        # cloud-managed signing (the API-key path) refuses the developer-id
+        # method outright, categorically, regardless of what's in the local
+        # keychain. Signing manually with the certificate that's actually
+        # there is the whole point of having imported it.
         run: |
           set -euo pipefail
           cat > "$RUNNER_TEMP/ExportOptions.plist" <<'PLIST'
@@ -134,7 +138,9 @@ jobs:
               <key>teamID</key>
               <string>Y4M3S6H4NK</string>
               <key>signingStyle</key>
-              <string>automatic</string>
+              <string>manual</string>
+              <key>signingCertificate</key>
+              <string>Developer ID Application</string>
           </dict>
           </plist>
           PLIST
@@ -142,11 +148,7 @@ jobs:
           xcodebuild -exportArchive \
             -archivePath "$RUNNER_TEMP/Multitrack.xcarchive" \
             -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist" \
-            -exportPath "$RUNNER_TEMP/export" \
-            -allowProvisioningUpdates \
-            -authenticationKeyPath "$ASC_KEY_PATH" \
-            -authenticationKeyID "$ASC_KEY_ID" \
-            -authenticationKeyIssuerID "$ASC_ISSUER_ID"
+            -exportPath "$RUNNER_TEMP/export"
 
       - name: Notarize
         # A Developer ID export is signed but not notarized — Gatekeeper will
