@@ -1,5 +1,5 @@
 import Core // Only reached on macOS, where Core stands in for the iOS-only UIPasteboard below.
-import SwiftData
+import CoreData
 import SwiftUI
 
 /// Every confirmation code this trip holds, one tap from the clipboard.
@@ -7,10 +7,10 @@ struct TripCodesView: View {
     let trip: Trip
     let present: (TripSheet) -> Void
 
-    @Environment(\.modelContext) private var modelContext
+    @Environment(\.managedObjectContext) private var modelContext
     /// The code last copied, so its row can say so for a moment.
     @State private var copied: String?
-    @State private var revealed: Set<PersistentIdentifier> = []
+    @State private var revealed: Set<NSManagedObjectID> = []
 
     private var flights: [Flight] {
         let dates = trip.dates
@@ -20,7 +20,7 @@ struct TripCodesView: View {
     }
 
     private var groups: [BookingGroups.Group] {
-        BookingGroups.ordered(trip.bookings ?? [])
+        BookingGroups.ordered(Array(trip.bookings ?? []))
     }
 
     private var secured: [Booking] {
@@ -52,10 +52,10 @@ struct TripCodesView: View {
                             )
                             .contextMenu {
                                 editButton { present(.flight(flight)) }
-                                deleteButton { modelContext.delete(flight) }
+                                deleteButton { delete(flight) }
                             }
                             .swipeActions {
-                                deleteButton { modelContext.delete(flight) }
+                                deleteButton { delete(flight) }
                                 editButton { present(.flight(flight)) }
                             }
                         }
@@ -75,10 +75,10 @@ struct TripCodesView: View {
                             )
                             .contextMenu {
                                 editButton { present(.booking(booking)) }
-                                deleteButton { modelContext.delete(booking) }
+                                deleteButton { delete(booking) }
                             }
                             .swipeActions {
-                                deleteButton { modelContext.delete(booking) }
+                                deleteButton { delete(booking) }
                                 editButton { present(.booking(booking)) }
                             }
                         }
@@ -99,7 +99,7 @@ struct TripCodesView: View {
     }
 
     private func secureRow(_ booking: Booking) -> some View {
-        let isRevealed = revealed.contains(booking.persistentModelID)
+        let isRevealed = revealed.contains(booking.objectID)
         return HStack {
             Text(isRevealed ? booking.secureNote : String(repeating: "•", count: 6))
                 .font(.body.monospaced())
@@ -108,9 +108,9 @@ struct TripCodesView: View {
             Spacer()
             Button(isRevealed ? "Hide" : "Show") {
                 if isRevealed {
-                    revealed.remove(booking.persistentModelID)
+                    revealed.remove(booking.objectID)
                 } else {
-                    revealed.insert(booking.persistentModelID)
+                    revealed.insert(booking.objectID)
                 }
             }
             .buttonStyle(.bordered)
@@ -137,6 +137,11 @@ struct TripCodesView: View {
         Button(role: .destructive, action: action) {
             Label("Delete", systemImage: "trash")
         }
+    }
+
+    private func delete(_ object: NSManagedObject) {
+        modelContext.delete(object)
+        try? modelContext.saveIfNeeded()
     }
 
     private func copy(_ code: String) {

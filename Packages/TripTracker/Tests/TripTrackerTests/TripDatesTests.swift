@@ -34,8 +34,9 @@ private let rome = TripDates(start: date(6, 6), end: date(6, 14), calendar: cale
 }
 
 @MainActor
-@Test func phaseOfATripModelMatchesItsDates() {
-    let trip = Trip(title: "Rome", startDate: date(6, 6), endDate: date(6, 14), calendar: calendar)
+@Test func phaseOfATripModelMatchesItsDates() throws {
+    let context = try makeContext()
+    let trip = Trip(context: context, title: "Rome", startDate: date(6, 6), endDate: date(6, 14), calendar: calendar)
     #expect(TripPhase.of(trip, asOf: date(6, 14, 23, 0), calendar: calendar) == .inProgress)
     #expect(TripPhase.of(trip, asOf: date(6, 1), calendar: calendar) == .upcoming)
     #expect(TripPhase.of(trip, asOf: date(7, 1), calendar: calendar) == .finished)

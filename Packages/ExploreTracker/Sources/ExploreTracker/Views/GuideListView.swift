@@ -1,11 +1,13 @@
 import Core
+import CoreData
 import MapKit
-import SwiftData
 import SwiftUI
 
 struct GuideListView: View {
-    @Environment(\.modelContext) private var modelContext
-    @Query private var guides: [Guide]
+    @Environment(\.managedObjectContext) private var modelContext
+    @FetchRequest(sortDescriptors: [NSSortDescriptor(keyPath: \Guide.createdAt, ascending: false)])
+    private var guideResults: FetchedResults<Guide>
+    private var guides: [Guide] { Array(guideResults) }
 
     @State private var showingNewGuide = false
     @State private var pendingDeletion: GuideSummary?
@@ -96,6 +98,7 @@ struct GuideListView: View {
                 Button("Delete Guide", role: .destructive) {
                     if let guide = guide(for: summary) {
                         modelContext.delete(guide)
+                        try? modelContext.saveIfNeeded()
                     }
                     pendingDeletion = nil
                 }
@@ -117,11 +120,12 @@ struct GuideListView: View {
             systemImage: guide.isPinned ? "pin.slash" : "pin"
         ) {
             withAnimation { guide.setPinned(!guide.isPinned) }
+            try? modelContext.saveIfNeeded()
         }
     }
 
     private func guide(for summary: GuideSummary) -> Guide? {
-        guides.first { $0.persistentModelID == summary.id }
+        guides.first { $0.objectID == summary.id }
     }
 }
 

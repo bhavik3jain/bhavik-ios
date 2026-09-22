@@ -1,12 +1,16 @@
 import Core // Only reached on macOS, where Core stands in for the iOS-only SwiftUI API below.
+import CoreData
 import MapKit
-import SwiftData
 import SwiftUI
 
 /// One place, edited in place: everything the add sheet asked for, plus
 /// whether it's been tried and how it was.
 struct PlaceDetailView: View {
-    @Bindable var place: GuidePlace
+    // NSManagedObject conforms to `ObservableObject`, not the newer
+    // `Observable` macro protocol `@Bindable` requires on this SDK (it's
+    // `unavailable` for ObservableObject types here) — `@ObservedObject` is
+    // Core Data's actual equivalent.
+    @ObservedObject var place: GuidePlace
 
     @Environment(\.openURL) private var openURL
 
@@ -72,6 +76,13 @@ struct PlaceDetailView: View {
         }
         .navigationTitle(place.name.isEmpty ? "Place" : place.name)
         .navigationBarTitleDisplayMode(.inline)
+        // Every field above is bound straight to the object — there is no
+        // save button, the way SwiftData's autosave made unnecessary before.
+        // Core Data never autosaves, so this is the one point that persists
+        // whatever changed while the screen was open.
+        .onDisappear {
+            try? place.managedObjectContext?.saveIfNeeded()
+        }
     }
 }
 

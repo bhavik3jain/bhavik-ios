@@ -1,5 +1,5 @@
 import Core
-import SwiftData
+import CoreData
 import SwiftUI
 
 /// A trip's days: a strip to pick one, and that day's timeline.
@@ -9,7 +9,7 @@ struct TripPlanView: View {
     let weather: [DayWeather]
     let present: (TripSheet) -> Void
 
-    @Environment(\.modelContext) private var modelContext
+    @Environment(\.managedObjectContext) private var modelContext
 
     var body: some View {
         // Once a minute, so the NOW line and "up next" keep moving while the
@@ -91,12 +91,14 @@ struct TripPlanView: View {
         case .item(let item):
             TimelineRow(entry: entry, plan: plan, isUpNext: isUpNext) {
                 withAnimation { item.toggleDone() }
+                try? modelContext.saveIfNeeded()
             } open: {
                 present(.item(item))
             }
             .swipeActions(edge: .leading) {
                 Button {
                     withAnimation { item.toggleDone() }
+                    try? modelContext.saveIfNeeded()
                 } label: {
                     Label(item.isDone ? "Not done" : "Done", systemImage: item.isDone ? "arrow.uturn.backward" : "checkmark")
                 }
@@ -105,6 +107,7 @@ struct TripPlanView: View {
             .swipeActions(edge: .trailing) {
                 Button(role: .destructive) {
                     modelContext.delete(item)
+                    try? modelContext.saveIfNeeded()
                 } label: {
                     Label("Delete", systemImage: "trash")
                 }

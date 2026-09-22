@@ -72,6 +72,10 @@ targets:
         # Asked for only when a guide's map opens, never at launch. Without the
         # key the request is dropped silently and the blue dot never appears.
         NSLocationWhenInUseUsageDescription: Shows how far you are from the places in a guide.
+        # Without this, tapping a CloudKit share-invitation link (email, Messages)
+        # never routes into the app at all — the system silently drops it before
+        # userDidAcceptCloudKitShareWith is ever called.
+        CKSharingSupported: true
 
   # Same code, same packages, same bundle id — only the platform chrome differs.
   # Sources and dependencies are aliased from the iOS target rather than copied
@@ -126,3 +130,6 @@ targets:
         # Same prompt as on iPhone; see also the location key in
         # App-macOS.entitlements, which the sandbox needs as well.
         NSLocationWhenInUseUsageDescription: Shows how far you are from the places in a guide.
+        # Same as the iOS target: required for a tapped CloudKit share link to
+        # route into the app instead of being silently dropped.
+        CKSharingSupported: true

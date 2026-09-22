@@ -1,5 +1,5 @@
 import Core // Only reached on macOS, where Core stands in for the iOS-only SwiftUI API below.
-import SwiftData
+import CoreData
 import SwiftUI
 
 /// New Guide, or editing an existing one's name and area.
@@ -10,7 +10,7 @@ struct GuideFormView: View {
     let guide: Guide?
 
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.modelContext) private var modelContext
+    @Environment(\.managedObjectContext) private var modelContext
 
     @State private var name = ""
     @State private var areaLabel = ""
@@ -60,8 +60,9 @@ struct GuideFormView: View {
             guide.name = trimmedName
             guide.areaLabel = area
         } else {
-            modelContext.insert(Guide(name: trimmedName, areaLabel: area))
+            _ = Guide(context: modelContext, name: trimmedName, areaLabel: area)
         }
+        try? modelContext.saveIfNeeded()
         dismiss()
     }
 }

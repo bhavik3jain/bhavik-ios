@@ -1,6 +1,6 @@
 import Core
+import CoreData
 import Foundation
-import SwiftData
 
 /// The order places are listed in within one category.
 ///
@@ -44,7 +44,7 @@ public enum PlaceOrdering {
 /// Extracted from the views so the counts and sentences are testable — views
 /// are untested by policy.
 public struct GuideSummary: Identifiable, Sendable, Equatable {
-    public let id: PersistentIdentifier
+    public let id: NSManagedObjectID
     public let name: String
     public let areaLabel: String
     public let placeCount: Int
@@ -55,7 +55,7 @@ public struct GuideSummary: Identifiable, Sendable, Equatable {
     public let isPinned: Bool
 
     public init(
-        id: PersistentIdentifier,
+        id: NSManagedObjectID,
         name: String,
         areaLabel: String,
         placeCount: Int,
@@ -141,7 +141,7 @@ public extension GuideSummary {
             counts[place.category, default: 0] += 1
         }
         return GuideSummary(
-            id: guide.persistentModelID,
+            id: guide.objectID,
             name: guide.name,
             areaLabel: guide.areaLabel,
             placeCount: places.count,

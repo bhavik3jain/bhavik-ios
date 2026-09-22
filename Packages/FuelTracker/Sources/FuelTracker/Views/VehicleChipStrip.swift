@@ -1,4 +1,4 @@
-import SwiftData
+import CoreData
 import SwiftUI
 
 /// What a chip can ask the module to do. Raised to the root view because
@@ -18,7 +18,7 @@ enum VehicleChipAction {
 /// reads a car's numbers without switching to it.
 struct VehicleChipStrip: View {
     let summaries: [VehicleSummary]
-    let selectedID: PersistentIdentifier?
+    let selectedID: NSManagedObjectID?
     let perform: (VehicleChipAction, VehicleSummary) -> Void
 
     var body: some View {

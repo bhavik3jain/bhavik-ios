@@ -1,36 +1,34 @@
+import CoreData
 import Foundation
-import SwiftData
 
-public enum EntryKind: String, Codable, CaseIterable, Sendable {
-    case fillUp
-    case service
-}
-
-@Model
-public final class FuelEntry {
-    public var kindRaw: String = EntryKind.fillUp.rawValue
-    public var date: Date = Date.now
-    public var odometer: Int = 0
-    public var gallons: Double = 0
-    public var pricePerGallon: Double = 0
-    public var totalCost: Double = 0
+/// A fill-up or service record, backed by Core Data /
+/// `NSPersistentCloudKitContainer` rather than SwiftData, so it travels with
+/// its vehicle when that vehicle is shared for live co-editing. Its
+/// CloudKit-facing record type is `SharedFuelEntry`, not `FuelEntry`: see
+/// `FuelModel.swift` for why, and for why every initializer here goes through
+/// `NSEntityDescription.entity(forEntityName:in:)` instead of this class's
+/// own inherited `init(context:)`.
+@objc(FuelEntry)
+public final class FuelEntry: NSManagedObject, Identifiable {
+    @NSManaged public var kindRaw: String
+    @NSManaged public var date: Date
+    @NSManaged public var odometer: Int
+    @NSManaged public var gallons: Double
+    @NSManaged public var pricePerGallon: Double
+    @NSManaged public var totalCost: Double
     /// A partial fill leaves the tank in an unknown state, so its distance
     /// carries forward into the next full tank rather than yielding its own MPG.
-    public var isFullTank: Bool = true
-    public var octane: String = ""
-    public var station: String = ""
-    public var notes: String = ""
+    @NSManaged public var isFullTank: Bool
+    @NSManaged public var octane: String
+    @NSManaged public var station: String
+    @NSManaged public var notes: String
     /// Service work performed, comma-separated as it appears in exports.
-    public var services: String = ""
+    @NSManaged public var services: String
 
-    public var vehicle: Vehicle?
+    @NSManaged public var vehicle: Vehicle?
 
-    public var kind: EntryKind {
-        get { EntryKind(rawValue: kindRaw) ?? .fillUp }
-        set { kindRaw = newValue.rawValue }
-    }
-
-    public init(
+    public convenience init(
+        context: NSManagedObjectContext,
         kind: EntryKind = .fillUp,
         date: Date,
         odometer: Int,
@@ -43,6 +41,8 @@ public final class FuelEntry {
         notes: String = "",
         services: String = ""
     ) {
+        let entity = NSEntityDescription.entity(forEntityName: FuelModel.EntityName.entry, in: context)!
+        self.init(entity: entity, insertInto: context)
         self.kindRaw = kind.rawValue
         self.date = date
         self.odometer = odometer
@@ -54,5 +54,24 @@ public final class FuelEntry {
         self.station = station
         self.notes = notes
         self.services = services
+    }
+
+    @nonobjc public static func fetchRequest(
+        predicate: NSPredicate? = nil,
+        sortDescriptors: [NSSortDescriptor] = []
+    ) -> NSFetchRequest<FuelEntry> {
+        let request = NSFetchRequest<FuelEntry>(entityName: FuelModel.EntityName.entry)
+        request.predicate = predicate
+        request.sortDescriptors = sortDescriptors
+        return request
+    }
+}
+
+public extension FuelEntry {
+    var id: NSManagedObjectID { objectID }
+
+    var kind: EntryKind {
+        get { EntryKind(rawValue: kindRaw) ?? .fillUp }
+        set { kindRaw = newValue.rawValue }
     }
 }

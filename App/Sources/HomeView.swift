@@ -1,4 +1,5 @@
 import Core
+import CoreData
 import ExploreTracker
 import FuelTracker
 import GymTracker
@@ -17,20 +18,67 @@ struct HomeView: View {
     private var sessions: [WorkoutSession]
     @Query private var shows: [Show]
     @Query(filter: #Predicate<Parcel> { !$0.isArchived }) private var parcels: [Parcel]
-    @Query(sort: \Vehicle.createdAt) private var vehicles: [Vehicle]
+    // Trips moved to Core Data — see BhavikApp.init()'s tripContainer, which
+    // sets this environment key at the WindowGroup level the same way
+    // .modelContainer(container) does for every @Query above. Read here both
+    // for this view's own summary (below) and to pass on explicitly to
+    // TripTrackerModule.rootView(context:) in moduleContent(for:) — a module
+    // is handed its context explicitly rather than relying on it having been
+    // set globally, since a second Core Data module (Fuel, Explore) will need
+    // a context of its own that can't share this one environment key.
+    @Environment(\.managedObjectContext) private var tripContext
     // Phase (under way, upcoming, finished) is worked out from the dates in
     // Swift; only the stored archive flag can go in the predicate.
-    @Query(filter: #Predicate<Trip> { !$0.isArchived }) private var trips: [Trip]
-    @Query(sort: \Guide.createdAt, order: .reverse) private var guides: [Guide]
+    @FetchRequest(sortDescriptors: [], predicate: NSPredicate(format: "isArchived == NO"))
+    private var tripResults: FetchedResults<Trip>
+    private var trips: [Trip] { Array(tripResults) }
+    // Fuel moved to Core Data too — see BhavikApp.init()'s fuelContainer.
+    // Reads Core's own `\.fuelManagedObjectContext` key rather than
+    // `\.managedObjectContext`, which Trips already occupies at this level —
+    // see ModuleManagedObjectContexts.swift's doc comment. And unlike Trips'
+    // `tripResults` above, this can't be a plain `@FetchRequest` either: that
+    // property wrapper only ever reads `\.managedObjectContext`, which on
+    // this same view already resolves to Trips' container, so a second
+    // `@FetchRequest` declared here would silently query the wrong store.
+    // `ManagedObjectFetch` fetches directly against the context it's handed
+    // instead — see its own doc comment.
+    @Environment(\.fuelManagedObjectContext) private var fuelContext
+    @StateObject private var vehicleFetch = ManagedObjectFetch<Vehicle>(
+        Vehicle.fetchRequest(sortDescriptors: [NSSortDescriptor(keyPath: \Vehicle.createdAt, ascending: true)])
+    )
+    private var vehicles: [Vehicle] { vehicleFetch.results }
+    // Explore moved to Core Data too — see BhavikApp.init()'s exploreContainer
+    // and its own `\.exploreManagedObjectContext` key, the same reasoning as
+    // Fuel's `fuelContext`/`vehicleFetch` above.
+    @Environment(\.exploreManagedObjectContext) private var exploreContext
+    @StateObject private var guideFetch = ManagedObjectFetch<Guide>(
+        Guide.fetchRequest(sortDescriptors: [NSSortDescriptor(keyPath: \Guide.createdAt, ascending: false)])
+    )
+    private var guides: [Guide] { guideFetch.results }
     /// Written by a Fuel peek's "Open My X3" so the module opens on that car.
     @AppStorage(FuelTrackerModule.selectedVehicleDefaultsKey) private var selectedVehicleName = ""
 
     var body: some View {
-        #if os(macOS)
-        macBody
-        #else
-        iOSBody
-        #endif
+        Group {
+            #if os(macOS)
+            macBody
+            #else
+            iOSBody
+            #endif
+        }
+        // Starts (or restarts, if the environment value ever changes) the
+        // Fuel fetch — see `vehicleFetch`'s own doc comment for why this
+        // can't just be a `@FetchRequest` alongside `tripResults` above.
+        .task(id: fuelContext) {
+            guard let fuelContext else { return }
+            vehicleFetch.start(context: fuelContext)
+        }
+        // Starts (or restarts) the Explore fetch, same reasoning as the Fuel
+        // one just above.
+        .task(id: exploreContext) {
+            guard let exploreContext else { return }
+            guideFetch.start(context: exploreContext)
+        }
     }
 
     // MARK: - iOS: hub list, modules as a full-screen cover
@@ -139,15 +187,21 @@ struct HomeView: View {
         case .gym:
             GymTrackerModule.rootView()
         case .fuel:
-            FuelTrackerModule.rootView()
+            // Always set by the time a module can be opened — BhavikApp's
+            // WindowGroup sets `\.fuelManagedObjectContext` unconditionally
+            // in `.init()`, before any view (this one included) exists.
+            FuelTrackerModule.rootView(context: fuelContext!)
         case .tv:
             TVTrackerModule.rootView()
         case .parcels:
             ParcelTrackerModule.rootView()
         case .trips:
-            TripTrackerModule.rootView()
+            TripTrackerModule.rootView(context: tripContext)
         case .explore:
-            ExploreTrackerModule.rootView()
+            // Always set by the time a module can be opened — BhavikApp's
+            // WindowGroup sets `\.exploreManagedObjectContext` unconditionally
+            // in `.init()`, before any view (this one included) exists.
+            ExploreTrackerModule.rootView(context: exploreContext!)
         }
     }
 

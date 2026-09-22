@@ -1,5 +1,5 @@
+import CoreData
 import Foundation
-import SwiftData
 
 /// One day of a trip as a single timeline: its itinerary items and its flights,
 /// merged and put in the order the day will actually happen.
@@ -7,17 +7,18 @@ import SwiftData
 /// Timed entries come first, earliest first; then everything with no set time
 /// ("Anytime"). Items sharing a time, or both untimed, fall back to their
 /// `sortOrder` and then their title, so the order never depends on fetch order —
-/// SwiftData returns relationship arrays in no promised order, and two untimed
-/// items used to swap places between launches.
+/// Core Data's `Set<T>?` relationships return in no promised order (SwiftData's
+/// arrays didn't either), and two untimed items used to swap places between
+/// launches.
 public struct DayPlan {
     public enum Entry: Identifiable {
         case item(ItineraryItem)
         case flight(Flight)
 
-        public var id: PersistentIdentifier {
+        public var id: NSManagedObjectID {
             switch self {
-            case .item(let item): item.persistentModelID
-            case .flight(let flight): flight.persistentModelID
+            case .item(let item): item.objectID
+            case .flight(let flight): flight.objectID
             }
         }
 
@@ -88,7 +89,7 @@ public struct DayPlan {
     }
 
     public init(trip: Trip, dayIndex: Int) {
-        self.init(dayIndex: dayIndex, items: trip.items ?? [], flights: trip.flights ?? [], dates: trip.dates)
+        self.init(dayIndex: dayIndex, items: Array(trip.items ?? []), flights: Array(trip.flights ?? []), dates: trip.dates)
     }
 
     // MARK: - Moments

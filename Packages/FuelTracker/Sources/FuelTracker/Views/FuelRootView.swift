@@ -1,10 +1,19 @@
 import Core
+import CoreData
 import SwiftData
 import SwiftUI
 
 struct FuelRootView: View {
-    @Environment(\.modelContext) private var modelContext
-    @Query(sort: \Vehicle.createdAt) private var vehicles: [Vehicle]
+    /// The module's own Core Data context — set by `FuelTrackerModule.rootView(context:)`
+    /// just above this view, so every descendant reading this same key gets it too.
+    @Environment(\.managedObjectContext) private var context
+    /// The app-wide SwiftData context, still attached at the WindowGroup level
+    /// for Gym/TV/Orders — read here only so `FuelLegacyMigration` has
+    /// something to copy real vehicles out of.
+    @Environment(\.modelContext) private var legacyContext
+    @FetchRequest(sortDescriptors: [NSSortDescriptor(keyPath: \Vehicle.createdAt, ascending: true)])
+    private var vehicleResults: FetchedResults<Vehicle>
+    private var vehicles: [Vehicle] { Array(vehicleResults) }
 
     /// The chosen vehicle's name, or "" for none chosen yet. `@AppStorage`
     /// rather than `@State` because `fullScreenCover` builds this view afresh
@@ -28,7 +37,7 @@ struct FuelRootView: View {
 
     private var selectedVehicle: Vehicle? {
         guard let selectedSummary else { return nil }
-        return vehicles.first { $0.persistentModelID == selectedSummary.id }
+        return vehicles.first { $0.objectID == selectedSummary.id }
     }
 
     var body: some View {
@@ -60,12 +69,13 @@ struct FuelRootView: View {
         .tint(FuelTrackerModule.accent.color)
         .minimizesTabBarOnScroll()
         .dismissesOnHomeTab($selection, restoringTo: "vehicle")
-        #if DEBUG
         .task {
+            FuelLegacyMigration.runIfNeeded(from: legacyContext, into: context)
+            #if DEBUG
             guard FuelDebugSeed.isRequested else { return }
-            FuelDebugSeed.run(context: modelContext)
+            FuelDebugSeed.run(context: context)
+            #endif
         }
-        #endif
     }
 
     private func handle(_ action: VehicleChipAction, _ summary: VehicleSummary) {

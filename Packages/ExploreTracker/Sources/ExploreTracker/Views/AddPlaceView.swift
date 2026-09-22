@@ -1,12 +1,12 @@
 import Core // Only reached on macOS, where Core stands in for the iOS-only SwiftUI API below.
-import SwiftData
+import CoreData
 import SwiftUI
 
 struct AddPlaceView: View {
     let guide: Guide
 
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.modelContext) private var modelContext
+    @Environment(\.managedObjectContext) private var modelContext
 
     @State private var search: PlaceSearch
     @State private var chosen: Choice?
@@ -202,6 +202,7 @@ struct AddPlaceView: View {
         switch chosen {
         case .found(_, let resolved):
             place = GuidePlace(
+                context: modelContext,
                 name: resolved.name,
                 category: category,
                 note: trimmedNote,
@@ -211,6 +212,7 @@ struct AddPlaceView: View {
             )
         case .manual:
             place = GuidePlace(
+                context: modelContext,
                 name: manualName.trimmingCharacters(in: .whitespacesAndNewlines),
                 category: category,
                 note: trimmedNote,
@@ -219,8 +221,8 @@ struct AddPlaceView: View {
         case nil:
             return
         }
-        modelContext.insert(place)
         place.guide = guide
+        try? modelContext.saveIfNeeded()
         dismiss()
     }
 }

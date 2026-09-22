@@ -1,13 +1,19 @@
 #if DEBUG
+import Core
+import CoreData
 import Foundation
-import SwiftData
 
 /// Fills a fresh simulator with three real-world guides so the list, the maps
 /// and the weather have something to show. Debug builds only, only when
 /// launched with `-ExploreSeed YES`, and never when any guide already exists.
 public enum ExploreDebugSeed {
     public static var isRequested: Bool {
-        UserDefaults.standard.bool(forKey: "ExploreSeed")
+        // Never against a store `ExploreLegacyMigration` has already run
+        // against — that device may be holding real, possibly-shared guides
+        // (or simply have already decided there was nothing to migrate), and
+        // stacking fake ones on top of either is never what `-ExploreSeed` is
+        // asking for.
+        UserDefaults.standard.bool(forKey: "ExploreSeed") && !ExploreLegacyMigration.hasRun
     }
 
     private struct Sample {
@@ -22,8 +28,8 @@ public enum ExploreDebugSeed {
     }
 
     @MainActor
-    public static func run(context: ModelContext, asOf now: Date = .now) {
-        guard (try? context.fetchCount(FetchDescriptor<Guide>())) == 0 else { return }
+    public static func run(context: NSManagedObjectContext, asOf now: Date = .now) {
+        guard (try? context.count(for: Guide.fetchRequest())) == 0 else { return }
 
         // Oldest first, so Kyoto — the fullest — ends up newest and gets the
         // large card at the top of the list.
@@ -34,11 +40,11 @@ public enum ExploreDebugSeed {
         ]
 
         for (offset, entry) in guides.enumerated() {
-            let guide = Guide(name: entry.name, areaLabel: entry.area)
+            let guide = Guide(context: context, name: entry.name, areaLabel: entry.area)
             guide.createdAt = now.addingTimeInterval(Double(offset - guides.count) * 86_400)
-            context.insert(guide)
             for (index, sample) in entry.places.enumerated() {
                 let place = GuidePlace(
+                    context: context,
                     name: sample.name,
                     category: sample.category,
                     note: sample.note,
@@ -47,7 +53,6 @@ public enum ExploreDebugSeed {
                     longitude: sample.longitude
                 )
                 place.addedAt = guide.createdAt.addingTimeInterval(Double(index) * 60)
-                context.insert(place)
                 place.guide = guide
                 if let rating = sample.rating {
                     place.setTried(true, asOf: now)
@@ -55,7 +60,7 @@ public enum ExploreDebugSeed {
                 }
             }
         }
-        try? context.save()
+        try? context.saveIfNeeded()
     }
 
     private static let kyoto: [Sample] = [

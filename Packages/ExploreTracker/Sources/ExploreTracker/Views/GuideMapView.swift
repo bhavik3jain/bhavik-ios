@@ -1,7 +1,7 @@
 import Core
+import CoreData
 import CoreLocation
 import MapKit
-import SwiftData
 import SwiftUI
 
 /// Every place in a guide on one map, with the reader's own position shown as
@@ -16,7 +16,7 @@ struct GuideMapView: View {
 
     @Environment(\.openURL) private var openURL
     @State private var filter: PlaceCategory?
-    @State private var selectedID: PersistentIdentifier?
+    @State private var selectedID: NSManagedObjectID?
     @State private var position: MapCameraPosition = .automatic
     @State private var userPoint: GeoPoint?
     @State private var detailPlace: GuidePlace?
@@ -34,7 +34,7 @@ struct GuideMapView: View {
 
     private var selected: GuidePlace? {
         guard let selectedID else { return nil }
-        return mapped.first { $0.persistentModelID == selectedID }
+        return mapped.first { $0.objectID == selectedID }
     }
 
     private var region: GuideRegion? {
@@ -48,7 +48,7 @@ struct GuideMapView: View {
                 if let point = place.point {
                     Marker(place.name, systemImage: place.category.symbolName, coordinate: point.coordinate)
                         .tint(place.category.tint)
-                        .tag(place.persistentModelID)
+                        .tag(place.objectID)
                 }
             }
         }

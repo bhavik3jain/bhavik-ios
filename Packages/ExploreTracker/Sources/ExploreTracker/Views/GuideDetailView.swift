@@ -1,12 +1,12 @@
 import Core
+import CoreData
 import MapKit
-import SwiftData
 import SwiftUI
 
 struct GuideDetailView: View {
     let guide: Guide
 
-    @Environment(\.modelContext) private var modelContext
+    @Environment(\.managedObjectContext) private var modelContext
     @State private var category: PlaceCategory = .foodAndDrinks
     @State private var showingAddPlace = false
     @State private var showingEdit = false
@@ -59,6 +59,7 @@ struct GuideDetailView: View {
                         .swipeActions(edge: .leading) {
                             Button(place.isTried ? "To try" : "Tried", systemImage: place.isTried ? "arrow.uturn.backward" : "checkmark") {
                                 place.setTried(!place.isTried)
+                                try? modelContext.saveIfNeeded()
                             }
                             .tint(ExploreTrackerModule.accent.color)
                         }
@@ -68,6 +69,7 @@ struct GuideDetailView: View {
                         for index in offsets {
                             modelContext.delete(places[index])
                         }
+                        try? modelContext.saveIfNeeded()
                     }
                 }
             }
@@ -91,6 +93,7 @@ struct GuideDetailView: View {
                     systemImage: guide.isPinned ? "pin.slash" : "pin"
                 ) {
                     guide.setPinned(!guide.isPinned)
+                    try? modelContext.saveIfNeeded()
                 }
             }
         }

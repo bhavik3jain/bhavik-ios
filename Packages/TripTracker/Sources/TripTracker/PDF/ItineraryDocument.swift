@@ -76,7 +76,9 @@ public struct ItineraryDocument: Sendable, Equatable {
     /// runs long) and the confirmation codes.
     public init(trip: Trip, linesPerPage: Int = ItineraryDocument.linesPerPage, calendar: Calendar = .current) {
         let dates = TripDates(start: trip.startDate, end: trip.endDate, calendar: calendar)
-        let flights = trip.flights ?? []
+        // Core Data's to-many relationships are `Set<T>?`, not `[T]?` — turned
+        // into an array once here rather than at every use below.
+        let flights = Array(trip.flights ?? [])
         var pages: [Page] = []
 
         let facts = [
@@ -92,7 +94,7 @@ public struct ItineraryDocument: Sendable, Equatable {
         )))
 
         for index in 0..<dates.dayCount {
-            let plan = DayPlan(dayIndex: index, items: trip.items ?? [], flights: flights, dates: dates)
+            let plan = DayPlan(dayIndex: index, items: Array(trip.items ?? []), flights: flights, dates: dates)
             let lines = plan.entries.map { ItineraryFormat.line(for: $0, in: plan) }
             let runs = Self.chunks(lines.count, size: linesPerPage)
             for (offset, run) in runs.enumerated() {
@@ -129,7 +131,7 @@ public struct ItineraryDocument: Sendable, Equatable {
                     code: flight.confirmationCode
                 )
             }
-        let bookings = BookingGroups.ordered(trip.bookings ?? []).flatMap { group in
+        let bookings = BookingGroups.ordered(Array(trip.bookings ?? [])).flatMap { group in
             group.bookings.map { booking in
                 Confirmation(
                     section: group.kind.displayName,

@@ -1,6 +1,6 @@
 import Core
+import CoreData
 import Foundation
-import SwiftData
 
 /// Everything the chrome around a vehicle needs to say about it, computed once.
 ///
@@ -8,7 +8,7 @@ import SwiftData
 /// summary tiles and the home-screen row all read this instead of each running
 /// their own `FuelStatistics` calls over the same entries.
 public struct VehicleSummary: Identifiable, Sendable, Equatable {
-    public let id: PersistentIdentifier
+    public let id: NSManagedObjectID
     public let name: String
     /// `nil`, never `0`, when no two full tanks have closed — an unknown MPG and
     /// an MPG of zero are different things and only one of them is worth showing.
@@ -28,7 +28,7 @@ public struct VehicleSummary: Identifiable, Sendable, Equatable {
     public var totalSpend: Double { fuelSpend + serviceSpend }
 
     public init(
-        id: PersistentIdentifier,
+        id: NSManagedObjectID,
         name: String,
         averageMPG: Double?,
         averagePricePerGallon: Double?,
@@ -65,7 +65,7 @@ public extension VehicleSummary {
         let latest = fillUps.last
 
         return VehicleSummary(
-            id: vehicle.persistentModelID,
+            id: vehicle.objectID,
             name: vehicle.name,
             averageMPG: FuelStatistics.averageMPG(for: fillUps),
             averagePricePerGallon: FuelStatistics.averagePricePerGallon(for: fillUps),

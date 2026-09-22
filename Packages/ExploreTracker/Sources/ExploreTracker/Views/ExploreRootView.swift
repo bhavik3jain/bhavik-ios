@@ -1,9 +1,16 @@
 import Core
+import CoreData
 import SwiftData
 import SwiftUI
 
 struct ExploreRootView: View {
-    @Environment(\.modelContext) private var modelContext
+    /// The module's own Core Data context — set by `ExploreTrackerModule.rootView(context:)`
+    /// just above this view, so every descendant reading this same key gets it too.
+    @Environment(\.managedObjectContext) private var context
+    /// The app-wide SwiftData context, still attached at the WindowGroup level
+    /// for Gym/TV/Orders — read here only so `ExploreLegacyMigration` has
+    /// something to copy real guides out of.
+    @Environment(\.modelContext) private var legacyContext
 
     @State private var selection = "guides"
 
@@ -19,11 +26,12 @@ struct ExploreRootView: View {
         .tint(ExploreTrackerModule.accent.color)
         .minimizesTabBarOnScroll()
         .dismissesOnHomeTab($selection, restoringTo: "guides")
-        #if DEBUG
         .task {
+            ExploreLegacyMigration.runIfNeeded(from: legacyContext, into: context)
+            #if DEBUG
             guard ExploreDebugSeed.isRequested else { return }
-            ExploreDebugSeed.run(context: modelContext)
+            ExploreDebugSeed.run(context: context)
+            #endif
         }
-        #endif
     }
 }

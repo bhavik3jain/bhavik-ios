@@ -1,10 +1,11 @@
-import SwiftData
+import CoreData
 import SwiftUI
 import UniformTypeIdentifiers
 
 struct GarageView: View {
-    @Environment(\.modelContext) private var modelContext
-    @Query(sort: \Vehicle.createdAt) private var vehicles: [Vehicle]
+    @Environment(\.managedObjectContext) private var modelContext
+    @FetchRequest(sortDescriptors: [NSSortDescriptor(keyPath: \Vehicle.createdAt, ascending: true)])
+    private var vehicles: FetchedResults<Vehicle>
 
     @State private var showingImporter = false
     @State private var showingAddVehicle = false
@@ -70,7 +71,8 @@ struct GarageView: View {
                 Button("Add") {
                     let trimmed = newVehicleName.trimmingCharacters(in: .whitespaces)
                     guard !trimmed.isEmpty else { return }
-                    modelContext.insert(Vehicle(name: trimmed))
+                    _ = Vehicle(context: modelContext, name: trimmed)
+                    try? modelContext.saveIfNeeded()
                 }
             }
             .alert(item: $importResult) { result in
@@ -135,5 +137,6 @@ struct GarageView: View {
         for index in offsets {
             modelContext.delete(vehicles[index])
         }
+        try? modelContext.saveIfNeeded()
     }
 }
