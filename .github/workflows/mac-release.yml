@@ -113,9 +113,15 @@ jobs:
         run: xcodegen generate
 
       - name: Archive
-        env:
-          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
-          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        # Signed manually with the Developer ID certificate and profile
+        # already installed — not -allowProvisioningUpdates. That flag asked
+        # cloud-managed signing to mint a throwaway Mac Development
+        # certificate for the archive step's own intermediate signing, on
+        # every run, with nothing here to reuse one from a previous run; after
+        # a handful of runs that hit "Your account has reached the maximum
+        # number of certificates." There's a real Developer ID identity
+        # already available, and archiving with the exact identity the export
+        # will use anyway removes the need to touch cloud signing at all.
         run: |
           set -euo pipefail
           build_number=$(( ${{ github.run_number }} + BUILD_OFFSET ))
@@ -127,10 +133,10 @@ jobs:
             -configuration Release \
             -destination 'generic/platform=macOS' \
             -archivePath "$RUNNER_TEMP/Multitrack.xcarchive" \
-            -allowProvisioningUpdates \
-            -authenticationKeyPath "$ASC_KEY_PATH" \
-            -authenticationKeyID "$ASC_KEY_ID" \
-            -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
+            CODE_SIGN_STYLE=Manual \
+            CODE_SIGN_IDENTITY="Developer ID Application" \
+            PROVISIONING_PROFILE_SPECIFIER="Multitrack Developer ID" \
+            DEVELOPMENT_TEAM=Y4M3S6H4NK \
             CURRENT_PROJECT_VERSION="$build_number"
 
       - name: Export, signed for Developer ID
