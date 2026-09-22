@@ -94,6 +94,21 @@ jobs:
           echo "SIGNING_KEYCHAIN=$keychain" >> "$GITHUB_ENV"
           echo "SIGNING_KEYCHAIN_PASSWORD=$keychain_password" >> "$GITHUB_ENV"
 
+      - name: Install the Developer ID provisioning profile
+        # The app's entitlements (iCloud, WeatherKit) mean Apple requires an
+        # explicit profile even for Developer ID — cloud-managed signing can't
+        # create one (same categorical restriction as the certificate), so
+        # this is downloaded from the portal by hand, once, like the
+        # certificate. Xcode finds profiles here by filename; the name itself
+        # doesn't matter, only its UUID and its contents.
+        env:
+          MAC_DEVELOPER_ID_PROFILE: ${{ secrets.MAC_DEVELOPER_ID_PROFILE }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
+          echo "$MAC_DEVELOPER_ID_PROFILE" | base64 --decode \
+            > "$HOME/Library/MobileDevice/Provisioning Profiles/mac-release.provisionprofile"
+
       - name: Generate the project
         run: xcodegen generate
 
@@ -141,6 +156,13 @@ jobs:
               <string>manual</string>
               <key>signingCertificate</key>
               <string>Developer ID Application</string>
+              <key>provisioningProfiles</key>
+              <dict>
+                  <key>com.bhavikjain.trackers</key>
+                  <!-- The profile's own Name field, as the developer portal
+                       shows it — not a filename or the UUID. -->
+                  <string>Multitrack Developer ID</string>
+              </dict>
           </dict>
           </plist>
           PLIST
