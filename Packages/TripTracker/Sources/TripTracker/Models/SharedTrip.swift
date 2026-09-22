@@ -4,12 +4,26 @@ import Foundation
 /// A trip, backed by Core Data / `NSPersistentCloudKitContainer` rather than
 /// SwiftData — see `TripModel.swift` — so it can be shared with another person
 /// for live co-editing via `CKShare`, which SwiftData has no support for at
-/// all. Its CloudKit-facing record type is `SharedTrip`, not `Trip`: see
-/// `TripModel.swift` for why, and for why every initializer here goes through
+/// all. Its CloudKit-facing record type is `SharedTrip`, and as of this class
+/// the Swift class name matches it exactly — see `TripModel.swift` for why
+/// that split exists, and for why every initializer here goes through
 /// `NSEntityDescription.entity(forEntityName:in:)` instead of this class's own
 /// inherited `init(context:)`.
-@objc(Trip)
-public final class Trip: NSManagedObject, Identifiable {
+///
+/// Named `SharedTrip`, not `Trip`: the plain name belongs to the *other*
+/// `Trip` type in this module — the original SwiftData `@Model` in
+/// `SwiftDataTrip.swift` — which must keep it, because SwiftData ties a
+/// model's identity, and its CloudKit record type (`CD_<ClassName>`), to the
+/// Swift class name with no way to decouple the two short of a
+/// `VersionedSchema`/`SchemaMigrationPlan` this repo has never used. An
+/// earlier version of this migration had that backwards — it renamed the
+/// SwiftData class to `LegacyTrip`, which silently orphaned every real,
+/// already-synced `CD_Trip` record in Production, and renamed this Core Data
+/// class to the clean `Trip` instead. Core Data has no such constraint
+/// (`NSEntityDescription.name` is independent of the Swift class name), so
+/// this is the side that can safely carry a different name.
+@objc(SharedTrip)
+public final class SharedTrip: NSManagedObject, Identifiable {
     @NSManaged public var title: String
     /// What was picked in the destination search, "Rome, Italy".
     @NSManaged public var destination: String
@@ -37,9 +51,9 @@ public final class Trip: NSManagedObject, Identifiable {
     // (the app has no background work at all). `TripPhase.of(_:asOf:)` derives
     // it each time it is asked.
 
-    @NSManaged public var items: Set<ItineraryItem>?
-    @NSManaged public var flights: Set<Flight>?
-    @NSManaged public var bookings: Set<Booking>?
+    @NSManaged public var items: Set<SharedItineraryItem>?
+    @NSManaged public var flights: Set<SharedFlight>?
+    @NSManaged public var bookings: Set<SharedBooking>?
 
     public convenience init(
         context: NSManagedObjectContext,
@@ -61,15 +75,15 @@ public final class Trip: NSManagedObject, Identifiable {
     @nonobjc public static func fetchRequest(
         predicate: NSPredicate? = nil,
         sortDescriptors: [NSSortDescriptor] = []
-    ) -> NSFetchRequest<Trip> {
-        let request = NSFetchRequest<Trip>(entityName: TripModel.EntityName.trip)
+    ) -> NSFetchRequest<SharedTrip> {
+        let request = NSFetchRequest<SharedTrip>(entityName: TripModel.EntityName.trip)
         request.predicate = predicate
         request.sortDescriptors = sortDescriptors
         return request
     }
 }
 
-public extension Trip {
+public extension SharedTrip {
     var id: NSManagedObjectID { objectID }
 
     var latitude: Double? {
@@ -88,7 +102,7 @@ public extension Trip {
 
     /// Items with somewhere to put a pin. What the trip list and the PDF call
     /// "places".
-    var places: [ItineraryItem] {
+    var places: [SharedItineraryItem] {
         (items ?? []).filter(\.hasCoordinate)
     }
 

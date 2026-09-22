@@ -5,18 +5,19 @@ import Foundation
 /// something to do — backed by Core Data / `NSPersistentCloudKitContainer`
 /// rather than SwiftData, so it (and its whole place list) can be shared with
 /// another person for live co-editing via `CKShare`, which SwiftData has no
-/// support for at all. `Guide` is the CKShare root: sharing granularity is one
-/// guide, not the whole guide list. Its CloudKit-facing record type is
-/// `SharedGuide`, not `Guide`: see `GuideModel.swift` for why, and for why
-/// every initializer here goes through `NSEntityDescription.entity(forEntityName:in:)`
-/// instead of this class's own inherited `init(context:)`.
+/// support for at all. `SharedGuide` is the CKShare root: sharing granularity
+/// is one guide, not the whole guide list. Its CloudKit-facing record type is
+/// `SharedGuide`, matching this Swift class name (see `GuideModel.swift` for
+/// the entity/class split and for why every initializer here goes through
+/// `NSEntityDescription.entity(forEntityName:in:)` instead of this class's
+/// own inherited `init(context:)`).
 ///
 /// Deliberately has no centre, radius or dates. Its map and its weather are
 /// worked out from where its places are (`GuideRegion`), so a guide for Kyoto
 /// can be built from a sofa in Boston and still show Kyoto's weather. Dated
 /// plans belong to Trips.
-@objc(Guide)
-public final class Guide: NSManagedObject, Identifiable {
+@objc(SharedGuide)
+public final class SharedGuide: NSManagedObject, Identifiable {
     @NSManaged public var name: String
     /// Free text shown under the name, "Kyoto, Japan". Never geocoded.
     @NSManaged public var areaLabel: String
@@ -27,7 +28,7 @@ public final class Guide: NSManagedObject, Identifiable {
     /// pinned in, instead of reshuffling each time another is pinned.
     @NSManaged public var pinnedAt: Date?
 
-    @NSManaged public var places: Set<GuidePlace>?
+    @NSManaged public var places: Set<SharedGuidePlace>?
 
     public convenience init(context: NSManagedObjectContext, name: String, areaLabel: String = "", notes: String = "") {
         let entity = NSEntityDescription.entity(forEntityName: GuideModel.EntityName.guide, in: context)!
@@ -41,18 +42,18 @@ public final class Guide: NSManagedObject, Identifiable {
     @nonobjc public static func fetchRequest(
         predicate: NSPredicate? = nil,
         sortDescriptors: [NSSortDescriptor] = []
-    ) -> NSFetchRequest<Guide> {
-        let request = NSFetchRequest<Guide>(entityName: GuideModel.EntityName.guide)
+    ) -> NSFetchRequest<SharedGuide> {
+        let request = NSFetchRequest<SharedGuide>(entityName: GuideModel.EntityName.guide)
         request.predicate = predicate
         request.sortDescriptors = sortDescriptors
         return request
     }
 }
 
-public extension Guide {
+public extension SharedGuide {
     var id: NSManagedObjectID { objectID }
 
-    var allPlaces: [GuidePlace] { Array(places ?? []) }
+    var allPlaces: [SharedGuidePlace] { Array(places ?? []) }
 
     var isPinned: Bool { pinnedAt != nil }
 
@@ -67,7 +68,7 @@ public extension Guide {
     }
 
     /// One category's places in the order the guide lists them.
-    func places(in category: PlaceCategory) -> [GuidePlace] {
+    func places(in category: PlaceCategory) -> [SharedGuidePlace] {
         PlaceOrdering.ordered(allPlaces.filter { $0.category == category })
     }
 }

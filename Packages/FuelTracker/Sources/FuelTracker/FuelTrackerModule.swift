@@ -18,14 +18,15 @@ public enum FuelTrackerModule {
     /// up existing vehicles by it.
     public static let selectedVehicleDefaultsKey = "fuel.selectedVehicle"
 
-    /// The `Legacy*` SwiftData models, not the new Core Data ones — this is
-    /// what keeps them registered in `AppSchema.models` in `BhavikApp.swift`,
-    /// so `FuelLegacyMigration` still has a store to read real vehicles from.
-    /// See `LegacyVehicle`'s own doc comment: do NOT change this to the new
-    /// Core Data types, and do NOT drop it from `AppSchema.models` — both are
-    /// a later, human-gated step.
+    /// The original SwiftData models (`Vehicle`, `FuelEntry` — see `Vehicle`'s
+    /// own doc comment in `SwiftDataVehicle.swift`), not the new Core Data
+    /// ones (`SharedVehicle` and `SharedFuelEntry`) — this is what keeps them
+    /// registered in `AppSchema.models` in `BhavikApp.swift`, so
+    /// `FuelLegacyMigration` still has a store to read real vehicles from. Do
+    /// NOT change this to the new Core Data types, and do NOT drop it from
+    /// `AppSchema.models` — both are a later, human-gated step.
     public static var models: [any PersistentModel.Type] {
-        [LegacyVehicle.self, LegacyFuelEntry.self]
+        [Vehicle.self, FuelEntry.self]
     }
 
     /// `context` is the module's own Core Data context — see

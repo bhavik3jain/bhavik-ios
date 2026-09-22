@@ -4,8 +4,8 @@ import UniformTypeIdentifiers
 
 struct GarageView: View {
     @Environment(\.managedObjectContext) private var modelContext
-    @FetchRequest(sortDescriptors: [NSSortDescriptor(keyPath: \Vehicle.createdAt, ascending: true)])
-    private var vehicles: FetchedResults<Vehicle>
+    @FetchRequest(sortDescriptors: [NSSortDescriptor(keyPath: \SharedVehicle.createdAt, ascending: true)])
+    private var vehicles: FetchedResults<SharedVehicle>
 
     @State private var showingImporter = false
     @State private var showingAddVehicle = false
@@ -71,7 +71,7 @@ struct GarageView: View {
                 Button("Add") {
                     let trimmed = newVehicleName.trimmingCharacters(in: .whitespaces)
                     guard !trimmed.isEmpty else { return }
-                    _ = Vehicle(context: modelContext, name: trimmed)
+                    _ = SharedVehicle(context: modelContext, name: trimmed)
                     try? modelContext.saveIfNeeded()
                 }
             }

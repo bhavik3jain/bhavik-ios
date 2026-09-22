@@ -43,13 +43,13 @@ private func makeContext() throws -> NSManagedObjectContext {
 private func addPlace(
     _ name: String,
     _ category: PlaceCategory,
-    to guide: Guide,
+    to guide: SharedGuide,
     in context: NSManagedObjectContext,
     at point: GeoPoint? = nil,
     rating: Int? = nil,
     addedAt: Date = .now
-) -> GuidePlace {
-    let place = GuidePlace(context: context, name: name, category: category, latitude: point?.latitude, longitude: point?.longitude)
+) -> SharedGuidePlace {
+    let place = SharedGuidePlace(context: context, name: name, category: category, latitude: point?.latitude, longitude: point?.longitude)
     place.addedAt = addedAt
     place.guide = guide
     if let rating {
@@ -98,7 +98,7 @@ private func addPlace(
 @MainActor
 @Test func theGuideRegionIgnoresPlacesAddedByHandAndItsCentreIsWhereWeatherComesFrom() throws {
     let context = try makeContext()
-    let guide = Guide(context: context, name: "Kyoto", areaLabel: "Kyoto, Japan")
+    let guide = SharedGuide(context: context, name: "Kyoto", areaLabel: "Kyoto, Japan")
     addPlace("Somewhere I was told about", .places, to: guide, in: context)
     #expect(GuideSummary.summarize(guide).region == nil)
 
@@ -138,7 +138,7 @@ func guessesCategoryFromMapsPointOfInterest(_ poi: MKPointOfInterestCategory, _ 
 @MainActor
 @Test func anUnknownStoredCategoryFallsBackToPlaces() throws {
     let context = try makeContext()
-    let place = GuidePlace(context: context, name: "x", category: .activities)
+    let place = SharedGuidePlace(context: context, name: "x", category: .activities)
     place.categoryRaw = "somethingNewer"
     #expect(place.category == .places)
 }
@@ -148,7 +148,7 @@ func guessesCategoryFromMapsPointOfInterest(_ poi: MKPointOfInterestCategory, _ 
 @MainActor
 @Test func countsPlacesPerCategoryAndTried() throws {
     let context = try makeContext()
-    let guide = Guide(context: context, name: "Gion & Higashiyama", areaLabel: "Kyoto, Japan")
+    let guide = SharedGuide(context: context, name: "Gion & Higashiyama", areaLabel: "Kyoto, Japan")
     addPlace("Duck noodles", .foodAndDrinks, to: guide, in: context)
     addPlace("Kagizen", .foodAndDrinks, to: guide, in: context, rating: 5)
     addPlace("Pontocho", .foodAndDrinks, to: guide, in: context, rating: 0)
@@ -168,8 +168,8 @@ func guessesCategoryFromMapsPointOfInterest(_ poi: MKPointOfInterestCategory, _ 
 @MainActor
 @Test func summaryLinesReadNaturallyAtTheEdges() throws {
     let context = try makeContext()
-    let empty = Guide(context: context, name: "Empty", areaLabel: "")
-    let untried = Guide(context: context, name: "Big Sur drive", areaLabel: "California")
+    let empty = SharedGuide(context: context, name: "Empty", areaLabel: "")
+    let untried = SharedGuide(context: context, name: "Big Sur drive", areaLabel: "California")
     addPlace("Bixby Bridge", .places, to: untried, in: context)
 
     #expect(GuideSummary.summarize(empty).detailLine == "No places yet")
@@ -191,8 +191,8 @@ func guessesCategoryFromMapsPointOfInterest(_ poi: MKPointOfInterestCategory, _ 
     #expect(GuideSummary.homeDetail(for: []) == "No guides yet")
     #expect(GuideSummary.overview([]) == "")
 
-    let kyoto = Guide(context: context, name: "Kyoto")
-    let soma = Guide(context: context, name: "SoMa")
+    let kyoto = SharedGuide(context: context, name: "Kyoto")
+    let soma = SharedGuide(context: context, name: "SoMa")
     addPlace("A", .places, to: kyoto, in: context)
     addPlace("B", .places, to: kyoto, in: context)
     addPlace("C", .foodAndDrinks, to: soma, in: context)
@@ -205,9 +205,9 @@ func guessesCategoryFromMapsPointOfInterest(_ poi: MKPointOfInterestCategory, _ 
 @MainActor
 @Test func guidesAreListedNewestFirst() throws {
     let context = try makeContext()
-    let older = Guide(context: context, name: "Older")
+    let older = SharedGuide(context: context, name: "Older")
     older.createdAt = Date(timeIntervalSince1970: 1_000)
-    let newer = Guide(context: context, name: "Newer")
+    let newer = SharedGuide(context: context, name: "Newer")
     newer.createdAt = Date(timeIntervalSince1970: 2_000)
     #expect(GuideSummary.all([older, newer]).map(\.name) == ["Newer", "Older"])
 }
@@ -224,7 +224,7 @@ private enum PersistentIdentifierFixture {
     @MainActor
     static func make() throws -> NSManagedObjectID {
         let context = try makeContext()
-        let guide = Guide(context: context, name: "fixture")
+        let guide = SharedGuide(context: context, name: "fixture")
         return guide.objectID
     }
 }
@@ -247,7 +247,7 @@ private enum PersistentIdentifierFixture {
 @MainActor
 @Test func aGuideListsOneCategoryInOrder() throws {
     let context = try makeContext()
-    let guide = Guide(context: context, name: "Kyoto")
+    let guide = SharedGuide(context: context, name: "Kyoto")
     let base = Date(timeIntervalSince1970: 0)
     addPlace("Kagizen", .foodAndDrinks, to: guide, in: context, rating: 5, addedAt: base)
     addPlace("Duck noodles", .foodAndDrinks, to: guide, in: context, addedAt: base.addingTimeInterval(10))
@@ -263,7 +263,7 @@ private enum PersistentIdentifierFixture {
 @MainActor
 @Test func untryingAPlaceClearsItsRatingAndDate() throws {
     let context = try makeContext()
-    let place = GuidePlace(context: context, name: "Kagizen", category: .foodAndDrinks)
+    let place = SharedGuidePlace(context: context, name: "Kagizen", category: .foodAndDrinks)
     let day = Date(timeIntervalSince1970: 1_000_000)
     place.setTried(true, asOf: day)
     place.rating = 4
@@ -281,14 +281,14 @@ private enum PersistentIdentifierFixture {
 @MainActor
 @Test func deletingAGuideDeletesItsPlaces() throws {
     let context = try makeContext()
-    let guide = Guide(context: context, name: "Kyoto")
+    let guide = SharedGuide(context: context, name: "Kyoto")
     addPlace("Yasaka", .places, to: guide, in: context)
     addPlace("Kagizen", .foodAndDrinks, to: guide, in: context)
     try context.save()
 
     context.delete(guide)
     try context.save()
-    #expect(try context.count(for: GuidePlace.fetchRequest()) == 0)
+    #expect(try context.count(for: SharedGuidePlace.fetchRequest()) == 0)
 }
 
 // MARK: - Distance and walking time
@@ -352,7 +352,7 @@ private let germany = Locale(identifier: "de_DE")
     ExploreDebugSeed.run(context: context)
     ExploreDebugSeed.run(context: context)
 
-    let guides = try context.fetch(Guide.fetchRequest())
+    let guides = try context.fetch(SharedGuide.fetchRequest())
     #expect(guides.count == 3)
     for guide in guides {
         #expect((5...12).contains(guide.allPlaces.count))
@@ -369,11 +369,11 @@ private let germany = Locale(identifier: "de_DE")
 @Test func pinnedGuidesComeFirstInTheOrderTheyWerePinned() throws {
     let context = try makeContext()
     let base = Date(timeIntervalSince1970: 1_800_000_000)
-    let oldest = Guide(context: context, name: "Oldest")
+    let oldest = SharedGuide(context: context, name: "Oldest")
     oldest.createdAt = base
-    let middle = Guide(context: context, name: "Middle")
+    let middle = SharedGuide(context: context, name: "Middle")
     middle.createdAt = base.addingTimeInterval(100)
-    let newest = Guide(context: context, name: "Newest")
+    let newest = SharedGuide(context: context, name: "Newest")
     newest.createdAt = base.addingTimeInterval(200)
 
     // Unpinned: newest first.
@@ -390,7 +390,7 @@ private let germany = Locale(identifier: "de_DE")
 @MainActor
 @Test func repinningKeepsTheOriginalDateAndUnpinningClearsIt() throws {
     let context = try makeContext()
-    let guide = Guide(context: context, name: "Kyoto")
+    let guide = SharedGuide(context: context, name: "Kyoto")
     let first = Date(timeIntervalSince1970: 1_800_000_000)
 
     guide.setPinned(true, asOf: first)

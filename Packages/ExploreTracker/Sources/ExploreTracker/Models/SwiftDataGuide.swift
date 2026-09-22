@@ -2,16 +2,22 @@ import Core
 import Foundation
 import SwiftData
 
-/// The original SwiftData models, kept alive under a `Legacy` name so the
-/// real, already-synced CloudKit records they map to (`CD_Guide` and
-/// `CD_GuidePlace`, from before this module moved to Core Data) are never
-/// orphaned. This is a pure rename — every stored property, relationship and
-/// annotation is byte-for-byte what `Guide`/`GuidePlace` used to be — so it is
-/// safe against the schema already deployed to Production.
+/// The original SwiftData models. These keep their original class names —
+/// `Guide` / `GuidePlace` — because SwiftData ties a model's identity, and its
+/// CloudKit record type (`CD_Guide` / `CD_GuidePlace`), directly to the Swift
+/// class name, with no way to preserve identity across a rename without an
+/// explicit `VersionedSchema`/`SchemaMigrationPlan` (this repo has never used
+/// one). Renaming this class would make SwiftData treat it as a brand-new,
+/// unrelated entity and orphan every already-synced `CD_Guide` record in
+/// Production. This is the new Core Data side that got the `Shared` prefix
+/// instead — see `SharedGuide.swift`/`SharedGuidePlace.swift`. This file is a
+/// pure rename of the SwiftData models — every stored property, relationship
+/// and annotation is byte-for-byte what they have always been — so it is safe
+/// against the schema already deployed to Production.
 ///
 /// `ExploreTrackerModule.models` still registers these types (as
-/// `LegacyGuide.self`/`LegacyGuidePlace.self`) so `AppSchema.models` keeps
-/// them in `BhavikApp`'s SwiftData container: the one-time importer in
+/// `Guide.self`/`GuidePlace.self`) so `AppSchema.models` keeps them in
+/// `BhavikApp`'s SwiftData container: the one-time importer in
 /// `ExploreLegacyMigration.swift` reads through them to copy real guides into
 /// the new Core Data store. Do NOT remove them from `AppSchema.models` — that
 /// is a separate, later, human-gated step, only once the user has confirmed
@@ -25,7 +31,7 @@ import SwiftData
 /// can be built from a sofa in Boston and still show Kyoto's weather. Dated
 /// plans belong to Trips.
 @Model
-public final class LegacyGuide {
+public final class Guide {
     public var name: String = ""
     /// Free text shown under the name, "Kyoto, Japan". Never geocoded.
     public var areaLabel: String = ""
@@ -36,8 +42,8 @@ public final class LegacyGuide {
     /// pinned in, instead of reshuffling each time another is pinned.
     public var pinnedAt: Date?
 
-    @Relationship(deleteRule: .cascade, inverse: \LegacyGuidePlace.guide)
-    public var places: [LegacyGuidePlace]? = []
+    @Relationship(deleteRule: .cascade, inverse: \GuidePlace.guide)
+    public var places: [GuidePlace]? = []
 
     public init(name: String, areaLabel: String = "", notes: String = "") {
         self.name = name
@@ -46,7 +52,7 @@ public final class LegacyGuide {
         self.createdAt = .now
     }
 
-    public var allPlaces: [LegacyGuidePlace] { places ?? [] }
+    public var allPlaces: [GuidePlace] { places ?? [] }
 
     public var isPinned: Bool { pinnedAt != nil }
 
@@ -66,7 +72,7 @@ public final class LegacyGuide {
     /// `PlaceOrdering.ordered(_:)` — that helper is typed for the new Core
     /// Data `GuidePlace`, and this legacy model has nothing left to migrate
     /// to that type for.
-    public func places(in category: PlaceCategory) -> [LegacyGuidePlace] {
+    public func places(in category: PlaceCategory) -> [GuidePlace] {
         allPlaces
             .filter { $0.category == category }
             .sorted {
@@ -79,7 +85,7 @@ public final class LegacyGuide {
 }
 
 @Model
-public final class LegacyGuidePlace {
+public final class GuidePlace {
     public var name: String = ""
     /// A few words of why it's on the list, "go before 11:30".
     public var note: String = ""
@@ -95,7 +101,7 @@ public final class LegacyGuidePlace {
     public var triedAt: Date?
     public var addedAt: Date = Date.now
 
-    public var guide: LegacyGuide?
+    public var guide: Guide?
 
     public var category: PlaceCategory {
         get { PlaceCategory(rawValue: categoryRaw) ?? .places }

@@ -4,8 +4,8 @@ import SwiftUI
 
 /// Adds a booking — a stay, a car, tickets — or edits one.
 struct BookingEditorView: View {
-    let trip: Trip
-    let booking: Booking?
+    let trip: SharedTrip
+    let booking: SharedBooking?
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.managedObjectContext) private var modelContext
@@ -23,7 +23,7 @@ struct BookingEditorView: View {
     @State private var secureNote = ""
     @State private var confirmingDelete = false
 
-    init(trip: Trip, booking: Booking?) {
+    init(trip: SharedTrip, booking: SharedBooking?) {
         self.trip = trip
         self.booking = booking
         _startsAt = State(initialValue: booking?.startsAt ?? trip.startDate)
@@ -133,7 +133,7 @@ struct BookingEditorView: View {
     }
 
     private func save() {
-        let target = booking ?? Booking(context: modelContext, title: "", kind: kind)
+        let target = booking ?? SharedBooking(context: modelContext, title: "", kind: kind)
         if booking == nil {
             target.sortOrder = ((trip.bookings ?? []).map(\.sortOrder).max() ?? -1) + 1
         }

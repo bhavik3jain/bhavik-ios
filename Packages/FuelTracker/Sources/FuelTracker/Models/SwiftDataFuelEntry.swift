@@ -1,10 +1,11 @@
 import Foundation
 import SwiftData
 
-/// The original SwiftData model. See `LegacyVehicle`'s doc comment for why
-/// this still exists and must not be deleted.
+/// The original SwiftData model. See `Vehicle`'s doc comment (in
+/// `SwiftDataVehicle.swift`) for why this still exists, under its exact
+/// original name, and must not be deleted.
 @Model
-public final class LegacyFuelEntry {
+public final class FuelEntry {
     public var kindRaw: String = EntryKind.fillUp.rawValue
     public var date: Date = Date.now
     public var odometer: Int = 0
@@ -20,7 +21,7 @@ public final class LegacyFuelEntry {
     /// Service work performed, comma-separated as it appears in exports.
     public var services: String = ""
 
-    public var vehicle: LegacyVehicle?
+    public var vehicle: Vehicle?
 
     public var kind: EntryKind {
         get { EntryKind(rawValue: kindRaw) ?? .fillUp }

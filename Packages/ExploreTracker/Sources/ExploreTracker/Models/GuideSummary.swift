@@ -29,11 +29,11 @@ public enum PlaceOrdering {
         return lhs.name.localizedStandardCompare(rhs.name) == .orderedAscending
     }
 
-    public static func ordered(_ places: [GuidePlace]) -> [GuidePlace] {
+    public static func ordered(_ places: [SharedGuidePlace]) -> [SharedGuidePlace] {
         places.sorted { precedes(key($0), key($1)) }
     }
 
-    private static func key(_ place: GuidePlace) -> Key {
+    private static func key(_ place: SharedGuidePlace) -> Key {
         Key(name: place.name, isTried: place.isTried, rating: place.rating, addedAt: place.addedAt)
     }
 }
@@ -134,7 +134,7 @@ public struct GuideSummary: Identifiable, Sendable, Equatable {
 
 public extension GuideSummary {
     @MainActor
-    static func summarize(_ guide: Guide) -> GuideSummary {
+    static func summarize(_ guide: SharedGuide) -> GuideSummary {
         let places = guide.allPlaces
         var counts: [PlaceCategory: Int] = [:]
         for place in places {
@@ -160,7 +160,7 @@ public extension GuideSummary {
     /// featured for no reason. Now all cards are the same size and standing out
     /// is something you choose, by pinning.
     @MainActor
-    static func all(_ guides: [Guide]) -> [GuideSummary] {
+    static func all(_ guides: [SharedGuide]) -> [GuideSummary] {
         guides
             .sorted { lhs, rhs in
                 switch (lhs.pinnedAt, rhs.pinnedAt) {

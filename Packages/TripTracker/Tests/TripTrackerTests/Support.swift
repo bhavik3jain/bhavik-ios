@@ -36,8 +36,8 @@ func makeContext() throws -> NSManagedObjectContext {
     return context
 }
 
-/// Model-backed tests go through `Trip.dates`, which uses the current calendar,
-/// so their fixtures are built with it too.
+/// Model-backed tests go through `SharedTrip.dates`, which uses the current
+/// calendar, so their fixtures are built with it too.
 let current = Calendar.current
 
 func day(_ month: Int, _ day: Int, _ hour: Int = 12, _ minute: Int = 0) -> Date {
@@ -46,8 +46,8 @@ func day(_ month: Int, _ day: Int, _ hour: Int = 12, _ minute: Int = 0) -> Date 
 
 /// Rome & Amalfi, 6–14 June 2026, inserted with nothing planned yet.
 @MainActor
-func makeRome(in context: NSManagedObjectContext) -> Trip {
-    let trip = Trip(context: context, title: "Rome & Amalfi", destination: "Rome, Italy", startDate: day(6, 6), endDate: day(6, 14))
+func makeRome(in context: NSManagedObjectContext) -> SharedTrip {
+    let trip = SharedTrip(context: context, title: "Rome & Amalfi", destination: "Rome, Italy", startDate: day(6, 6), endDate: day(6, 14))
     trip.latitude = 41.9
     trip.longitude = 12.5
     return trip
@@ -57,7 +57,7 @@ func makeRome(in context: NSManagedObjectContext) -> Trip {
 @discardableResult
 func addItem(
     _ title: String,
-    to trip: Trip,
+    to trip: SharedTrip,
     in context: NSManagedObjectContext,
     day index: Int,
     at time: (Int, Int)? = nil,
@@ -66,11 +66,11 @@ func addItem(
     kind: ItemKind = .sight,
     done: Bool = false,
     placed: Bool = false
-) -> ItineraryItem {
+) -> SharedItineraryItem {
     // Times are deliberately typed on an unrelated date: only the time of day
     // may matter.
     let start = time.map { day(1, 3, $0.0, $0.1) }
-    let item = ItineraryItem(context: context, title: title, kind: kind, dayIndex: index, startTime: start, sortOrder: sortOrder)
+    let item = SharedItineraryItem(context: context, title: title, kind: kind, dayIndex: index, startTime: start, sortOrder: sortOrder)
     item.durationMinutes = minutes
     item.isDone = done
     if placed {
@@ -85,14 +85,14 @@ func addItem(
 @discardableResult
 func addFlight(
     _ designator: (String, String),
-    to trip: Trip,
+    to trip: SharedTrip,
     in context: NSManagedObjectContext,
     day index: Int,
     departs: Date? = nil,
     arrives: Date? = nil,
     code: String = ""
-) -> Flight {
-    let flight = Flight(context: context, airlineCode: designator.0, number: designator.1, originCode: "FCO", destinationCode: "LHR", dayIndex: index)
+) -> SharedFlight {
+    let flight = SharedFlight(context: context, airlineCode: designator.0, number: designator.1, originCode: "FCO", destinationCode: "LHR", dayIndex: index)
     flight.departsAt = departs
     flight.arrivesAt = arrives
     flight.confirmationCode = code

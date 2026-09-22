@@ -14,7 +14,7 @@ public enum MapDayFilter: Hashable, Sendable {
     /// Whether an item gets a pin under this filter. Only placed items ever do;
     /// a stay shows under every day, because the hotel is where each day starts
     /// and ends even though it was entered once, on the day of check-in.
-    public func shows(_ item: ItineraryItem) -> Bool {
+    public func shows(_ item: SharedItineraryItem) -> Bool {
         guard item.hasCoordinate else { return false }
         switch self {
         case .allDays: return true

@@ -6,14 +6,15 @@ import SwiftUI
 public enum ExploreTrackerModule {
     public static let accent = ModuleAccent(name: "Explore", color: Color(red: 0.80, green: 0.22, blue: 0.51))
 
-    /// The `Legacy*` SwiftData models, not the new Core Data ones — this is
-    /// what keeps them registered in `AppSchema.models` in `BhavikApp.swift`,
-    /// so `ExploreLegacyMigration` still has a store to read real guides
-    /// from. See `LegacyGuide`'s own doc comment: do NOT change this to the
-    /// new Core Data types, and do NOT drop it from `AppSchema.models` —
+    /// The original SwiftData models (`Guide`/`GuidePlace`), not the new
+    /// Core Data ones (`SharedGuide`/`SharedGuidePlace`) — this is what keeps
+    /// them registered in `AppSchema.models` in `BhavikApp.swift`, so
+    /// `ExploreLegacyMigration` still has a store to read real guides from.
+    /// See `SwiftDataGuide.swift`'s own doc comment: do NOT change this to
+    /// the new Core Data types, and do NOT drop it from `AppSchema.models` —
     /// both are a later, human-gated step.
     public static var models: [any PersistentModel.Type] {
-        [LegacyGuide.self, LegacyGuidePlace.self]
+        [Guide.self, GuidePlace.self]
     }
 
     /// `context` is the module's own Core Data context — see

@@ -4,7 +4,7 @@ import SwiftUI
 
 /// Every confirmation code this trip holds, one tap from the clipboard.
 struct TripCodesView: View {
-    let trip: Trip
+    let trip: SharedTrip
     let present: (TripSheet) -> Void
 
     @Environment(\.managedObjectContext) private var modelContext
@@ -12,7 +12,7 @@ struct TripCodesView: View {
     @State private var copied: String?
     @State private var revealed: Set<NSManagedObjectID> = []
 
-    private var flights: [Flight] {
+    private var flights: [SharedFlight] {
         let dates = trip.dates
         return (trip.flights ?? []).sorted {
             ($0.departsAt ?? dates.date(forDay: $0.dayIndex)) < ($1.departsAt ?? dates.date(forDay: $1.dayIndex))
@@ -23,7 +23,7 @@ struct TripCodesView: View {
         BookingGroups.ordered(Array(trip.bookings ?? []))
     }
 
-    private var secured: [Booking] {
+    private var secured: [SharedBooking] {
         groups.flatMap(\.bookings).filter { !$0.secureNote.isEmpty }
     }
 
@@ -98,7 +98,7 @@ struct TripCodesView: View {
         }
     }
 
-    private func secureRow(_ booking: Booking) -> some View {
+    private func secureRow(_ booking: SharedBooking) -> some View {
         let isRevealed = revealed.contains(booking.objectID)
         return HStack {
             Text(isRevealed ? booking.secureNote : String(repeating: "•", count: 6))

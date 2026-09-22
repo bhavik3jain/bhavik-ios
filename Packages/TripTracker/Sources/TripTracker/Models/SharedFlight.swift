@@ -3,12 +3,14 @@ import Foundation
 
 /// A flight on a trip — backed by Core Data / `NSPersistentCloudKitContainer`
 /// rather than SwiftData, so a trip's whole plan can be shared for live
-/// co-editing. Its CloudKit-facing record type is `SharedFlight`, not
-/// `Flight`: see `TripModel.swift` for why, and for why every initializer
+/// co-editing. Its CloudKit-facing record type is `SharedFlight`, and the
+/// Swift class name matches it exactly — see `SharedTrip.swift` for why this
+/// class carries the `Shared` prefix while the original SwiftData model keeps
+/// the plain `Flight` name, and `TripModel.swift` for why every initializer
 /// here goes through `NSEntityDescription.entity(forEntityName:in:)` instead
 /// of this class's own inherited `init(context:)`.
-@objc(Flight)
-public final class Flight: NSManagedObject, Identifiable {
+@objc(SharedFlight)
+public final class SharedFlight: NSManagedObject, Identifiable {
     /// "BA".
     @NSManaged public var airlineCode: String
     /// "286".
@@ -27,7 +29,7 @@ public final class Flight: NSManagedObject, Identifiable {
     @NSManaged public var dayIndex: Int
     @NSManaged public var notes: String
 
-    @NSManaged public var trip: Trip?
+    @NSManaged public var trip: SharedTrip?
 
     public convenience init(
         context: NSManagedObjectContext,
@@ -49,15 +51,15 @@ public final class Flight: NSManagedObject, Identifiable {
     @nonobjc public static func fetchRequest(
         predicate: NSPredicate? = nil,
         sortDescriptors: [NSSortDescriptor] = []
-    ) -> NSFetchRequest<Flight> {
-        let request = NSFetchRequest<Flight>(entityName: TripModel.EntityName.flight)
+    ) -> NSFetchRequest<SharedFlight> {
+        let request = NSFetchRequest<SharedFlight>(entityName: TripModel.EntityName.flight)
         request.predicate = predicate
         request.sortDescriptors = sortDescriptors
         return request
     }
 }
 
-public extension Flight {
+public extension SharedFlight {
     var id: NSManagedObjectID { objectID }
 
     /// "BA 286", or whatever part of it exists.

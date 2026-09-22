@@ -22,11 +22,11 @@ enum TripSection: String, CaseIterable, Identifiable {
 /// What the trip screen can present over itself.
 enum TripSheet: Identifiable {
     case newItem(day: Int)
-    case item(ItineraryItem)
+    case item(SharedItineraryItem)
     case newFlight(day: Int)
-    case flight(Flight)
+    case flight(SharedFlight)
     case newBooking
-    case booking(Booking)
+    case booking(SharedBooking)
     case editTrip
 
     var id: String {
@@ -47,7 +47,7 @@ struct TripDetailView: View {
     // macro protocol `@Bindable` requires on this SDK (it's `unavailable` for
     // ObservableObject types here) — `@ObservedObject` is Core Data's actual
     // equivalent, and nothing below binds through `$trip` anyway.
-    @ObservedObject var trip: Trip
+    @ObservedObject var trip: SharedTrip
 
     // A segmented control rather than a nested TabView: the module's tab bar is
     // already on screen, and a second bar of tabs inside a pushed screen reads as
@@ -57,7 +57,7 @@ struct TripDetailView: View {
     @State private var weather: [DayWeather] = []
     @State private var sheet: TripSheet?
 
-    init(trip: Trip) {
+    init(trip: SharedTrip) {
         self.trip = trip
         _selectedDay = State(initialValue: TripDates.initialDay(for: trip))
     }

@@ -8,28 +8,36 @@ import Foundation
 ///
 /// Every entity's `NSEntityDescription.name` — its CloudKit-facing record
 /// type, via `CloudKitSchemaInitializer`'s "CD_" + name convention — is
-/// distinct from the `CD_Vehicle` / `CD_FuelEntry` record types the
-/// `Legacy*` SwiftData models already occupy in the live CloudKit container,
-/// so deploying this schema can never collide with them:
+/// distinct from the `CD_Vehicle` / `CD_FuelEntry` record types the original
+/// SwiftData models (`Vehicle`, `FuelEntry` in the `SwiftData*.swift` files)
+/// already occupy in the live CloudKit container, so deploying this schema
+/// can never collide with them:
 ///
-/// | Swift class | Core Data entity name |
-/// |-------------|------------------------|
-/// | `Vehicle`   | `SharedVehicle`        |
-/// | `FuelEntry` | `SharedFuelEntry`      |
+/// | Swift class       | Core Data entity name |
+/// |--------------------|------------------------|
+/// | `SharedVehicle`    | `SharedVehicle`        |
+/// | `SharedFuelEntry`  | `SharedFuelEntry`      |
 ///
 /// The Swift class name and the entity name are independent
-/// (`NSEntityDescription.managedObjectClassName` vs `.name`) — that's what
-/// lets the Swift-facing type keep the clean original name (`Vehicle`, not
-/// `SharedVehicle`) while the CloudKit-facing record type is the new,
-/// non-colliding one.
+/// (`NSEntityDescription.managedObjectClassName` vs `.name`) — nothing
+/// requires them to match. They happen to match here (`SharedVehicle` the
+/// class, `SharedVehicle` the entity) because that split is what let the
+/// *other* side of this module, the SwiftData models, keep their exact
+/// original names (`Vehicle`, not `LegacyVehicle`) instead: SwiftData has no
+/// such split, so it was these Core Data classes that had to take the
+/// `Shared` prefix rather than the SwiftData ones, or the SwiftData side's
+/// CloudKit record type would have silently changed out from under the real
+/// data already in Production. See `SharedVehicle.swift`'s doc comment for
+/// the full story.
 ///
 /// Because of that split, `NSManagedObject`'s own `init(context:)`
 /// convenience initializer can't be used anywhere in this module: it
-/// resolves the entity by matching the class's own name ("Vehicle") against
-/// the model's entity names, and finds nothing, since the entity is named
-/// "SharedVehicle". Every initializer on these two classes goes through
-/// `NSEntityDescription.entity(forEntityName:in:)` explicitly instead — see
-/// each class's own file.
+/// resolves the entity by matching the class's own name ("SharedVehicle")
+/// against the model's entity names, which does find a match here — but
+/// every initializer on these two classes still goes through
+/// `NSEntityDescription.entity(forEntityName:in:)` explicitly rather than
+/// relying on that, since the two are independent by design and lining up is
+/// incidental. See each class's own file.
 ///
 /// Sharing granularity is one `Vehicle` (with its `FuelEntry` children), not
 /// the whole garage — `Vehicle` is the CKShare root.
@@ -48,11 +56,11 @@ public enum FuelModel {
 
         let vehicle = NSEntityDescription()
         vehicle.name = EntityName.vehicle
-        vehicle.managedObjectClassName = NSStringFromClass(Vehicle.self)
+        vehicle.managedObjectClassName = NSStringFromClass(SharedVehicle.self)
 
         let entry = NSEntityDescription()
         entry.name = EntityName.entry
-        entry.managedObjectClassName = NSStringFromClass(FuelEntry.self)
+        entry.managedObjectClassName = NSStringFromClass(SharedFuelEntry.self)
 
         vehicle.properties = [
             string("name", default: ""),

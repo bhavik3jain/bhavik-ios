@@ -2,13 +2,13 @@ import Core
 import SwiftUI
 
 struct VehicleLogView: View {
-    let vehicle: Vehicle?
+    let vehicle: SharedVehicle?
     let summary: VehicleSummary?
     let summaries: [VehicleSummary]
     @Binding var showingAddEntry: Bool
     let perform: (VehicleChipAction, VehicleSummary) -> Void
 
-    private var fillUps: [FuelEntry] {
+    private var fillUps: [SharedFuelEntry] {
         (vehicle?.orderedFillUps ?? []).reversed()
     }
 
@@ -141,7 +141,7 @@ private struct SummaryTiles: View {
 }
 
 private struct FillUpRow: View {
-    let entry: FuelEntry
+    let entry: SharedFuelEntry
     let mpg: Double?
 
     var body: some View {
@@ -186,7 +186,7 @@ private struct FillUpRow: View {
 }
 
 private struct ServiceRow: View {
-    let entry: FuelEntry
+    let entry: SharedFuelEntry
 
     var body: some View {
         HStack {

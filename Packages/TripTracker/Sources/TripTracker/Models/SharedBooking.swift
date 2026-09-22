@@ -4,12 +4,14 @@ import Foundation
 /// A booking on a trip — a stay, a car, tickets — backed by Core Data /
 /// `NSPersistentCloudKitContainer` rather than SwiftData, so a trip's whole
 /// plan can be shared for live co-editing. Its CloudKit-facing record type is
-/// `SharedBooking`, not `Booking`: see `TripModel.swift` for why, and for why
-/// every initializer here goes through
+/// `SharedBooking`, and the Swift class name matches it exactly — see
+/// `SharedTrip.swift` for why this class carries the `Shared` prefix while
+/// the original SwiftData model keeps the plain `Booking` name, and
+/// `TripModel.swift` for why every initializer here goes through
 /// `NSEntityDescription.entity(forEntityName:in:)` instead of this class's own
 /// inherited `init(context:)`.
-@objc(Booking)
-public final class Booking: NSManagedObject, Identifiable {
+@objc(SharedBooking)
+public final class SharedBooking: NSManagedObject, Identifiable {
     /// "Hotel de Russie".
     @NSManaged public var title: String
     /// Who it's with, "Avis".
@@ -32,7 +34,7 @@ public final class Booking: NSManagedObject, Identifiable {
     /// people who shouldn't be able to open the flat.
     @NSManaged public var secureNote: String
 
-    @NSManaged public var trip: Trip?
+    @NSManaged public var trip: SharedTrip?
 
     public convenience init(
         context: NSManagedObjectContext,
@@ -52,15 +54,15 @@ public final class Booking: NSManagedObject, Identifiable {
     @nonobjc public static func fetchRequest(
         predicate: NSPredicate? = nil,
         sortDescriptors: [NSSortDescriptor] = []
-    ) -> NSFetchRequest<Booking> {
-        let request = NSFetchRequest<Booking>(entityName: TripModel.EntityName.booking)
+    ) -> NSFetchRequest<SharedBooking> {
+        let request = NSFetchRequest<SharedBooking>(entityName: TripModel.EntityName.booking)
         request.predicate = predicate
         request.sortDescriptors = sortDescriptors
         return request
     }
 }
 
-public extension Booking {
+public extension SharedBooking {
     var id: NSManagedObjectID { objectID }
 
     var kind: BookingKind {

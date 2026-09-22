@@ -4,7 +4,7 @@ import SwiftUI
 
 /// Adds a trip, or edits one when given it.
 struct TripEditorView: View {
-    let trip: Trip?
+    let trip: SharedTrip?
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.managedObjectContext) private var modelContext
@@ -102,7 +102,7 @@ struct TripEditorView: View {
 
     private func save() {
         let calendar = Calendar.current
-        let target = trip ?? Trip(context: modelContext, title: "", startDate: startDate, endDate: endDate)
+        let target = trip ?? SharedTrip(context: modelContext, title: "", startDate: startDate, endDate: endDate)
         target.title = title.trimmingCharacters(in: .whitespaces)
         target.destination = destination
         target.latitude = latitude

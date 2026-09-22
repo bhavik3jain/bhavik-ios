@@ -3,7 +3,7 @@ import CoreData
 import SwiftUI
 
 struct AddPlaceView: View {
-    let guide: Guide
+    let guide: SharedGuide
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.managedObjectContext) private var modelContext
@@ -29,7 +29,7 @@ struct AddPlaceView: View {
     private let areaLabel: String
     private let isBiased: Bool
 
-    init(guide: Guide, initialCategory: PlaceCategory) {
+    init(guide: SharedGuide, initialCategory: PlaceCategory) {
         self.guide = guide
         let region = GuideRegion.enclosing(guide.allPlaces.compactMap(\.point))
         _search = State(initialValue: PlaceSearch(region: region))
@@ -198,10 +198,10 @@ struct AddPlaceView: View {
 
     private func save() {
         let trimmedNote = note.trimmingCharacters(in: .whitespacesAndNewlines)
-        let place: GuidePlace
+        let place: SharedGuidePlace
         switch chosen {
         case .found(_, let resolved):
-            place = GuidePlace(
+            place = SharedGuidePlace(
                 context: modelContext,
                 name: resolved.name,
                 category: category,
@@ -211,7 +211,7 @@ struct AddPlaceView: View {
                 longitude: resolved.point.longitude
             )
         case .manual:
-            place = GuidePlace(
+            place = SharedGuidePlace(
                 context: modelContext,
                 name: manualName.trimmingCharacters(in: .whitespacesAndNewlines),
                 category: category,

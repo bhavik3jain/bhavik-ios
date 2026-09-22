@@ -54,7 +54,7 @@ public struct VehicleSummary: Identifiable, Sendable, Equatable {
 
 public extension VehicleSummary {
     @MainActor
-    static func summarize(_ vehicle: Vehicle) -> VehicleSummary {
+    static func summarize(_ vehicle: SharedVehicle) -> VehicleSummary {
         let fillUps = vehicle.orderedFillUps
         let services = vehicle.orderedServices
 
@@ -85,7 +85,7 @@ public extension VehicleSummary {
     /// that is the order the names happened to appear in the Fuelly CSV, which
     /// has nothing to do with which car you drive.
     @MainActor
-    static func fleet(_ vehicles: [Vehicle]) -> [VehicleSummary] {
+    static func fleet(_ vehicles: [SharedVehicle]) -> [VehicleSummary] {
         vehicles
             .map(summarize)
             .sorted { lhs, rhs in

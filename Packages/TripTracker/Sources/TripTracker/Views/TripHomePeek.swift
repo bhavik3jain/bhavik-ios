@@ -5,7 +5,7 @@ public extension TripTrackerModule {
     /// What long-pressing Trips on the home screen shows: the trip under way with
     /// what's next today, or else the next trip and how far off it is.
     @MainActor
-    static func homePeek(trips: [Trip]) -> some View {
+    static func homePeek(trips: [SharedTrip]) -> some View {
         TripHomePeek(groups: TripGroups(trips), now: .now)
     }
 }
@@ -47,7 +47,7 @@ struct TripHomePeek: View {
         }
     }
 
-    private func inProgress(_ trip: Trip) -> some View {
+    private func inProgress(_ trip: SharedTrip) -> some View {
         let dates = trip.dates
         let plan = DayPlan(trip: trip, dayIndex: dates.offset(of: now))
         return VStack(alignment: .leading, spacing: 12) {

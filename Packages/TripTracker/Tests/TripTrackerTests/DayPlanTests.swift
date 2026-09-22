@@ -100,7 +100,7 @@ import Testing
 /// The mockup's day: 09:30 and 13:00 done, NOW at 17:00, dinner at 20:00,
 /// Trastevere anytime.
 @MainActor
-private func mockupDay() throws -> (NSManagedObjectContext, Trip) {
+private func mockupDay() throws -> (NSManagedObjectContext, SharedTrip) {
     let context = try makeContext()
     let trip = makeRome(in: context)
     addItem("Galleria Borghese", to: trip, in: context, day: 2, at: (9, 30), minutes: 90, done: true)

@@ -2,8 +2,8 @@ import Core
 import Foundation
 
 /// A plain value type, not SwiftData- or Core Data-dependent, so it lives here
-/// rather than in either `Legacy*` or the new Core Data model files — both
-/// `LegacyGuidePlace`/`GuidePlace` read the same `PlaceCategory`, and its
+/// rather than in either the SwiftData or the new Core Data model files —
+/// both `GuidePlace`/`SharedGuidePlace` read the same `PlaceCategory`, and its
 /// rawValue is what's actually stored (in `categoryRaw`), so a case can be
 /// added here without it being a schema change on either side.
 

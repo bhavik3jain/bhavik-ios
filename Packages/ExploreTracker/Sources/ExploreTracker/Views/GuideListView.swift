@@ -5,9 +5,9 @@ import SwiftUI
 
 struct GuideListView: View {
     @Environment(\.managedObjectContext) private var modelContext
-    @FetchRequest(sortDescriptors: [NSSortDescriptor(keyPath: \Guide.createdAt, ascending: false)])
-    private var guideResults: FetchedResults<Guide>
-    private var guides: [Guide] { Array(guideResults) }
+    @FetchRequest(sortDescriptors: [NSSortDescriptor(keyPath: \SharedGuide.createdAt, ascending: false)])
+    private var guideResults: FetchedResults<SharedGuide>
+    private var guides: [SharedGuide] { Array(guideResults) }
 
     @State private var showingNewGuide = false
     @State private var pendingDeletion: GuideSummary?
@@ -114,7 +114,7 @@ struct GuideListView: View {
         pendingDeletion.map { "Delete “\($0.name)”?" } ?? "Delete guide?"
     }
 
-    private func pinButton(for guide: Guide) -> some View {
+    private func pinButton(for guide: SharedGuide) -> some View {
         Button(
             guide.isPinned ? "Unpin" : "Pin",
             systemImage: guide.isPinned ? "pin.slash" : "pin"
@@ -124,7 +124,7 @@ struct GuideListView: View {
         }
     }
 
-    private func guide(for summary: GuideSummary) -> Guide? {
+    private func guide(for summary: GuideSummary) -> SharedGuide? {
         guides.first { $0.objectID == summary.id }
     }
 }

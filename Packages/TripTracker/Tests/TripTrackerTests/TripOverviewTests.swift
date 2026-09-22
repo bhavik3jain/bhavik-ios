@@ -4,11 +4,11 @@ import Testing
 @testable import TripTracker
 
 @MainActor
-private func trips(in context: NSManagedObjectContext) -> (rome: Trip, tokyo: Trip, lisbon: Trip, reykjavik: Trip) {
+private func trips(in context: NSManagedObjectContext) -> (rome: SharedTrip, tokyo: SharedTrip, lisbon: SharedTrip, reykjavik: SharedTrip) {
     let rome = makeRome(in: context)
-    let tokyo = Trip(context: context, title: "Tokyo", startDate: day(10, 2), endDate: day(10, 13))
-    let lisbon = Trip(context: context, title: "Lisbon", startDate: day(11, 14), endDate: day(11, 17))
-    let reykjavik = Trip(context: context, title: "Reykjavik", startDate: day(3, 1), endDate: day(3, 6))
+    let tokyo = SharedTrip(context: context, title: "Tokyo", startDate: day(10, 2), endDate: day(10, 13))
+    let lisbon = SharedTrip(context: context, title: "Lisbon", startDate: day(11, 14), endDate: day(11, 17))
+    let reykjavik = SharedTrip(context: context, title: "Reykjavik", startDate: day(3, 1), endDate: day(3, 6))
     return (rome, tokyo, lisbon, reykjavik)
 }
 
@@ -125,22 +125,22 @@ private func trips(in context: NSManagedObjectContext) -> (rome: Trip, tokyo: Tr
     let trip = makeRome(in: context)
     addItem("Galleria", to: trip, in: context, day: 2)
     addFlight(("BA", "1"), to: trip, in: context, day: 0)
-    let booking = Booking(context: context, title: "Hotel", kind: .lodging)
+    let booking = SharedBooking(context: context, title: "Hotel", kind: .lodging)
     booking.trip = trip
     try context.save()
 
     context.delete(trip)
     try context.save()
 
-    #expect(try context.count(for: ItineraryItem.fetchRequest()) == 0)
-    #expect(try context.count(for: Flight.fetchRequest()) == 0)
-    #expect(try context.count(for: Booking.fetchRequest()) == 0)
+    #expect(try context.count(for: SharedItineraryItem.fetchRequest()) == 0)
+    #expect(try context.count(for: SharedFlight.fetchRequest()) == 0)
+    #expect(try context.count(for: SharedBooking.fetchRequest()) == 0)
 }
 
 @MainActor
 @Test func togglingDoneStampsAndClearsTheTime() throws {
     let context = try makeContext()
-    let item = ItineraryItem(context: context, title: "Galleria", dayIndex: 0)
+    let item = SharedItineraryItem(context: context, title: "Galleria", dayIndex: 0)
     let now = day(6, 8, 11)
     item.toggleDone(asOf: now)
     #expect(item.isDone)
@@ -153,10 +153,10 @@ private func trips(in context: NSManagedObjectContext) -> (rome: Trip, tokyo: Tr
 @MainActor
 @Test func unknownRawValuesFallBack() throws {
     let context = try makeContext()
-    let item = ItineraryItem(context: context, title: "x", dayIndex: 0)
+    let item = SharedItineraryItem(context: context, title: "x", dayIndex: 0)
     item.kindRaw = "spaceport"
     #expect(item.kind == .other)
-    let booking = Booking(context: context, title: "x", kind: .car)
+    let booking = SharedBooking(context: context, title: "x", kind: .car)
     booking.kindRaw = "zeppelin"
     #expect(booking.kind == .other)
 }
@@ -164,9 +164,9 @@ private func trips(in context: NSManagedObjectContext) -> (rome: Trip, tokyo: Tr
 @MainActor
 @Test func flightHeadlineCopesWithMissingParts() throws {
     let context = try makeContext()
-    let flight = Flight(context: context, airlineCode: "BA", number: "286", originCode: "FCO", destinationCode: "LHR", dayIndex: 0)
+    let flight = SharedFlight(context: context, airlineCode: "BA", number: "286", originCode: "FCO", destinationCode: "LHR", dayIndex: 0)
     #expect(flight.headline == "BA 286 · FCO → LHR")
-    let bare = Flight(context: context, airlineCode: "", number: "", originCode: "", destinationCode: "", dayIndex: 0)
+    let bare = SharedFlight(context: context, airlineCode: "", number: "", originCode: "", destinationCode: "", dayIndex: 0)
     #expect(bare.headline == "Flight")
 }
 
@@ -174,12 +174,12 @@ private func trips(in context: NSManagedObjectContext) -> (rome: Trip, tokyo: Tr
 @Test func debugSeedRunsOnceAndOnlyIntoAnEmptyStore() throws {
     let context = try makeContext()
     TripDebugSeed.run(context: context)
-    let seeded = try context.count(for: Trip.fetchRequest())
+    let seeded = try context.count(for: SharedTrip.fetchRequest())
     #expect(seeded == 4)
     TripDebugSeed.run(context: context)
-    #expect(try context.count(for: Trip.fetchRequest()) == seeded)
+    #expect(try context.count(for: SharedTrip.fetchRequest()) == seeded)
 
-    let groups = TripGroups(try context.fetch(Trip.fetchRequest()))
+    let groups = TripGroups(try context.fetch(SharedTrip.fetchRequest()))
     #expect(groups.inProgress.count == 1)
     #expect(groups.upcoming.count == 2)
     #expect(groups.finished.count == 1)

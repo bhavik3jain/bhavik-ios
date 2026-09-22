@@ -4,12 +4,13 @@ import Foundation
 /// A fill-up or service record, backed by Core Data /
 /// `NSPersistentCloudKitContainer` rather than SwiftData, so it travels with
 /// its vehicle when that vehicle is shared for live co-editing. Its
-/// CloudKit-facing record type is `SharedFuelEntry`, not `FuelEntry`: see
-/// `FuelModel.swift` for why, and for why every initializer here goes through
+/// CloudKit-facing record type is `SharedFuelEntry`, and as of this class the
+/// Swift class name matches it exactly — see `FuelModel.swift` for why that
+/// split exists, and for why every initializer here goes through
 /// `NSEntityDescription.entity(forEntityName:in:)` instead of this class's
 /// own inherited `init(context:)`.
-@objc(FuelEntry)
-public final class FuelEntry: NSManagedObject, Identifiable {
+@objc(SharedFuelEntry)
+public final class SharedFuelEntry: NSManagedObject, Identifiable {
     @NSManaged public var kindRaw: String
     @NSManaged public var date: Date
     @NSManaged public var odometer: Int
@@ -25,7 +26,7 @@ public final class FuelEntry: NSManagedObject, Identifiable {
     /// Service work performed, comma-separated as it appears in exports.
     @NSManaged public var services: String
 
-    @NSManaged public var vehicle: Vehicle?
+    @NSManaged public var vehicle: SharedVehicle?
 
     public convenience init(
         context: NSManagedObjectContext,
@@ -59,15 +60,15 @@ public final class FuelEntry: NSManagedObject, Identifiable {
     @nonobjc public static func fetchRequest(
         predicate: NSPredicate? = nil,
         sortDescriptors: [NSSortDescriptor] = []
-    ) -> NSFetchRequest<FuelEntry> {
-        let request = NSFetchRequest<FuelEntry>(entityName: FuelModel.EntityName.entry)
+    ) -> NSFetchRequest<SharedFuelEntry> {
+        let request = NSFetchRequest<SharedFuelEntry>(entityName: FuelModel.EntityName.entry)
         request.predicate = predicate
         request.sortDescriptors = sortDescriptors
         return request
     }
 }
 
-public extension FuelEntry {
+public extension SharedFuelEntry {
     var id: NSManagedObjectID { objectID }
 
     var kind: EntryKind {

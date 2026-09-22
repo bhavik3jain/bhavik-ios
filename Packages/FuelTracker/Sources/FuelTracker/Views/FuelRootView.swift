@@ -11,9 +11,9 @@ struct FuelRootView: View {
     /// for Gym/TV/Orders — read here only so `FuelLegacyMigration` has
     /// something to copy real vehicles out of.
     @Environment(\.modelContext) private var legacyContext
-    @FetchRequest(sortDescriptors: [NSSortDescriptor(keyPath: \Vehicle.createdAt, ascending: true)])
-    private var vehicleResults: FetchedResults<Vehicle>
-    private var vehicles: [Vehicle] { Array(vehicleResults) }
+    @FetchRequest(sortDescriptors: [NSSortDescriptor(keyPath: \SharedVehicle.createdAt, ascending: true)])
+    private var vehicleResults: FetchedResults<SharedVehicle>
+    private var vehicles: [SharedVehicle] { Array(vehicleResults) }
 
     /// The chosen vehicle's name, or "" for none chosen yet. `@AppStorage`
     /// rather than `@State` because `fullScreenCover` builds this view afresh
@@ -35,7 +35,7 @@ struct FuelRootView: View {
         )
     }
 
-    private var selectedVehicle: Vehicle? {
+    private var selectedVehicle: SharedVehicle? {
         guard let selectedSummary else { return nil }
         return vehicles.first { $0.objectID == selectedSummary.id }
     }

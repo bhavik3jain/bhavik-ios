@@ -29,7 +29,7 @@ public enum ExploreDebugSeed {
 
     @MainActor
     public static func run(context: NSManagedObjectContext, asOf now: Date = .now) {
-        guard (try? context.count(for: Guide.fetchRequest())) == 0 else { return }
+        guard (try? context.count(for: SharedGuide.fetchRequest())) == 0 else { return }
 
         // Oldest first, so Kyoto — the fullest — ends up newest and gets the
         // large card at the top of the list.
@@ -40,10 +40,10 @@ public enum ExploreDebugSeed {
         ]
 
         for (offset, entry) in guides.enumerated() {
-            let guide = Guide(context: context, name: entry.name, areaLabel: entry.area)
+            let guide = SharedGuide(context: context, name: entry.name, areaLabel: entry.area)
             guide.createdAt = now.addingTimeInterval(Double(offset - guides.count) * 86_400)
             for (index, sample) in entry.places.enumerated() {
-                let place = GuidePlace(
+                let place = SharedGuidePlace(
                     context: context,
                     name: sample.name,
                     category: sample.category,

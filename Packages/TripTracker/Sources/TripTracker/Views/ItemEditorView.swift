@@ -5,8 +5,8 @@ import SwiftUI
 
 /// Adds something to a day of the plan, or edits it.
 struct ItemEditorView: View {
-    let trip: Trip
-    let item: ItineraryItem?
+    let trip: SharedTrip
+    let item: SharedItineraryItem?
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.managedObjectContext) private var modelContext
@@ -22,7 +22,7 @@ struct ItemEditorView: View {
     @State private var search: PlaceSearch
     @State private var confirmingDelete = false
 
-    init(trip: Trip, item: ItineraryItem?, day: Int) {
+    init(trip: SharedTrip, item: SharedItineraryItem?, day: Int) {
         self.trip = trip
         self.item = item
         _day = State(initialValue: day)
@@ -158,7 +158,7 @@ struct ItemEditorView: View {
     }
 
     private func save() {
-        let target = item ?? ItineraryItem(context: modelContext, title: "", dayIndex: day)
+        let target = item ?? SharedItineraryItem(context: modelContext, title: "", dayIndex: day)
         if item == nil {
             // After everything already on the day, so a new untimed item joins
             // the end of Anytime rather than jumping the queue.

@@ -6,14 +6,15 @@ import SwiftUI
 public enum TripTrackerModule {
     public static let accent = ModuleAccent(name: "Trips", color: Color(red: 0.13, green: 0.52, blue: 0.93))
 
-    /// The `Legacy*` SwiftData models, not the new Core Data ones — this is
-    /// what keeps them registered in `AppSchema.models` in `BhavikApp.swift`,
-    /// so `TripLegacyMigration` still has a store to read real trips from. See
-    /// `LegacyTrip`'s own doc comment: do NOT change this to the new Core Data
-    /// types, and do NOT drop it from `AppSchema.models` — both are a later,
-    /// human-gated step.
+    /// The original SwiftData models (`Trip`, `ItineraryItem`, `Flight`,
+    /// `Booking` — see `Trip`'s own doc comment in `SwiftDataTrip.swift`), not
+    /// the new Core Data ones (`SharedTrip` and friends) — this is what keeps
+    /// them registered in `AppSchema.models` in `BhavikApp.swift`, so
+    /// `TripLegacyMigration` still has a store to read real trips from. Do NOT
+    /// change this to the new Core Data types, and do NOT drop it from
+    /// `AppSchema.models` — both are a later, human-gated step.
     public static var models: [any PersistentModel.Type] {
-        [LegacyTrip.self, LegacyItineraryItem.self, LegacyFlight.self, LegacyBooking.self]
+        [Trip.self, ItineraryItem.self, Flight.self, Booking.self]
     }
 
     /// `context` is the module's own Core Data context — see
@@ -30,7 +31,7 @@ public enum TripTrackerModule {
     }
 
     /// The line under "Trips" on the home screen.
-    public static func homeDetail(trips: [Trip], asOf now: Date = .now) -> String {
+    public static func homeDetail(trips: [SharedTrip], asOf now: Date = .now) -> String {
         TripOverview.homeDetail(trips: trips, asOf: now)
     }
 }

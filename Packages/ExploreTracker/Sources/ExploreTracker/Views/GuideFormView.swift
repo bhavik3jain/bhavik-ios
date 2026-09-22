@@ -7,7 +7,7 @@ import SwiftUI
 /// There is no location field on purpose: a guide's map and weather come from
 /// its places, so the area is only a label and is never looked up.
 struct GuideFormView: View {
-    let guide: Guide?
+    let guide: SharedGuide?
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.managedObjectContext) private var modelContext
@@ -60,7 +60,7 @@ struct GuideFormView: View {
             guide.name = trimmedName
             guide.areaLabel = area
         } else {
-            _ = Guide(context: modelContext, name: trimmedName, areaLabel: area)
+            _ = SharedGuide(context: modelContext, name: trimmedName, areaLabel: area)
         }
         try? modelContext.saveIfNeeded()
         dismiss()

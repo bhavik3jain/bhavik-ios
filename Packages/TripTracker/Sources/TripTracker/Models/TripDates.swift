@@ -14,8 +14,8 @@ public enum TripPhase: String, Sendable, CaseIterable {
         }
     }
 
-    /// Derived every time, never stored — see the note on `Trip`.
-    public static func of(_ trip: Trip, asOf now: Date = .now, calendar: Calendar = .current) -> TripPhase {
+    /// Derived every time, never stored — see the note on `SharedTrip`.
+    public static func of(_ trip: SharedTrip, asOf now: Date = .now, calendar: Calendar = .current) -> TripPhase {
         TripDates(start: trip.startDate, end: trip.endDate, calendar: calendar).phase(asOf: now)
     }
 }
@@ -97,7 +97,7 @@ public struct TripDates: Sendable, Equatable {
         }
     }
 
-    public static func initialDay(for trip: Trip, asOf now: Date = .now) -> Int {
+    public static func initialDay(for trip: SharedTrip, asOf now: Date = .now) -> Int {
         initialDay(for: trip.dates, asOf: now)
     }
 

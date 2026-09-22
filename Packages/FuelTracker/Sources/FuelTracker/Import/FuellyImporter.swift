@@ -92,17 +92,17 @@ public enum FuellyImporter {
                 continue
             }
 
-            let vehicle: Vehicle
+            let vehicle: SharedVehicle
             if let existing = vehiclesByName[vehicleName] {
                 vehicle = existing
             } else {
-                let created = Vehicle(context: context, name: vehicleName)
+                let created = SharedVehicle(context: context, name: vehicleName)
                 vehiclesByName[vehicleName] = created
                 vehicle = created
                 summary.vehicleNames.append(vehicleName)
             }
 
-            let entry = FuelEntry(
+            let entry = SharedFuelEntry(
                 context: context,
                 kind: isService ? .service : .fillUp,
                 date: date,
@@ -140,14 +140,14 @@ public enum FuellyImporter {
     }
 
     @MainActor
-    private static func existingVehiclesByName(in context: NSManagedObjectContext) throws -> [String: Vehicle] {
-        let vehicles = try context.fetch(Vehicle.fetchRequest())
+    private static func existingVehiclesByName(in context: NSManagedObjectContext) throws -> [String: SharedVehicle] {
+        let vehicles = try context.fetch(SharedVehicle.fetchRequest())
         return Dictionary(vehicles.map { ($0.name, $0) }, uniquingKeysWith: { first, _ in first })
     }
 
     @MainActor
     private static func existingEntryKeys(in context: NSManagedObjectContext) throws -> Set<EntryKey> {
-        let entries = try context.fetch(FuelEntry.fetchRequest())
+        let entries = try context.fetch(SharedFuelEntry.fetchRequest())
         return Set(entries.map {
             EntryKey(
                 vehicle: $0.vehicle?.name ?? "",

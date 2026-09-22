@@ -1,10 +1,11 @@
 import Foundation
 import SwiftData
 
-/// The original SwiftData model. See `LegacyTrip`'s doc comment for why this
-/// still exists and must not be deleted.
+/// The original SwiftData model, under its exact original name. See `Trip`'s
+/// (in `SwiftDataTrip.swift`) doc comment for why this still exists, must not
+/// be deleted, and must not be renamed.
 @Model
-public final class LegacyBooking {
+public final class Booking {
     /// "Hotel de Russie".
     public var title: String = ""
     /// Who it's with, "Avis".
@@ -26,7 +27,7 @@ public final class LegacyBooking {
     @Attribute(.allowsCloudEncryption)
     public var secureNote: String = ""
 
-    public var trip: LegacyTrip?
+    public var trip: Trip?
 
     public var kind: BookingKind {
         get { BookingKind(rawValue: kindRaw) ?? .other }

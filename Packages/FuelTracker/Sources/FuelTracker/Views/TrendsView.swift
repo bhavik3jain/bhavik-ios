@@ -2,7 +2,7 @@ import Charts
 import SwiftUI
 
 struct TrendsView: View {
-    let vehicle: Vehicle?
+    let vehicle: SharedVehicle?
     let summary: VehicleSummary?
     let summaries: [VehicleSummary]
     let perform: (VehicleChipAction, VehicleSummary) -> Void
@@ -35,7 +35,7 @@ struct TrendsView: View {
 
     /// Fill-ups whose date disagrees with their position by odometer, which
     /// usually means a mistyped year in the original log.
-    private var outOfOrderDates: [FuelEntry] {
+    private var outOfOrderDates: [SharedFuelEntry] {
         let byOdometer = vehicle?.orderedFillUps ?? []
         return byOdometer.enumerated().filter { index, entry in
             if index > 0, entry.date < byOdometer[index - 1].date { return true }

@@ -17,7 +17,7 @@ public enum FuelStatistics {
     /// the last full tank is divided by every gallon added over that span,
     /// including any partial fills in between. The first fill-up establishes a
     /// baseline odometer reading and yields no MPG of its own.
-    public static func mpgPoints(for fillUps: [FuelEntry]) -> [MPGPoint] {
+    public static func mpgPoints(for fillUps: [SharedFuelEntry]) -> [MPGPoint] {
         let ordered = fillUps
             .filter { $0.kind == .fillUp }
             .sorted { $0.odometer < $1.odometer }
@@ -57,7 +57,7 @@ public enum FuelStatistics {
     /// Lifetime MPG: total distance between the first and last full tank over
     /// all fuel burned in that span. More accurate than averaging per-tank MPG,
     /// which over-weights short tanks.
-    public static func averageMPG(for fillUps: [FuelEntry]) -> Double? {
+    public static func averageMPG(for fillUps: [SharedFuelEntry]) -> Double? {
         let points = mpgPoints(for: fillUps)
         guard !points.isEmpty else { return nil }
         let miles = points.reduce(0) { $0 + $1.miles }
@@ -66,7 +66,7 @@ public enum FuelStatistics {
         return Double(miles) / gallons
     }
 
-    public static func averagePricePerGallon(for fillUps: [FuelEntry]) -> Double? {
+    public static func averagePricePerGallon(for fillUps: [SharedFuelEntry]) -> Double? {
         let priced = fillUps.filter { $0.kind == .fillUp && $0.gallons > 0 && $0.totalCost > 0 }
         guard !priced.isEmpty else { return nil }
         let cost = priced.reduce(0.0) { $0 + $1.totalCost }
@@ -75,12 +75,12 @@ public enum FuelStatistics {
         return cost / gallons
     }
 
-    public static func totalSpend(for entries: [FuelEntry]) -> Double {
+    public static func totalSpend(for entries: [SharedFuelEntry]) -> Double {
         entries.reduce(0.0) { $0 + $1.totalCost }
     }
 
     /// Total spend grouped into calendar months, oldest first.
-    public static func monthlySpend(for entries: [FuelEntry], calendar: Calendar = .current) -> [(month: Date, total: Double)] {
+    public static func monthlySpend(for entries: [SharedFuelEntry], calendar: Calendar = .current) -> [(month: Date, total: Double)] {
         let grouped = Dictionary(grouping: entries) { entry in
             calendar.date(from: calendar.dateComponents([.year, .month], from: entry.date)) ?? entry.date
         }

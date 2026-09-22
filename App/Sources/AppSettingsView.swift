@@ -25,8 +25,8 @@ struct AppSettingsView: View {
     // same as it reaches HomeView — this view is pushed inside the same
     // NavigationStack/NavigationSplitView, not presented across a module
     // boundary, so nothing extra needs to thread it here.
-    @FetchRequest(sortDescriptors: []) private var tripResults: FetchedResults<Trip>
-    private var trips: [Trip] { Array(tripResults) }
+    @FetchRequest(sortDescriptors: []) private var tripResults: FetchedResults<SharedTrip>
+    private var trips: [SharedTrip] { Array(tripResults) }
     // Fuel moved to Core Data too. Unlike `tripResults` above, this can't be a
     // plain `@FetchRequest`: that property wrapper only ever reads
     // `\.managedObjectContext`, which on this view already resolves to Trips'
@@ -34,18 +34,18 @@ struct AppSettingsView: View {
     // doc comment on `ManagedObjectFetch`), so a second `@FetchRequest` here
     // would silently query the wrong store for each entity.
     @Environment(\.fuelManagedObjectContext) private var fuelContext
-    @StateObject private var vehicleFetch = ManagedObjectFetch<Vehicle>(Vehicle.fetchRequest())
-    @StateObject private var fuelEntryFetch = ManagedObjectFetch<FuelEntry>(FuelEntry.fetchRequest())
-    private var vehicles: [Vehicle] { vehicleFetch.results }
-    private var fuelEntries: [FuelEntry] { fuelEntryFetch.results }
+    @StateObject private var vehicleFetch = ManagedObjectFetch<SharedVehicle>(SharedVehicle.fetchRequest())
+    @StateObject private var fuelEntryFetch = ManagedObjectFetch<SharedFuelEntry>(SharedFuelEntry.fetchRequest())
+    private var vehicles: [SharedVehicle] { vehicleFetch.results }
+    private var fuelEntries: [SharedFuelEntry] { fuelEntryFetch.results }
     // Explore moved to Core Data too — same reasoning as Fuel's fetches above:
     // this view already resolves `\.managedObjectContext` to Trips' container,
     // so a plain `@FetchRequest` here would silently query the wrong store.
     @Environment(\.exploreManagedObjectContext) private var exploreContext
-    @StateObject private var guideFetch = ManagedObjectFetch<Guide>(Guide.fetchRequest())
-    @StateObject private var guidePlaceFetch = ManagedObjectFetch<GuidePlace>(GuidePlace.fetchRequest())
-    private var guides: [Guide] { guideFetch.results }
-    private var guidePlaces: [GuidePlace] { guidePlaceFetch.results }
+    @StateObject private var guideFetch = ManagedObjectFetch<SharedGuide>(SharedGuide.fetchRequest())
+    @StateObject private var guidePlaceFetch = ManagedObjectFetch<SharedGuidePlace>(SharedGuidePlace.fetchRequest())
+    private var guides: [SharedGuide] { guideFetch.results }
+    private var guidePlaces: [SharedGuidePlace] { guidePlaceFetch.results }
 
     var body: some View {
         Form {

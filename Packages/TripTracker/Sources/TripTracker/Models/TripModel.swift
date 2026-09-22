@@ -9,28 +9,35 @@ import Foundation
 /// Every entity's `NSEntityDescription.name` — its CloudKit-facing record type,
 /// via `CloudKitSchemaInitializer`'s "CD_" + name convention — is distinct from
 /// the `CD_Trip` / `CD_ItineraryItem` / `CD_Flight` / `CD_Booking` record types
-/// the `Legacy*` SwiftData models already occupy in the live CloudKit
+/// the original SwiftData models (`Trip`, `ItineraryItem`, `Flight`, `Booking`
+/// in the `SwiftData*.swift` files) already occupy in the live CloudKit
 /// container, so deploying this schema can never collide with them:
 ///
-/// | Swift class      | Core Data entity name  |
-/// |-------------------|------------------------|
-/// | `Trip`            | `SharedTrip`           |
-/// | `ItineraryItem`   | `SharedItineraryItem`  |
-/// | `Flight`          | `SharedFlight`         |
-/// | `Booking`         | `SharedBooking`        |
+/// | Swift class            | Core Data entity name  |
+/// |-------------------------|------------------------|
+/// | `SharedTrip`            | `SharedTrip`           |
+/// | `SharedItineraryItem`   | `SharedItineraryItem`  |
+/// | `SharedFlight`          | `SharedFlight`         |
+/// | `SharedBooking`         | `SharedBooking`        |
 ///
 /// The Swift class name and the entity name are independent
-/// (`NSEntityDescription.managedObjectClassName` vs `.name`) — that's what lets
-/// the Swift-facing type keep the clean original name (`Trip`, not
-/// `SharedTrip`) while the CloudKit-facing record type is the new,
-/// non-colliding one.
+/// (`NSEntityDescription.managedObjectClassName` vs `.name`) — nothing requires
+/// them to match. They happen to match here (`SharedTrip` the class,
+/// `SharedTrip` the entity) because that split is what let the *other* side of
+/// this module, the SwiftData models, keep their exact original names (`Trip`,
+/// not `LegacyTrip`) instead: SwiftData has no such split, so it was these
+/// Core Data classes that had to take the `Shared` prefix rather than the
+/// SwiftData ones, or the SwiftData side's CloudKit record type would have
+/// silently changed out from under the real data already in Production. See
+/// `SharedTrip.swift`'s doc comment for the full story.
 ///
 /// Because of that split, `NSManagedObject`'s own `init(context:)` convenience
 /// initializer can't be used anywhere in this module: it resolves the entity
-/// by matching the class's own name ("Trip") against the model's entity names,
-/// and finds nothing, since the entity is named "SharedTrip". Every
-/// initializer on these four classes goes through `NSEntityDescription.entity(
-/// forEntityName:in:)` explicitly instead — see each class's own file.
+/// by matching the class's own name ("SharedTrip") against the model's entity
+/// names, which does find a match here — but every initializer on these four
+/// classes still goes through `NSEntityDescription.entity(forEntityName:in:)`
+/// explicitly rather than relying on that, since the two are independent by
+/// design and lining up is incidental. See each class's own file.
 public enum TripModel {
     /// Entity names, kept next to the model that defines them rather than
     /// scattered across each class file, so the table above and the code can
@@ -48,19 +55,19 @@ public enum TripModel {
 
         let trip = NSEntityDescription()
         trip.name = EntityName.trip
-        trip.managedObjectClassName = NSStringFromClass(Trip.self)
+        trip.managedObjectClassName = NSStringFromClass(SharedTrip.self)
 
         let item = NSEntityDescription()
         item.name = EntityName.item
-        item.managedObjectClassName = NSStringFromClass(ItineraryItem.self)
+        item.managedObjectClassName = NSStringFromClass(SharedItineraryItem.self)
 
         let flight = NSEntityDescription()
         flight.name = EntityName.flight
-        flight.managedObjectClassName = NSStringFromClass(Flight.self)
+        flight.managedObjectClassName = NSStringFromClass(SharedFlight.self)
 
         let booking = NSEntityDescription()
         booking.name = EntityName.booking
-        booking.managedObjectClassName = NSStringFromClass(Booking.self)
+        booking.managedObjectClassName = NSStringFromClass(SharedBooking.self)
 
         trip.properties = [
             string("title", default: ""),

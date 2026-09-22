@@ -18,7 +18,7 @@ public enum FuelDebugSeed {
 
     @MainActor
     public static func run(context: NSManagedObjectContext) {
-        guard (try? context.count(for: Vehicle.fetchRequest())) == 0 else { return }
+        guard (try? context.count(for: SharedVehicle.fetchRequest())) == 0 else { return }
         guard let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first,
               let files = try? FileManager.default.contentsOfDirectory(at: documents, includingPropertiesForKeys: nil),
               let csv = files.first(where: { $0.pathExtension.lowercased() == "csv" })

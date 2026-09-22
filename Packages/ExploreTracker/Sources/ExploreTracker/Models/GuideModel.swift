@@ -8,31 +8,26 @@ import Foundation
 ///
 /// Every entity's `NSEntityDescription.name` — its CloudKit-facing record
 /// type, via `CloudKitSchemaInitializer`'s "CD_" + name convention — is
-/// distinct from the `CD_Guide` / `CD_GuidePlace` record types the `Legacy*`
-/// SwiftData models already occupy in the live CloudKit container, so
-/// deploying this schema can never collide with them:
+/// distinct from the `CD_Guide` / `CD_GuidePlace` record types the SwiftData
+/// `Guide`/`GuidePlace` models already occupy in the live CloudKit container,
+/// so deploying this schema can never collide with them:
 ///
-/// | Swift class  | Core Data entity name |
-/// |----------------|------------------------|
-/// | `Guide`        | `SharedGuide`          |
-/// | `GuidePlace`    | `SharedGuidePlace`     |
+/// | Swift class        | Core Data entity name |
+/// |---------------------|------------------------|
+/// | `SharedGuide`       | `SharedGuide`          |
+/// | `SharedGuidePlace`  | `SharedGuidePlace`     |
 ///
-/// The Swift class name and the entity name are independent
-/// (`NSEntityDescription.managedObjectClassName` vs `.name`) — that's what
-/// lets the Swift-facing type keep the clean original name (`Guide`, not
-/// `SharedGuide`) while the CloudKit-facing record type is the new,
-/// non-colliding one.
+/// The Swift class name and the entity name happen to match here — both are
+/// `Shared*`, kept distinct from the SwiftData models' original names
+/// (`Guide`/`GuidePlace`) precisely so this schema can never collide with
+/// the CloudKit record types those already-synced SwiftData models occupy.
+/// They're still independent fields (`NSEntityDescription.managedObjectClassName`
+/// vs `.name`), and initialization still goes through
+/// `NSEntityDescription.entity(forEntityName:in:)` explicitly rather than
+/// `NSManagedObject`'s own `init(context:)` — see each class's own file.
 ///
-/// Because of that split, `NSManagedObject`'s own `init(context:)`
-/// convenience initializer can't be used anywhere in this module: it
-/// resolves the entity by matching the class's own name ("Guide") against
-/// the model's entity names, and finds nothing, since the entity is named
-/// "SharedGuide". Every initializer on these two classes goes through
-/// `NSEntityDescription.entity(forEntityName:in:)` explicitly instead — see
-/// each class's own file.
-///
-/// Sharing granularity is one `Guide` (with its `GuidePlace` children), not
-/// the whole guide list — `Guide` is the CKShare root.
+/// Sharing granularity is one `SharedGuide` (with its `SharedGuidePlace`
+/// children), not the whole guide list — `SharedGuide` is the CKShare root.
 public enum GuideModel {
     /// Entity names, kept next to the model that defines them rather than
     /// scattered across each class file, so the table above and the code can
@@ -48,11 +43,11 @@ public enum GuideModel {
 
         let guide = NSEntityDescription()
         guide.name = EntityName.guide
-        guide.managedObjectClassName = NSStringFromClass(Guide.self)
+        guide.managedObjectClassName = NSStringFromClass(SharedGuide.self)
 
         let place = NSEntityDescription()
         place.name = EntityName.place
-        place.managedObjectClassName = NSStringFromClass(GuidePlace.self)
+        place.managedObjectClassName = NSStringFromClass(SharedGuidePlace.self)
 
         guide.properties = [
             string("name", default: ""),
@@ -132,7 +127,7 @@ public enum GuideModel {
     }
 
     /// An optional `Double?` attribute — `latitude`/`longitude` on
-    /// `GuidePlace`. No default: nil means "no coordinate", not zero.
+    /// `SharedGuidePlace`. No default: nil means "no coordinate", not zero.
     private static func double(_ name: String) -> NSAttributeDescription {
         let attribute = NSAttributeDescription()
         attribute.name = name

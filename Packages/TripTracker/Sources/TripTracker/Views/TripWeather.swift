@@ -10,7 +10,7 @@ struct WeatherRequest: Hashable {
     let from: Date
     let to: Date
 
-    init?(trip: Trip, asOf now: Date = .now) {
+    init?(trip: SharedTrip, asOf now: Date = .now) {
         guard let latitude = trip.latitude, let longitude = trip.longitude,
               let range = TripForecast.requestRange(for: trip.dates, asOf: now)
         else { return nil }
@@ -47,7 +47,7 @@ private struct TripWeatherLoader: ViewModifier {
 
 extension View {
     /// Fetches the trip's daily weather into `weather`, off the critical path.
-    func loadsWeather(for trip: Trip, into weather: Binding<[DayWeather]>) -> some View {
+    func loadsWeather(for trip: SharedTrip, into weather: Binding<[DayWeather]>) -> some View {
         modifier(TripWeatherLoader(request: WeatherRequest(trip: trip), weather: weather))
     }
 }

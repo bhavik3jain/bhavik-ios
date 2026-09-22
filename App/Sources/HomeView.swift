@@ -30,8 +30,8 @@ struct HomeView: View {
     // Phase (under way, upcoming, finished) is worked out from the dates in
     // Swift; only the stored archive flag can go in the predicate.
     @FetchRequest(sortDescriptors: [], predicate: NSPredicate(format: "isArchived == NO"))
-    private var tripResults: FetchedResults<Trip>
-    private var trips: [Trip] { Array(tripResults) }
+    private var tripResults: FetchedResults<SharedTrip>
+    private var trips: [SharedTrip] { Array(tripResults) }
     // Fuel moved to Core Data too — see BhavikApp.init()'s fuelContainer.
     // Reads Core's own `\.fuelManagedObjectContext` key rather than
     // `\.managedObjectContext`, which Trips already occupies at this level —
@@ -43,18 +43,18 @@ struct HomeView: View {
     // `ManagedObjectFetch` fetches directly against the context it's handed
     // instead — see its own doc comment.
     @Environment(\.fuelManagedObjectContext) private var fuelContext
-    @StateObject private var vehicleFetch = ManagedObjectFetch<Vehicle>(
-        Vehicle.fetchRequest(sortDescriptors: [NSSortDescriptor(keyPath: \Vehicle.createdAt, ascending: true)])
+    @StateObject private var vehicleFetch = ManagedObjectFetch<SharedVehicle>(
+        SharedVehicle.fetchRequest(sortDescriptors: [NSSortDescriptor(keyPath: \SharedVehicle.createdAt, ascending: true)])
     )
-    private var vehicles: [Vehicle] { vehicleFetch.results }
+    private var vehicles: [SharedVehicle] { vehicleFetch.results }
     // Explore moved to Core Data too — see BhavikApp.init()'s exploreContainer
     // and its own `\.exploreManagedObjectContext` key, the same reasoning as
     // Fuel's `fuelContext`/`vehicleFetch` above.
     @Environment(\.exploreManagedObjectContext) private var exploreContext
-    @StateObject private var guideFetch = ManagedObjectFetch<Guide>(
-        Guide.fetchRequest(sortDescriptors: [NSSortDescriptor(keyPath: \Guide.createdAt, ascending: false)])
+    @StateObject private var guideFetch = ManagedObjectFetch<SharedGuide>(
+        SharedGuide.fetchRequest(sortDescriptors: [NSSortDescriptor(keyPath: \SharedGuide.createdAt, ascending: false)])
     )
-    private var guides: [Guide] { guideFetch.results }
+    private var guides: [SharedGuide] { guideFetch.results }
     /// Written by a Fuel peek's "Open My X3" so the module opens on that car.
     @AppStorage(FuelTrackerModule.selectedVehicleDefaultsKey) private var selectedVehicleName = ""
 

@@ -3,7 +3,7 @@ import CoreData
 import SwiftUI
 
 struct AddFillUpView: View {
-    let vehicle: Vehicle
+    let vehicle: SharedVehicle
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.managedObjectContext) private var modelContext
@@ -116,7 +116,7 @@ struct AddFillUpView: View {
 
     private func save() {
         guard let odometer else { return }
-        let entry = FuelEntry(
+        let entry = SharedFuelEntry(
             context: modelContext,
             date: date,
             odometer: odometer,

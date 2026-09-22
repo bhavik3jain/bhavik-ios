@@ -1,8 +1,8 @@
 import Foundation
 
 /// Plain value types, not SwiftData- or Core Data-dependent, so they live here
-/// rather than in either `Legacy*` or the new Core Data model files — both
-/// `LegacyItineraryItem`/`ItineraryItem` and `LegacyBooking`/`Booking` read the
+/// rather than in either the SwiftData or the Core Data model files — both
+/// `ItineraryItem`/`SharedItineraryItem` and `Booking`/`SharedBooking` read the
 /// same `ItemKind`/`BookingKind`, and each rawValue is what's actually stored
 /// (in `kindRaw`), so a case can be added here without it being a schema
 /// change on either side.

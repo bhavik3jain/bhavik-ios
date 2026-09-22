@@ -18,7 +18,7 @@ public enum TripDebugSeed {
 
     @MainActor
     public static func run(context: NSManagedObjectContext, asOf now: Date = .now) {
-        let existing = (try? context.count(for: Trip.fetchRequest())) ?? 0
+        let existing = (try? context.count(for: SharedTrip.fetchRequest())) ?? 0
         guard existing == 0 else { return }
 
         let calendar = Calendar.current
@@ -29,7 +29,7 @@ public enum TripDebugSeed {
         }
 
         // In progress: today is day 3 of 9.
-        let rome = Trip(context: context, title: "Rome & Amalfi", destination: "Rome, Italy", startDate: day(-2), endDate: day(6))
+        let rome = SharedTrip(context: context, title: "Rome & Amalfi", destination: "Rome, Italy", startDate: day(-2), endDate: day(6))
         rome.latitude = 41.9028
         rome.longitude = 12.4964
 
@@ -47,7 +47,7 @@ public enum TripDebugSeed {
             ("Path of the Gods", .activity, 5, at(3, 8), 240, "Bomerano", 40.6260, 14.5320, false),
         ]
         for (order, place) in places.enumerated() {
-            let item = ItineraryItem(context: context, title: place.0, kind: place.1, dayIndex: place.2, startTime: place.3, sortOrder: order)
+            let item = SharedItineraryItem(context: context, title: place.0, kind: place.1, dayIndex: place.2, startTime: place.3, sortOrder: order)
             item.durationMinutes = place.4
             item.address = place.5
             item.latitude = place.6
@@ -57,13 +57,13 @@ public enum TripDebugSeed {
             item.trip = rome
         }
 
-        let outbound = Flight(context: context, airlineCode: "BA", number: "285", originCode: "LHR", destinationCode: "FCO", dayIndex: 0)
+        let outbound = SharedFlight(context: context, airlineCode: "BA", number: "285", originCode: "LHR", destinationCode: "FCO", dayIndex: 0)
         outbound.departsAt = at(-2, 8, 5)
         outbound.arrivesAt = at(-2, 11, 45)
         outbound.seat = "14A"
         outbound.confirmationCode = "ABC123"
         outbound.trip = rome
-        let home = Flight(context: context, airlineCode: "BA", number: "286", originCode: "FCO", destinationCode: "LHR", dayIndex: 8)
+        let home = SharedFlight(context: context, airlineCode: "BA", number: "286", originCode: "FCO", destinationCode: "LHR", dayIndex: 8)
         home.departsAt = at(6, 18, 40)
         home.arrivesAt = at(6, 20, 25)
         home.seat = "32K"
@@ -71,37 +71,37 @@ public enum TripDebugSeed {
         home.confirmationCode = "ABC123"
         home.trip = rome
 
-        let hotel = Booking(context: context, title: "Hotel de Russie", kind: .lodging, code: "RM-88412", provider: "Rome")
+        let hotel = SharedBooking(context: context, title: "Hotel de Russie", kind: .lodging, code: "RM-88412", provider: "Rome")
         hotel.startsAt = day(-2)
         hotel.endsAt = day(2)
         hotel.trip = rome
-        let flat = Booking(context: context, title: "Amalfi apartment", kind: .lodging, code: "HMX4920", provider: "Amalfi")
+        let flat = SharedBooking(context: context, title: "Amalfi apartment", kind: .lodging, code: "HMX4920", provider: "Amalfi")
         flat.startsAt = day(2)
         flat.endsAt = day(6)
         flat.secureNote = "4471#"
         flat.trip = rome
-        let car = Booking(context: context, title: "Avis · Salerno station", kind: .car, code: "IT-77301", provider: "Avis")
+        let car = SharedBooking(context: context, title: "Avis · Salerno station", kind: .car, code: "IT-77301", provider: "Avis")
         car.startsAt = at(2, 11)
         car.trip = rome
 
         // Upcoming: one inside the forecast window, one well beyond it.
-        let lisbon = Trip(context: context, title: "Lisbon long weekend", destination: "Lisbon, Portugal", startDate: day(5 + 9), endDate: day(5 + 12))
+        let lisbon = SharedTrip(context: context, title: "Lisbon long weekend", destination: "Lisbon, Portugal", startDate: day(5 + 9), endDate: day(5 + 12))
         lisbon.latitude = 38.7223
         lisbon.longitude = -9.1393
 
-        let tokyo = Trip(context: context, title: "Tokyo", destination: "Tokyo, Japan", startDate: day(40), endDate: day(51))
+        let tokyo = SharedTrip(context: context, title: "Tokyo", destination: "Tokyo, Japan", startDate: day(40), endDate: day(51))
         tokyo.latitude = 35.6762
         tokyo.longitude = 139.6503
-        let sushi = ItineraryItem(context: context, title: "Tsukiji outer market", kind: .food, dayIndex: 1, startTime: at(41, 7))
+        let sushi = SharedItineraryItem(context: context, title: "Tsukiji outer market", kind: .food, dayIndex: 1, startTime: at(41, 7))
         sushi.latitude = 35.6655
         sushi.longitude = 139.7708
         sushi.trip = tokyo
 
         // Finished.
-        let reykjavik = Trip(context: context, title: "Reykjavik", destination: "Reykjavik, Iceland", startDate: day(-60), endDate: day(-55))
+        let reykjavik = SharedTrip(context: context, title: "Reykjavik", destination: "Reykjavik, Iceland", startDate: day(-60), endDate: day(-55))
         reykjavik.latitude = 64.1466
         reykjavik.longitude = -21.9426
-        let lagoon = ItineraryItem(context: context, title: "Sky Lagoon", kind: .activity, dayIndex: 2)
+        let lagoon = SharedItineraryItem(context: context, title: "Sky Lagoon", kind: .activity, dayIndex: 2)
         lagoon.latitude = 64.1160
         lagoon.longitude = -21.9422
         lagoon.toggleDone(asOf: day(-58))

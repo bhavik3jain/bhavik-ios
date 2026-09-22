@@ -3,12 +3,14 @@ import Foundation
 
 /// One thing on a trip's plan — backed by Core Data / `NSPersistentCloudKitContainer`
 /// rather than SwiftData, so a trip's whole plan can be shared for live
-/// co-editing. Its CloudKit-facing record type is `SharedItineraryItem`, not
-/// `ItineraryItem`: see `TripModel.swift` for why, and for why every
+/// co-editing. Its CloudKit-facing record type is `SharedItineraryItem`, and
+/// the Swift class name matches it exactly — see `SharedTrip.swift` for why
+/// this class carries the `Shared` prefix while the original SwiftData model
+/// keeps the plain `ItineraryItem` name, and `TripModel.swift` for why every
 /// initializer here goes through `NSEntityDescription.entity(forEntityName:in:)`
 /// instead of this class's own inherited `init(context:)`.
-@objc(ItineraryItem)
-public final class ItineraryItem: NSManagedObject, Identifiable {
+@objc(SharedItineraryItem)
+public final class SharedItineraryItem: NSManagedObject, Identifiable {
     @NSManaged public var title: String
     @NSManaged public var detail: String
     @NSManaged public var kindRaw: String
@@ -23,7 +25,7 @@ public final class ItineraryItem: NSManagedObject, Identifiable {
     /// Zero for "no set length".
     @NSManaged public var durationMinutes: Int
     @NSManaged public var address: String
-    /// Stored as `NSNumber?`, not `Double?` directly — see `Trip.latitudeNumber`'s
+    /// Stored as `NSNumber?`, not `Double?` directly — see `SharedTrip.latitudeNumber`'s
     /// doc comment for why. `latitude`/`longitude` below are the `Double?` this
     /// class actually exposes.
     @NSManaged var latitudeNumber: NSNumber?
@@ -31,7 +33,7 @@ public final class ItineraryItem: NSManagedObject, Identifiable {
     @NSManaged public var isDone: Bool
     @NSManaged public var doneAt: Date?
 
-    @NSManaged public var trip: Trip?
+    @NSManaged public var trip: SharedTrip?
 
     public convenience init(
         context: NSManagedObjectContext,
@@ -55,15 +57,15 @@ public final class ItineraryItem: NSManagedObject, Identifiable {
     @nonobjc public static func fetchRequest(
         predicate: NSPredicate? = nil,
         sortDescriptors: [NSSortDescriptor] = []
-    ) -> NSFetchRequest<ItineraryItem> {
-        let request = NSFetchRequest<ItineraryItem>(entityName: TripModel.EntityName.item)
+    ) -> NSFetchRequest<SharedItineraryItem> {
+        let request = NSFetchRequest<SharedItineraryItem>(entityName: TripModel.EntityName.item)
         request.predicate = predicate
         request.sortDescriptors = sortDescriptors
         return request
     }
 }
 
-public extension ItineraryItem {
+public extension SharedItineraryItem {
     var id: NSManagedObjectID { objectID }
 
     var kind: ItemKind {

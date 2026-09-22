@@ -3,12 +3,13 @@ import Foundation
 
 /// One place in a guide — backed by Core Data / `NSPersistentCloudKitContainer`
 /// rather than SwiftData, so a guide's whole place list can be shared for live
-/// co-editing. Its CloudKit-facing record type is `SharedGuidePlace`, not
-/// `GuidePlace`: see `GuideModel.swift` for why, and for why every
-/// initializer here goes through `NSEntityDescription.entity(forEntityName:in:)`
-/// instead of this class's own inherited `init(context:)`.
-@objc(GuidePlace)
-public final class GuidePlace: NSManagedObject, Identifiable {
+/// co-editing. Its CloudKit-facing record type is `SharedGuidePlace`,
+/// matching this Swift class name: see `GuideModel.swift` for the
+/// entity/class split, and for why every initializer here goes through
+/// `NSEntityDescription.entity(forEntityName:in:)` instead of this class's
+/// own inherited `init(context:)`.
+@objc(SharedGuidePlace)
+public final class SharedGuidePlace: NSManagedObject, Identifiable {
     @NSManaged public var name: String
     /// A few words of why it's on the list, "go before 11:30".
     @NSManaged public var note: String
@@ -28,7 +29,7 @@ public final class GuidePlace: NSManagedObject, Identifiable {
     @NSManaged public var triedAt: Date?
     @NSManaged public var addedAt: Date
 
-    @NSManaged public var guide: Guide?
+    @NSManaged public var guide: SharedGuide?
 
     public convenience init(
         context: NSManagedObjectContext,
@@ -53,15 +54,15 @@ public final class GuidePlace: NSManagedObject, Identifiable {
     @nonobjc public static func fetchRequest(
         predicate: NSPredicate? = nil,
         sortDescriptors: [NSSortDescriptor] = []
-    ) -> NSFetchRequest<GuidePlace> {
-        let request = NSFetchRequest<GuidePlace>(entityName: GuideModel.EntityName.place)
+    ) -> NSFetchRequest<SharedGuidePlace> {
+        let request = NSFetchRequest<SharedGuidePlace>(entityName: GuideModel.EntityName.place)
         request.predicate = predicate
         request.sortDescriptors = sortDescriptors
         return request
     }
 }
 
-public extension GuidePlace {
+public extension SharedGuidePlace {
     var id: NSManagedObjectID { objectID }
 
     var category: PlaceCategory {

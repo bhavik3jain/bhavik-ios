@@ -4,7 +4,7 @@ import SwiftUI
 
 /// A trip's days: a strip to pick one, and that day's timeline.
 struct TripPlanView: View {
-    let trip: Trip
+    let trip: SharedTrip
     @Binding var selectedDay: Int
     let weather: [DayWeather]
     let present: (TripSheet) -> Void
@@ -403,7 +403,7 @@ struct NowLine: View {
 }
 
 struct NextFlightCard: View {
-    let flight: Flight
+    let flight: SharedFlight
     let dates: TripDates
     let now: Date
 

@@ -5,8 +5,8 @@ import SwiftUI
 /// Adds a flight to the trip, or edits one. Entered by hand: no flight-status
 /// service is wired in.
 struct FlightEditorView: View {
-    let trip: Trip
-    let flight: Flight?
+    let trip: SharedTrip
+    let flight: SharedFlight?
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.managedObjectContext) private var modelContext
@@ -25,7 +25,7 @@ struct FlightEditorView: View {
     @State private var notes = ""
     @State private var confirmingDelete = false
 
-    init(trip: Trip, flight: Flight?, day: Int) {
+    init(trip: SharedTrip, flight: SharedFlight?, day: Int) {
         self.trip = trip
         self.flight = flight
         let dates = trip.dates
@@ -139,7 +139,7 @@ struct FlightEditorView: View {
 
     private func save() {
         func clean(_ text: String) -> String { text.trimmingCharacters(in: .whitespaces).uppercased() }
-        let target = flight ?? Flight(context: modelContext, airlineCode: "", number: "", originCode: "", destinationCode: "", dayIndex: day)
+        let target = flight ?? SharedFlight(context: modelContext, airlineCode: "", number: "", originCode: "", destinationCode: "", dayIndex: day)
         target.airlineCode = clean(airlineCode)
         target.number = number.trimmingCharacters(in: .whitespaces)
         target.originCode = clean(originCode)

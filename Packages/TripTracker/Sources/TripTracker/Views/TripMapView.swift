@@ -5,26 +5,26 @@ import SwiftUI
 
 /// This trip's places, and only this trip's. The chips are its days.
 struct TripMapView: View {
-    let trip: Trip
+    let trip: SharedTrip
     let present: (TripSheet) -> Void
 
     @State private var filter: MapDayFilter
     @State private var selection: NSManagedObjectID?
     @State private var position: MapCameraPosition = .automatic
 
-    init(trip: Trip, present: @escaping (TripSheet) -> Void) {
+    init(trip: SharedTrip, present: @escaping (TripSheet) -> Void) {
         self.trip = trip
         self.present = present
         _filter = State(initialValue: MapDayFilter.initial(for: trip.dates))
     }
 
-    private var visible: [ItineraryItem] {
+    private var visible: [SharedItineraryItem] {
         (trip.items ?? [])
             .filter(filter.shows)
             .sorted { ($0.dayIndex, $0.sortOrder) < ($1.dayIndex, $1.sortOrder) }
     }
 
-    private var selectedItem: ItineraryItem? {
+    private var selectedItem: SharedItineraryItem? {
         guard let selection else { return nil }
         return visible.first { $0.objectID == selection }
     }
@@ -111,7 +111,7 @@ struct TripMapView: View {
 
 /// The card under a tapped pin.
 struct PlaceCard: View {
-    let item: ItineraryItem
+    let item: SharedItineraryItem
     let dates: TripDates
     let details: () -> Void
 

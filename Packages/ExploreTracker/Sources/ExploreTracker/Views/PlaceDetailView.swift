@@ -10,7 +10,7 @@ struct PlaceDetailView: View {
     // `Observable` macro protocol `@Bindable` requires on this SDK (it's
     // `unavailable` for ObservableObject types here) — `@ObservedObject` is
     // Core Data's actual equivalent.
-    @ObservedObject var place: GuidePlace
+    @ObservedObject var place: SharedGuidePlace
 
     @Environment(\.openURL) private var openURL
 

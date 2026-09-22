@@ -12,8 +12,8 @@ import Foundation
 /// launches.
 public struct DayPlan {
     public enum Entry: Identifiable {
-        case item(ItineraryItem)
-        case flight(Flight)
+        case item(SharedItineraryItem)
+        case flight(SharedFlight)
 
         public var id: NSManagedObjectID {
             switch self {
@@ -46,7 +46,7 @@ public struct DayPlan {
     public var entries: [Entry] { timed + untimed }
     public var isEmpty: Bool { timed.isEmpty && untimed.isEmpty }
 
-    public init(dayIndex: Int, items: [ItineraryItem], flights: [Flight], dates: TripDates) {
+    public init(dayIndex: Int, items: [SharedItineraryItem], flights: [SharedFlight], dates: TripDates) {
         self.dayIndex = dayIndex
         self.dates = dates
 
@@ -88,7 +88,7 @@ public struct DayPlan {
             .map(\.entry)
     }
 
-    public init(trip: Trip, dayIndex: Int) {
+    public init(trip: SharedTrip, dayIndex: Int) {
         self.init(dayIndex: dayIndex, items: Array(trip.items ?? []), flights: Array(trip.flights ?? []), dates: trip.dates)
     }
 

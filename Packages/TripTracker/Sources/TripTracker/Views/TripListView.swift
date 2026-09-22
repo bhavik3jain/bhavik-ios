@@ -10,18 +10,18 @@ struct TripListView: View {
     // left open across midnight would keep a finished trip in progress. The
     // grouping happens in Swift below, fresh on every redraw.
     @FetchRequest(
-        sortDescriptors: [NSSortDescriptor(keyPath: \Trip.startDate, ascending: true)],
+        sortDescriptors: [NSSortDescriptor(keyPath: \SharedTrip.startDate, ascending: true)],
         predicate: NSPredicate(format: "isArchived == NO")
     )
-    private var trips: FetchedResults<Trip>
+    private var trips: FetchedResults<SharedTrip>
     @FetchRequest(
-        sortDescriptors: [NSSortDescriptor(keyPath: \Trip.startDate, ascending: false)],
+        sortDescriptors: [NSSortDescriptor(keyPath: \SharedTrip.startDate, ascending: false)],
         predicate: NSPredicate(format: "isArchived == YES")
     )
-    private var archived: FetchedResults<Trip>
+    private var archived: FetchedResults<SharedTrip>
 
     @State private var showingAdd = false
-    @State private var pendingDelete: Trip?
+    @State private var pendingDelete: SharedTrip?
 
     var body: some View {
         NavigationStack {
@@ -44,7 +44,7 @@ struct TripListView: View {
             .sheet(isPresented: $showingAdd) {
                 TripEditorView(trip: nil)
             }
-            .navigationDestination(for: Trip.self) { trip in
+            .navigationDestination(for: SharedTrip.self) { trip in
                 TripDetailView(trip: trip)
             }
             .confirmationDialog(
@@ -118,7 +118,7 @@ struct TripListView: View {
         }
     }
 
-    private func row(for trip: Trip, @ViewBuilder label: () -> some View) -> some View {
+    private func row(for trip: SharedTrip, @ViewBuilder label: () -> some View) -> some View {
         NavigationLink(value: trip) {
             label()
         }
@@ -142,7 +142,7 @@ struct TripListView: View {
 // MARK: - Rows
 
 struct InProgressTripCard: View {
-    let trip: Trip
+    let trip: SharedTrip
     let now: Date
 
     @State private var weather: [DayWeather] = []
@@ -226,7 +226,7 @@ struct InProgressTripCard: View {
 }
 
 struct UpcomingTripRow: View {
-    let trip: Trip
+    let trip: SharedTrip
     let now: Date
 
     var body: some View {
@@ -264,7 +264,7 @@ struct UpcomingTripRow: View {
 }
 
 struct FinishedTripRow: View {
-    let trip: Trip
+    let trip: SharedTrip
 
     var body: some View {
         HStack(spacing: 10) {
@@ -291,10 +291,10 @@ struct FinishedTripRow: View {
 struct ArchivedTripsView: View {
     @Environment(\.managedObjectContext) private var modelContext
     @FetchRequest(
-        sortDescriptors: [NSSortDescriptor(keyPath: \Trip.startDate, ascending: false)],
+        sortDescriptors: [NSSortDescriptor(keyPath: \SharedTrip.startDate, ascending: false)],
         predicate: NSPredicate(format: "isArchived == YES")
     )
-    private var trips: FetchedResults<Trip>
+    private var trips: FetchedResults<SharedTrip>
 
     var body: some View {
         List {
