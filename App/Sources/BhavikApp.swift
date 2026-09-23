@@ -48,16 +48,6 @@ struct BhavikApp: App {
     /// `\.managedObjectContext`.
     let exploreContainer: NSPersistentCloudKitContainer
     @AppStorage(Appearance.defaultsKey) private var appearanceRaw = Appearance.system.rawValue
-    /// Fed by `\.presentShareSheet` (Core's `ShareSheetPresenting.swift`) and
-    /// presented below via `.sheet(item:)` — the one place a feature package's
-    /// Share button actually reaches iOS's `UICloudSharingController` or
-    /// macOS's custom sheet, both in `ShareSheetHost.swift`. Top-level state
-    /// here rather than in `HomeView` since a module's own root view (inside
-    /// the fullScreenCover/detail pane) is what calls `presentShareSheet`, and
-    /// that closure has to reach all the way back up to this WindowGroup to
-    /// present over everything, not just the presenting module.
-    @State private var shareSheetRequest: ShareSheetRequest?
-
     // Only reason for an app/scene delegate in an otherwise pure SwiftUI App:
     // CKShare-accept has no SwiftUI-native entry point on either platform.
     // See ShareAcceptDelegate.swift.
@@ -164,13 +154,6 @@ struct BhavikApp: App {
                     .frame(minWidth: 860, minHeight: 560)
                     #endif
                 #endif
-            }
-            // The presentation seam every module's Share button reaches
-            // through (Core's \.presentShareSheet), and where its result gets
-            // shown — see ShareSheetHost.swift for the iOS/macOS split.
-            .environment(\.presentShareSheet) { shareSheetRequest = $0 }
-            .sheet(item: $shareSheetRequest) { request in
-                ShareSheetHostView(request: request)
             }
         }
         .modelContainer(container)

@@ -124,6 +124,7 @@ struct HomeView: View {
             }
             .fullScreenCover(item: $selectedModule) { module in
                 moduleContent(for: module)
+                    .presentsShareSheets()
             }
         }
     }
@@ -164,6 +165,7 @@ struct HomeView: View {
         } detail: {
             if let selectedModule {
                 moduleContent(for: selectedModule)
+                    .presentsShareSheets()
                     // A fresh identity per tracker, so switching trackers can't
                     // leave one module's navigation state bleeding into another's
                     // view — the same freshness a fullScreenCover's own dismissal

@@ -9,82 +9,116 @@ import UIKit
 
 // The real, per-platform CKShare sharing UI. Feature packages never see this
 // file — they call `\.presentShareSheet` (Core's `ShareSheetPresenting.swift`),
-// which `BhavikApp` wires to `ShareSheetHostView` below via a `.sheet(item:)`
-// at the composition root. See CLAUDE.md's macOS section for why this split
+// which `HomeView` wires to `ShareSheetHostView` below via
+// `.presentsShareSheets()` on each module's content. See CLAUDE.md's macOS section for why this split
 // lives here rather than behind a `MacCompat.swift` shim: iOS has
 // `UICloudSharingController`; macOS has nothing, so the two platforms
 // genuinely need different UI, not the same call site with a stand-in.
 
-/// Picks the platform's real sharing UI for one `ShareSheetRequest`.
-struct ShareSheetHostView: View {
-    let request: ShareSheetRequest
+/// Answers `\.presentShareSheet` for everything inside a module. It has to sit
+/// on the module's own content, not the WindowGroup: on iPhone a module is a
+/// fullScreenCover, and a sheet attached underneath it can't present while the
+/// cover is up — SwiftUI queues it ("only presenting a single sheet is
+/// supported") until the module closes, so every Share button did nothing.
+private struct PresentsShareSheets: ViewModifier {
+    @State private var request: ShareSheetRequest?
 
-    var body: some View {
+    func body(content: Content) -> some View {
         #if os(iOS)
-        CloudSharingControllerView(request: request)
-        #elseif os(macOS)
-        MacShareSheet(request: request)
+        content
+            .environment(\.presentShareSheet) { CloudSharingPresenter.present($0) }
+        #else
+        content
+            .environment(\.presentShareSheet) { request = $0 }
+            .sheet(item: $request) { MacShareSheet(request: $0) }
         #endif
+    }
+}
+
+extension View {
+    func presentsShareSheets() -> some View {
+        modifier(PresentsShareSheets())
     }
 }
 
 // MARK: - iOS: UICloudSharingController
 
 #if os(iOS)
-/// Wraps `UICloudSharingController`, built with the preparation-handler
-/// initializer that `NSPersistentCloudKitContainer.share(_:to:completion:)`'s
-/// own header comment names as this initializer's intended pairing ("meant to
-/// be used directly with UICloudSharingController's preparation block
-/// completion handler"): the CKShare is created lazily, the moment the
-/// controller is actually about to show its UI, rather than up front.
+/// Presents `UICloudSharingController` the way UIKit documents it: presented
+/// directly by the top view controller. It used to be wrapped in a
+/// `UIViewControllerRepresentable` inside a SwiftUI `.sheet`, which showed an
+/// empty sheet — the controller presents its own UI and doesn't work as a
+/// sheet's embedded content.
 ///
-/// That initializer is deprecated in iOS 17 toward
-/// `UIActivityViewController`'s `activityItemsConfiguration`, but the
-/// deprecation note points at a considerably larger, general-purpose activity
-/// API with no drop-in replacement for "prepare a CKShare on demand and show
-/// CloudKit's own participant UI for it" — out of scope for what CLAUDE.md
-/// calls sharing "with one specific partner" — so this keeps the direct
-/// initializer Core Data's own doc comment is written against.
-struct CloudSharingControllerView: UIViewControllerRepresentable {
-    let request: ShareSheetRequest
-    @Environment(\.dismiss) private var dismiss
+/// An object that's already shared opens its existing `CKShare`, so the owner
+/// can manage participants; only an unshared one goes through the
+/// preparation-handler initializer, which creates the share on demand.
+/// `share(_:to:)` on an object that's already in a share fails.
+///
+/// The preparation-handler initializer is deprecated in iOS 17 toward
+/// `UIActivityViewController`'s `activityItemsConfiguration`, but
+/// `NSPersistentCloudKitContainer.share(_:to:completion:)`'s own header names
+/// it as the intended pairing, and nothing replaces it one for one.
+@MainActor
+enum CloudSharingPresenter {
+    /// `UICloudSharingController.delegate` is weak and this delegate holds no
+    /// state, so one shared instance keeps it alive.
+    private static let delegate = Delegate()
 
-    func makeUIViewController(context: Context) -> UICloudSharingController {
-        let controller = UICloudSharingController { _, preparationCompletionHandler in
-            request.container.share([request.object], to: nil) { _, share, ckContainer, error in
-                preparationCompletionHandler(share, ckContainer, error)
+    static func present(_ request: ShareSheetRequest) {
+        guard let presenter = topViewController() else { return }
+        let object = request.object
+        let container = request.container
+
+        let title = displayTitle(of: object)
+
+        let controller: UICloudSharingController
+        if let share = try? container.fetchShares(matching: [object.objectID])[object.objectID],
+           let identifier = container.persistentStoreDescriptions.first?.cloudKitContainerOptions?.containerIdentifier {
+            controller = UICloudSharingController(share: share, container: CKContainer(identifier: identifier))
+        } else {
+            controller = UICloudSharingController { _, preparationCompletionHandler in
+                container.share([object], to: nil) { _, share, ckContainer, error in
+                    // Without a title the invitation names nothing — the
+                    // person receiving it can't tell which trip it is.
+                    share?[CKShare.SystemFieldKey.title] = title
+                    preparationCompletionHandler(share, ckContainer, error)
+                }
             }
         }
-        controller.availablePermissions = [.allowReadWrite, .allowReadOnly]
-        controller.delegate = context.coordinator
-        return controller
+        controller.availablePermissions = [.allowReadWrite, .allowReadOnly, .allowPrivate]
+        controller.delegate = delegate
+        presenter.present(controller, animated: true)
     }
 
-    func updateUIViewController(_ uiViewController: UICloudSharingController, context: Context) {}
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator(dismiss: dismiss)
-    }
-
-    @MainActor
-    final class Coordinator: NSObject, UICloudSharingControllerDelegate {
-        private let dismiss: DismissAction
-        init(dismiss: DismissAction) { self.dismiss = dismiss }
-
-        // Sharing status is shown elsewhere (SharingStatusResolver); this
-        // sheet's only job on failure is to get out of the way so the person
-        // isn't stuck looking at a controller that can't proceed.
-        func cloudSharingController(_ csc: UICloudSharingController, failedToSaveShareWithError error: Error) {
-            dismiss()
+    /// A trip has a `title`; a vehicle and a guide have a `name`.
+    private static func displayTitle(of object: NSManagedObject) -> String? {
+        let attributes = object.entity.attributesByName
+        for key in ["title", "name"] where attributes[key] != nil {
+            if let value = object.value(forKey: key) as? String, !value.isEmpty { return value }
         }
+        return nil
+    }
 
-        // Required by the protocol (no @optional in the header); CloudKit
-        // falls back to a sensible default title when this returns nil.
+    /// The module is itself a fullScreenCover, so present from whatever is
+    /// frontmost, not the window's root.
+    private static func topViewController() -> UIViewController? {
+        let scene = UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .first { $0.activationState == .foregroundActive }
+        var top = scene?.keyWindow?.rootViewController
+        while let presented = top?.presentedViewController {
+            top = presented
+        }
+        return top
+    }
+
+    private final class Delegate: NSObject, UICloudSharingControllerDelegate {
+        // The controller shows its own error for a failed save.
+        func cloudSharingController(_ csc: UICloudSharingController, failedToSaveShareWithError error: Error) {}
+
+        // Required by the protocol; CloudKit uses a default title when nil.
         func itemTitle(for csc: UICloudSharingController) -> String? { nil }
-
-        func cloudSharingControllerDidStopSharing(_ csc: UICloudSharingController) {
-            dismiss()
-        }
     }
 }
 #endif
