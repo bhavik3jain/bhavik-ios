@@ -190,27 +190,24 @@ struct BhavikApp: App {
 }
 
 #if os(macOS)
-/// The Trackers menu: ⌘1–⌘6 jump straight to a tracker. A Scene's `.commands`
-/// sits outside the WindowGroup's view hierarchy, so it can't reach into
-/// HomeView's own `@State` — it posts a notification instead, which
-/// `HomeView.macBody` listens for.
+/// The Trackers menu: ⌘1 onward jumps straight to a tracker, numbered in the
+/// sidebar's own order and skipping hidden ones, so ⌘1 is always the top row.
+/// A Scene's `.commands` sits outside the WindowGroup's view hierarchy, so it
+/// can't reach into HomeView's own `@State` — it posts a notification instead,
+/// which `HomeView.macBody` listens for.
 private struct TrackerCommands: Commands {
+    @ObservedObject private var layoutStore = TrackerLayoutStore.shared
+
     var body: some Commands {
         CommandMenu("Trackers") {
-            item("Trips", .trips, "1")
-            item("Explore", .explore, "2")
-            item("Gym", .gym, "3")
-            item("TV", .tv, "4")
-            item("Orders", .parcels, "5")
-            item("Fuel", .fuel, "6")
+            // Nine at most: ⌘0 and beyond aren't single keystrokes.
+            ForEach(Array(layoutStore.visibleModules.prefix(9).enumerated()), id: \.element) { index, module in
+                Button(module.accent.name) {
+                    NotificationCenter.default.post(name: .selectTracker, object: nil, userInfo: ["module": module.rawValue])
+                }
+                .keyboardShortcut(KeyEquivalent(Character(String(index + 1))), modifiers: .command)
+            }
         }
-    }
-
-    private func item(_ name: String, _ module: SelectedModule, _ key: KeyEquivalent) -> some View {
-        Button(name) {
-            NotificationCenter.default.post(name: .selectTracker, object: nil, userInfo: ["module": module.rawValue])
-        }
-        .keyboardShortcut(key, modifiers: .command)
     }
 }
 #endif

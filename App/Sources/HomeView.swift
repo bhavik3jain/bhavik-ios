@@ -11,6 +11,9 @@ import TVTracker
 
 struct HomeView: View {
     @State private var selectedModule: SelectedModule?
+    /// Which trackers the hub and the Mac sidebar list, in what order — set
+    /// from Settings' Customize Trackers screen.
+    @ObservedObject private var layoutStore = TrackerLayoutStore.shared
 
     // Each module's own data, so a row can say what is actually going on
     // rather than repeating a fixed description.
@@ -95,10 +98,10 @@ struct HomeView: View {
     private var iOSBody: some View {
         NavigationStack {
             List {
-                ForEach(SelectedModule.allCases) { module in
+                ForEach(layoutStore.visibleModules) { module in
                     ModuleRow(
-                        accent: accent(for: module),
-                        icon: icon(for: module),
+                        accent: module.accent,
+                        icon: module.icon,
                         detail: detail(for: module)
                     ) { selectedModule = module }
                         // Each row peeks on a long press: the module's own summary
@@ -141,8 +144,8 @@ struct HomeView: View {
     /// first tab; leaving a tracker is what the sidebar is for now.
     private var macBody: some View {
         NavigationSplitView {
-            List(SelectedModule.allCases, selection: $selectedModule) { module in
-                MacSidebarRow(accent: accent(for: module), icon: icon(for: module), detail: detail(for: module))
+            List(layoutStore.visibleModules, selection: $selectedModule) { module in
+                MacSidebarRow(accent: module.accent, icon: module.icon, detail: detail(for: module))
                     .tag(module)
                     .contextMenu {
                         contextMenuItems(for: module)
@@ -176,16 +179,23 @@ struct HomeView: View {
             }
         }
         .navigationSplitViewStyle(.balanced)
-        // Menu-bar shortcuts (⌘1–⌘6), posted from BhavikApp's commands — a
-        // Scene's .commands can't reach into a WindowGroup's view state
-        // directly, so it goes by notification instead of a shared observable.
+        // Menu-bar shortcuts (⌘1 onward, one per visible tracker), posted from
+        // BhavikApp's commands — a Scene's .commands can't reach into a
+        // WindowGroup's view state directly, so it goes by notification
+        // instead of a shared observable.
         .onReceive(NotificationCenter.default.publisher(for: .selectTracker)) { note in
             guard let raw = note.userInfo?["module"] as? String, let module = SelectedModule(rawValue: raw) else { return }
             selectedModule = module
         }
         .onAppear {
             // An empty detail pane on first launch reads as broken, not calm.
-            if selectedModule == nil { selectedModule = .trips }
+            if selectedModule == nil { selectedModule = layoutStore.visibleModules.first }
+        }
+        // Hiding the open tracker (from Settings, or on another device) would
+        // otherwise leave it in the detail pane with no sidebar row selected
+        // and no way back to it.
+        .onChange(of: layoutStore.visibleModules) { _, visible in
+            if let selectedModule, !visible.contains(selectedModule) { self.selectedModule = nil }
         }
     }
     #endif
@@ -221,28 +231,6 @@ struct HomeView: View {
         }
     }
 
-    private func accent(for module: SelectedModule) -> ModuleAccent {
-        switch module {
-        case .trips: TripTrackerModule.accent
-        case .explore: ExploreTrackerModule.accent
-        case .gym: GymTrackerModule.accent
-        case .tv: TVTrackerModule.accent
-        case .parcels: ParcelTrackerModule.accent
-        case .fuel: FuelTrackerModule.accent
-        }
-    }
-
-    private func icon(for module: SelectedModule) -> String {
-        switch module {
-        case .trips: "suitcase.rolling.fill"
-        case .explore: "map.fill"
-        case .gym: "dumbbell.fill"
-        case .tv: "tv.fill"
-        case .parcels: "shippingbox.fill"
-        case .fuel: "fuelpump.fill"
-        }
-    }
-
     private func detail(for module: SelectedModule) -> String {
         switch module {
         case .trips: TripTrackerModule.homeDetail(trips: trips)
@@ -269,7 +257,7 @@ struct HomeView: View {
 
     @ViewBuilder
     private func contextMenuItems(for module: SelectedModule) -> some View {
-        openButton(accent(for: module).name, module)
+        openButton(module.accent.name, module)
         // Fuel is the one module whose peek can jump straight into a specific
         // car rather than just opening the module.
         if module == .fuel, vehicles.count > 1 {
@@ -329,10 +317,33 @@ enum SelectedModule: String, Identifiable, Hashable, CaseIterable {
     case parcels
     case fuel
     var id: String { rawValue }
+
+    /// Name and color, for the hub, the sidebar, Settings and the Trackers menu.
+    var accent: ModuleAccent {
+        switch self {
+        case .trips: TripTrackerModule.accent
+        case .explore: ExploreTrackerModule.accent
+        case .gym: GymTrackerModule.accent
+        case .tv: TVTrackerModule.accent
+        case .parcels: ParcelTrackerModule.accent
+        case .fuel: FuelTrackerModule.accent
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .trips: "suitcase.rolling.fill"
+        case .explore: "map.fill"
+        case .gym: "dumbbell.fill"
+        case .tv: "tv.fill"
+        case .parcels: "shippingbox.fill"
+        case .fuel: "fuelpump.fill"
+        }
+    }
 }
 
 extension Notification.Name {
-    /// Posted by BhavikApp's ⌘1–⌘6 menu commands; userInfo["module"] is a
+    /// Posted by BhavikApp's ⌘1… menu commands; userInfo["module"] is a
     /// `SelectedModule` raw value. A notification rather than a shared
     /// observable because a Scene's `.commands` sits outside the WindowGroup
     /// and has no direct line to HomeView's own state.

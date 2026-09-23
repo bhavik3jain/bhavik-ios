@@ -12,6 +12,7 @@ import TVTracker
 struct AppSettingsView: View {
     @AppStorage(Appearance.defaultsKey) private var appearanceRaw = Appearance.system.rawValue
     @State private var syncState: CloudSyncState = .checking
+    @ObservedObject private var layoutStore = TrackerLayoutStore.shared
 
     @Query private var sessions: [WorkoutSession]
     @Query private var exercises: [Exercise]
@@ -80,42 +81,26 @@ struct AppSettingsView: View {
             }
 
             Section {
-                TrackerRow(
-                    accent: TripTrackerModule.accent,
-                    icon: "suitcase.rolling.fill",
-                    detail: counted(trips.count, "trip"),
-                    syncState: syncState
-                )
-                TrackerRow(
-                    accent: ExploreTrackerModule.accent,
-                    icon: "map.fill",
-                    detail: "\(counted(guides.count, "guide")), \(counted(guidePlaces.count, "place"))",
-                    syncState: syncState
-                )
-                TrackerRow(
-                    accent: GymTrackerModule.accent,
-                    icon: "dumbbell.fill",
-                    detail: "\(counted(sessions.count, "workout")), \(counted(exercises.count, "exercise"))",
-                    syncState: syncState
-                )
-                TrackerRow(
-                    accent: TVTrackerModule.accent,
-                    icon: "tv.fill",
-                    detail: "\(counted(shows.count, "show")), \(counted(movies.count, "movie"))",
-                    syncState: syncState
-                )
-                TrackerRow(
-                    accent: ParcelTrackerModule.accent,
-                    icon: "shippingbox.fill",
-                    detail: counted(parcels.count, "order"),
-                    syncState: syncState
-                )
-                TrackerRow(
-                    accent: FuelTrackerModule.accent,
-                    icon: "fuelpump.fill",
-                    detail: "\(counted(vehicles.count, "vehicle")), \(counted(fuelEntries.count, "entry", plural: "entries"))",
-                    syncState: syncState
-                )
+                NavigationLink {
+                    CustomizeTrackersView()
+                } label: {
+                    Label("Customize Trackers", systemImage: "slider.horizontal.3")
+                }
+            } footer: {
+                Text("Choose which trackers appear, and in what order.")
+            }
+
+            Section {
+                // Same order as the home screen, hidden trackers included —
+                // their data is still here and still syncing.
+                ForEach(layoutStore.allModules) { module in
+                    TrackerRow(
+                        accent: module.accent,
+                        icon: module.icon,
+                        detail: trackerDetail(for: module),
+                        syncState: syncState
+                    )
+                }
             } header: {
                 Text("Trackers")
             } footer: {
@@ -138,6 +123,17 @@ struct AppSettingsView: View {
             guard let exploreContext else { return }
             guideFetch.start(context: exploreContext)
             guidePlaceFetch.start(context: exploreContext)
+        }
+    }
+
+    private func trackerDetail(for module: SelectedModule) -> String {
+        switch module {
+        case .trips: counted(trips.count, "trip")
+        case .explore: "\(counted(guides.count, "guide")), \(counted(guidePlaces.count, "place"))"
+        case .gym: "\(counted(sessions.count, "workout")), \(counted(exercises.count, "exercise"))"
+        case .tv: "\(counted(shows.count, "show")), \(counted(movies.count, "movie"))"
+        case .parcels: counted(parcels.count, "order")
+        case .fuel: "\(counted(vehicles.count, "vehicle")), \(counted(fuelEntries.count, "entry", plural: "entries"))"
         }
     }
 }
