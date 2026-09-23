@@ -1,9 +1,11 @@
+import Core
 import CoreData
 import SwiftUI
 import UniformTypeIdentifiers
 
 struct GarageView: View {
     @Environment(\.managedObjectContext) private var modelContext
+    @Environment(\.fuelPersistentContainer) private var container
     @FetchRequest(sortDescriptors: [NSSortDescriptor(keyPath: \SharedVehicle.createdAt, ascending: true)])
     private var vehicles: FetchedResults<SharedVehicle>
 
@@ -30,7 +32,15 @@ struct GarageView: View {
                 Section("Vehicles") {
                     ForEach(vehicles) { vehicle in
                         HStack {
-                            Text(vehicle.name)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(vehicle.name)
+                                if let label = sharingLabel(for: vehicle) {
+                                    Label(label, systemImage: "person.2.fill")
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                        .labelStyle(.titleAndIcon)
+                                }
+                            }
                             Spacer()
                             Text("\(vehicle.orderedFillUps.count) fill-ups")
                                 .font(.footnote)
@@ -134,9 +144,23 @@ struct GarageView: View {
     }
 
     private func deleteVehicles(at offsets: IndexSet) {
-        for index in offsets {
+        // A read-only participant's swipe is silently dropped rather than
+        // hidden — `onDelete` offers the same gesture to every row, so
+        // filtering here (the same pattern `ArchivedTripsView` uses) is the
+        // only per-row way to withhold it.
+        for index in offsets where canEdit(vehicles[index]) {
             modelContext.delete(vehicles[index])
         }
         try? modelContext.saveIfNeeded()
+    }
+
+    private func sharingLabel(for vehicle: SharedVehicle) -> String? {
+        guard let container else { return nil }
+        return SharingStatusResolver.status(for: vehicle, in: container).vehicleBadgeLabel
+    }
+
+    private func canEdit(_ vehicle: SharedVehicle) -> Bool {
+        guard let container else { return true }
+        return SharingStatusResolver.canEdit(vehicle, in: container)
     }
 }

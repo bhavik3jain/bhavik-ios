@@ -1,4 +1,4 @@
-import Core // Only reached on macOS, where Core stands in for the iOS-only UIPasteboard below.
+import Core
 import CoreData
 import SwiftUI
 
@@ -8,9 +8,20 @@ struct TripCodesView: View {
     let present: (TripSheet) -> Void
 
     @Environment(\.managedObjectContext) private var modelContext
+    @Environment(\.tripPersistentContainer) private var container
     /// The code last copied, so its row can say so for a moment.
     @State private var copied: String?
     @State private var revealed: Set<NSManagedObjectID> = []
+
+    // A read-only shared participant can't edit or delete a flight/booking
+    // from here either — same gate `TripDetailView`'s add menu and the two
+    // editors' own Delete section already apply. Both actions are withheld
+    // (not just Delete) since opening an editor that can't save anything is
+    // the exact dead end `TripDetailView`'s own doc comment already avoids.
+    private var canEdit: Bool {
+        guard let container else { return true }
+        return SharingStatusResolver.canEdit(trip, in: container)
+    }
 
     private var flights: [SharedFlight] {
         let dates = trip.dates
@@ -34,8 +45,12 @@ struct TripCodesView: View {
             } description: {
                 Text("Booking references for this trip's flights, stays and cars live here, one tap from the clipboard.")
             } actions: {
-                Button("Add Booking") { present(.newBooking) }
-                Button("Add Flight") { present(.newFlight(day: 0)) }
+                // A read-only participant can't add either — same reasoning
+                // as hiding TripDetailView's add menu for them.
+                if canEdit {
+                    Button("Add Booking") { present(.newBooking) }
+                    Button("Add Flight") { present(.newFlight(day: 0)) }
+                }
             }
         } else {
             List {
@@ -51,12 +66,16 @@ struct TripCodesView: View {
                                 copy: { copy(flight.confirmationCode) }
                             )
                             .contextMenu {
-                                editButton { present(.flight(flight)) }
-                                deleteButton { delete(flight) }
+                                if canEdit {
+                                    editButton { present(.flight(flight)) }
+                                    deleteButton { delete(flight) }
+                                }
                             }
                             .swipeActions {
-                                deleteButton { delete(flight) }
-                                editButton { present(.flight(flight)) }
+                                if canEdit {
+                                    deleteButton { delete(flight) }
+                                    editButton { present(.flight(flight)) }
+                                }
                             }
                         }
                     }
@@ -74,12 +93,16 @@ struct TripCodesView: View {
                                 copy: { copy(booking.code) }
                             )
                             .contextMenu {
-                                editButton { present(.booking(booking)) }
-                                deleteButton { delete(booking) }
+                                if canEdit {
+                                    editButton { present(.booking(booking)) }
+                                    deleteButton { delete(booking) }
+                                }
                             }
                             .swipeActions {
-                                deleteButton { delete(booking) }
-                                editButton { present(.booking(booking)) }
+                                if canEdit {
+                                    deleteButton { delete(booking) }
+                                    editButton { present(.booking(booking)) }
+                                }
                             }
                         }
                     }

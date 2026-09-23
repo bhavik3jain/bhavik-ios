@@ -1,4 +1,4 @@
-import Core // Only reached on macOS, where Core stands in for the iOS-only SwiftUI API below.
+import Core
 import CoreData
 import SwiftUI
 
@@ -57,6 +57,21 @@ struct TripDetailView: View {
     @State private var weather: [DayWeather] = []
     @State private var sheet: TripSheet?
 
+    @Environment(\.tripPersistentContainer) private var container
+    @Environment(\.presentShareSheet) private var presentShareSheet
+    // Sharing status is a cheap, synchronous CloudKit cache lookup (see
+    // `SharingStatusResolver`'s own doc comment), not something worth a
+    // round trip through `@State` plus a `.task` — read fresh on every body
+    // evaluation, the same as `trip.dates` above.
+    private var sharingStatus: SharingStatus {
+        guard let container else { return .notShared }
+        return SharingStatusResolver.status(for: trip, in: container)
+    }
+    private var canEdit: Bool {
+        guard let container else { return true }
+        return SharingStatusResolver.canEdit(trip, in: container)
+    }
+
     init(trip: SharedTrip) {
         self.trip = trip
         _selectedDay = State(initialValue: TripDates.initialDay(for: trip))
@@ -94,32 +109,44 @@ struct TripDetailView: View {
                 }
                 .accessibilityLabel("Share trip as PDF")
 
-                Menu {
-                    Button {
-                        sheet = .newItem(day: selectedDay)
-                    } label: {
-                        Label("Add to Plan", systemImage: "mappin.and.ellipse")
-                    }
-                    Button {
-                        sheet = .newFlight(day: selectedDay)
-                    } label: {
-                        Label("Add Flight", systemImage: "airplane")
-                    }
-                    Button {
-                        sheet = .newBooking
-                    } label: {
-                        Label("Add Booking", systemImage: "ticket")
-                    }
-                    Divider()
-                    Button {
-                        sheet = .editTrip
-                    } label: {
-                        Label("Edit Trip", systemImage: "pencil")
+                Button {
+                    if let container {
+                        presentShareSheet(ShareSheetRequest(object: trip, container: container))
                     }
                 } label: {
-                    Image(systemName: "plus")
+                    Image(systemName: "person.crop.circle.badge.plus")
                 }
-                .accessibilityLabel("Add to this trip")
+                .disabled(container == nil)
+                .accessibilityLabel("Share trip")
+
+                if canEdit {
+                    Menu {
+                        Button {
+                            sheet = .newItem(day: selectedDay)
+                        } label: {
+                            Label("Add to Plan", systemImage: "mappin.and.ellipse")
+                        }
+                        Button {
+                            sheet = .newFlight(day: selectedDay)
+                        } label: {
+                            Label("Add Flight", systemImage: "airplane")
+                        }
+                        Button {
+                            sheet = .newBooking
+                        } label: {
+                            Label("Add Booking", systemImage: "ticket")
+                        }
+                        Divider()
+                        Button {
+                            sheet = .editTrip
+                        } label: {
+                            Label("Edit Trip", systemImage: "pencil")
+                        }
+                    } label: {
+                        Image(systemName: "plus")
+                    }
+                    .accessibilityLabel("Add to this trip")
+                }
             }
         }
         .sheet(item: $sheet) { sheet in
@@ -168,6 +195,11 @@ struct TripDetailView: View {
                             .padding(.horizontal, 8)
                             .padding(.vertical, 2)
                             .background(TripTrackerModule.accent.color.opacity(0.14), in: Capsule())
+                    }
+                    if let label = sharingStatus.tripBadgeLabel {
+                        Label(label, systemImage: "person.2.fill")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
                 }
             }

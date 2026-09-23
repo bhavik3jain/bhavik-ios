@@ -1,4 +1,4 @@
-import Core // Only reached on macOS, where Core stands in for the iOS-only SwiftUI API below.
+import Core
 import CoreData
 import SwiftUI
 
@@ -10,6 +10,7 @@ struct FlightEditorView: View {
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.managedObjectContext) private var modelContext
+    @Environment(\.tripPersistentContainer) private var container
 
     @State private var airlineCode = ""
     @State private var number = ""
@@ -46,8 +47,14 @@ struct FlightEditorView: View {
         }
     }
 
+    // Gated on the trip, the share's root object — see ItemEditorView's own
+    // comment on this same pattern.
+    private var canEditShare: Bool {
+        guard let container else { return true }
+        return SharingStatusResolver.canEdit(trip, in: container)
+    }
     private var canSave: Bool {
-        !(airlineCode + number + originCode + destinationCode).trimmingCharacters(in: .whitespaces).isEmpty
+        !(airlineCode + number + originCode + destinationCode).trimmingCharacters(in: .whitespaces).isEmpty && canEditShare
     }
 
     var body: some View {
@@ -101,7 +108,7 @@ struct FlightEditorView: View {
                     TextField("Notes", text: $notes, axis: .vertical)
                 }
 
-                if flight != nil {
+                if flight != nil, canEditShare {
                     Section {
                         Button("Delete Flight", role: .destructive) { confirmingDelete = true }
                     }

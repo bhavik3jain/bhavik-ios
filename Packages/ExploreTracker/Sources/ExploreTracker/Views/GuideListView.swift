@@ -34,7 +34,7 @@ struct GuideListView: View {
                                     NavigationLink {
                                         GuideDetailView(guide: guide)
                                     } label: {
-                                        GuideCard(summary: summary, points: guide.allPlaces.compactMap(\.point))
+                                        GuideCard(guide: guide, summary: summary, points: guide.allPlaces.compactMap(\.point))
                                     }
                                     .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                                         // Red explicitly: the module's magenta tint otherwise
@@ -134,8 +134,15 @@ struct GuideListView: View {
 /// a large card purely because it was the newest, which read as featured for
 /// no reason. Pinned guides sort to the top and carry a pin instead.
 struct GuideCard: View {
+    let guide: SharedGuide
     let summary: GuideSummary
     let points: [GeoPoint]
+
+    @Environment(\.explorePersistentContainer) private var container
+    private var sharingLabel: String? {
+        guard let container else { return nil }
+        return SharingStatusResolver.status(for: guide, in: container).guideBadgeLabel
+    }
 
     var body: some View {
         HStack(spacing: 12) {
@@ -153,6 +160,12 @@ struct GuideCard: View {
                     Text(summary.name)
                         .font(.headline)
                         .lineLimit(2)
+                    if let sharingLabel {
+                        Label(sharingLabel, systemImage: "person.2.fill")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .labelStyle(.titleAndIcon)
+                    }
                 }
                 Text(summary.detailLine)
                     .font(.caption)

@@ -1,4 +1,4 @@
-import Core // Only reached on macOS, where Core stands in for the iOS-only SwiftUI API below.
+import Core
 import CoreData
 import SwiftUI
 
@@ -7,6 +7,7 @@ struct AddFillUpView: View {
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.managedObjectContext) private var modelContext
+    @Environment(\.fuelPersistentContainer) private var container
 
     @State private var date = Date.now
     @State private var odometerText = ""
@@ -26,9 +27,16 @@ struct AddFillUpView: View {
         vehicle.orderedFillUps.last?.odometer
     }
 
+    // Gated on the vehicle, the share's root object — a read-only
+    // participant can't add a fill-up to it.
+    private var canEditShare: Bool {
+        guard let container else { return true }
+        return SharingStatusResolver.canEdit(vehicle, in: container)
+    }
+
     private var canSave: Bool {
         guard let odometer, odometer > 0 else { return false }
-        return gallons != nil
+        return gallons != nil && canEditShare
     }
 
     var body: some View {

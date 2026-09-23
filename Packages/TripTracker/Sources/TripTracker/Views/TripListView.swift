@@ -4,6 +4,7 @@ import SwiftUI
 
 struct TripListView: View {
     @Environment(\.managedObjectContext) private var modelContext
+    @Environment(\.tripPersistentContainer) private var container
 
     // Only the archive flag is filtered in the fetch. The phase can't be: an
     // `NSPredicate` on dates captures "today" when the view is built, so a list
@@ -123,19 +124,28 @@ struct TripListView: View {
             label()
         }
         .swipeActions(edge: .trailing) {
-            Button(role: .destructive) {
-                pendingDelete = trip
-            } label: {
-                Label("Delete", systemImage: "trash")
+            // Read-only participants get no destructive or archiving swipe at
+            // all — same reasoning as hiding the "+" menu in TripDetailView.
+            if canEdit(trip) {
+                Button(role: .destructive) {
+                    pendingDelete = trip
+                } label: {
+                    Label("Delete", systemImage: "trash")
+                }
+                Button {
+                    trip.isArchived = true
+                    try? modelContext.saveIfNeeded()
+                } label: {
+                    Label("Archive", systemImage: "archivebox")
+                }
+                .tint(.indigo)
             }
-            Button {
-                trip.isArchived = true
-                try? modelContext.saveIfNeeded()
-            } label: {
-                Label("Archive", systemImage: "archivebox")
-            }
-            .tint(.indigo)
         }
+    }
+
+    private func canEdit(_ trip: SharedTrip) -> Bool {
+        guard let container else { return true }
+        return SharingStatusResolver.canEdit(trip, in: container)
     }
 }
 
@@ -146,6 +156,11 @@ struct InProgressTripCard: View {
     let now: Date
 
     @State private var weather: [DayWeather] = []
+    @Environment(\.tripPersistentContainer) private var container
+    private var sharingLabel: String? {
+        guard let container else { return nil }
+        return SharingStatusResolver.status(for: trip, in: container).tripBadgeLabel
+    }
 
     var body: some View {
         let dates = trip.dates
@@ -159,8 +174,16 @@ struct InProgressTripCard: View {
                     .frame(width: 4)
 
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(trip.title)
-                        .font(.headline)
+                    HStack(spacing: 6) {
+                        Text(trip.title)
+                            .font(.headline)
+                        if let sharingLabel {
+                            Label(sharingLabel, systemImage: "person.2.fill")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                                .labelStyle(.titleAndIcon)
+                        }
+                    }
                     HStack(spacing: 6) {
                         Text(subtitle(dates))
                             .font(.subheadline)
@@ -229,12 +252,26 @@ struct UpcomingTripRow: View {
     let trip: SharedTrip
     let now: Date
 
+    @Environment(\.tripPersistentContainer) private var container
+    private var sharingLabel: String? {
+        guard let container else { return nil }
+        return SharingStatusResolver.status(for: trip, in: container).tripBadgeLabel
+    }
+
     var body: some View {
         let dates = trip.dates
         HStack(spacing: 10) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(trip.title)
-                    .fontWeight(.semibold)
+                HStack(spacing: 6) {
+                    Text(trip.title)
+                        .fontWeight(.semibold)
+                    if let sharingLabel {
+                        Label(sharingLabel, systemImage: "person.2.fill")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .labelStyle(.titleAndIcon)
+                    }
+                }
                 Text([trip.destination, ItineraryFormat.dateRange(dates), counted(dates.dayCount, "day")]
                     .filter { !$0.isEmpty }
                     .joined(separator: " · "))
@@ -266,12 +303,26 @@ struct UpcomingTripRow: View {
 struct FinishedTripRow: View {
     let trip: SharedTrip
 
+    @Environment(\.tripPersistentContainer) private var container
+    private var sharingLabel: String? {
+        guard let container else { return nil }
+        return SharingStatusResolver.status(for: trip, in: container).tripBadgeLabel
+    }
+
     var body: some View {
         HStack(spacing: 10) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(trip.title)
-                    .fontWeight(.semibold)
-                    .foregroundStyle(.secondary)
+                HStack(spacing: 6) {
+                    Text(trip.title)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(.secondary)
+                    if let sharingLabel {
+                        Label(sharingLabel, systemImage: "person.2.fill")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .labelStyle(.titleAndIcon)
+                    }
+                }
                 Text([trip.destination, trip.startDate.formatted(.dateTime.year())]
                     .filter { !$0.isEmpty }
                     .joined(separator: " · "))
@@ -290,6 +341,7 @@ struct FinishedTripRow: View {
 
 struct ArchivedTripsView: View {
     @Environment(\.managedObjectContext) private var modelContext
+    @Environment(\.tripPersistentContainer) private var container
     @FetchRequest(
         sortDescriptors: [NSSortDescriptor(keyPath: \SharedTrip.startDate, ascending: false)],
         predicate: NSPredicate(format: "isArchived == YES")
@@ -303,17 +355,19 @@ struct ArchivedTripsView: View {
                     FinishedTripRow(trip: trip)
                 }
                 .swipeActions(edge: .leading) {
-                    Button {
-                        trip.isArchived = false
-                        try? modelContext.saveIfNeeded()
-                    } label: {
-                        Label("Unarchive", systemImage: "tray.and.arrow.up")
+                    if canEdit(trip) {
+                        Button {
+                            trip.isArchived = false
+                            try? modelContext.saveIfNeeded()
+                        } label: {
+                            Label("Unarchive", systemImage: "tray.and.arrow.up")
+                        }
+                        .tint(TripTrackerModule.accent.color)
                     }
-                    .tint(TripTrackerModule.accent.color)
                 }
             }
             .onDelete { offsets in
-                for index in offsets {
+                for index in offsets where canEdit(trips[index]) {
                     modelContext.delete(trips[index])
                 }
                 try? modelContext.saveIfNeeded()
@@ -325,6 +379,11 @@ struct ArchivedTripsView: View {
             }
         }
         .navigationTitle("Archived")
+    }
+
+    private func canEdit(_ trip: SharedTrip) -> Bool {
+        guard let container else { return true }
+        return SharingStatusResolver.canEdit(trip, in: container)
     }
 }
 

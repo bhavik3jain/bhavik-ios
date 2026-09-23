@@ -7,6 +7,8 @@ struct GuideDetailView: View {
     let guide: SharedGuide
 
     @Environment(\.managedObjectContext) private var modelContext
+    @Environment(\.explorePersistentContainer) private var container
+    @Environment(\.presentShareSheet) private var presentShareSheet
     @State private var category: PlaceCategory = .foodAndDrinks
     @State private var showingAddPlace = false
     @State private var showingEdit = false
@@ -14,6 +16,18 @@ struct GuideDetailView: View {
 
     private var summary: GuideSummary { GuideSummary.summarize(guide) }
     private var shown: [SharedGuidePlace] { guide.places(in: category) }
+
+    // Sharing status is a cheap, synchronous CloudKit cache lookup (see
+    // `SharingStatusResolver`'s own doc comment), not something worth a round
+    // trip through `@State` — read fresh on every body evaluation.
+    private var sharingStatus: SharingStatus {
+        guard let container else { return .notShared }
+        return SharingStatusResolver.status(for: guide, in: container)
+    }
+    private var canEdit: Bool {
+        guard let container else { return true }
+        return SharingStatusResolver.canEdit(guide, in: container)
+    }
 
     var body: some View {
         let summary = summary
@@ -26,8 +40,14 @@ struct GuideDetailView: View {
                     }
                 }
             } header: {
-                Text(summary.detailLine)
-                    .textCase(nil)
+                HStack(spacing: 6) {
+                    Text(summary.detailLine)
+                    if let label = sharingStatus.guideBadgeLabel {
+                        Label(label, systemImage: "person.2.fill")
+                            .labelStyle(.titleAndIcon)
+                    }
+                }
+                .textCase(nil)
             }
 
             Section {
@@ -44,10 +64,15 @@ struct GuideDetailView: View {
 
             Section {
                 if shown.isEmpty {
-                    Button {
-                        showingAddPlace = true
-                    } label: {
-                        Label("Add \(category.displayName.lowercased())", systemImage: "plus")
+                    // A read-only participant can't add a place either
+                    // (AddPlaceView's own Save is gated the same way) — no
+                    // point opening a sheet that can't be saved.
+                    if canEdit {
+                        Button {
+                            showingAddPlace = true
+                        } label: {
+                            Label("Add \(category.displayName.lowercased())", systemImage: "plus")
+                        }
                     }
                 } else {
                     ForEach(shown) { place in
@@ -57,14 +82,25 @@ struct GuideDetailView: View {
                             PlaceRow(place: place)
                         }
                         .swipeActions(edge: .leading) {
-                            Button(place.isTried ? "To try" : "Tried", systemImage: place.isTried ? "arrow.uturn.backward" : "checkmark") {
-                                place.setTried(!place.isTried)
-                                try? modelContext.saveIfNeeded()
+                            // A read-only participant can't tick a place off
+                            // either — same gate as the Add/Edit/Delete
+                            // affordances above.
+                            if canEdit {
+                                Button(place.isTried ? "To try" : "Tried", systemImage: place.isTried ? "arrow.uturn.backward" : "checkmark") {
+                                    place.setTried(!place.isTried)
+                                    try? modelContext.saveIfNeeded()
+                                }
+                                .tint(ExploreTrackerModule.accent.color)
                             }
-                            .tint(ExploreTrackerModule.accent.color)
                         }
                     }
                     .onDelete { offsets in
+                        // A read-only participant's swipe is silently dropped
+                        // rather than hidden — `onDelete` offers the same
+                        // gesture to every row, so filtering here (the same
+                        // pattern `ArchivedTripsView`/`GarageView` use) is the
+                        // only per-row way to withhold it.
+                        guard canEdit else { return }
                         let places = shown
                         for index in offsets {
                             modelContext.delete(places[index])
@@ -76,16 +112,32 @@ struct GuideDetailView: View {
         }
         .navigationTitle(guide.name)
         .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                Button {
-                    showingAddPlace = true
-                } label: {
-                    Image(systemName: "plus")
+            // A read-only participant can't add a place — same reasoning as
+            // hiding the empty-state "Add" button above.
+            if canEdit {
+                ToolbarItem(placement: .primaryAction) {
+                    Button {
+                        showingAddPlace = true
+                    } label: {
+                        Image(systemName: "plus")
+                    }
+                    .accessibilityLabel("Add a place")
                 }
-                .accessibilityLabel("Add a place")
             }
             ToolbarItem(placement: .secondaryAction) {
-                Button("Edit Guide", systemImage: "pencil") { showingEdit = true }
+                Button {
+                    if let container {
+                        presentShareSheet(ShareSheetRequest(object: guide, container: container))
+                    }
+                } label: {
+                    Label("Share Guide", systemImage: "person.crop.circle.badge.plus")
+                }
+                .disabled(container == nil)
+            }
+            if canEdit {
+                ToolbarItem(placement: .secondaryAction) {
+                    Button("Edit Guide", systemImage: "pencil") { showingEdit = true }
+                }
             }
             ToolbarItem(placement: .secondaryAction) {
                 Button(

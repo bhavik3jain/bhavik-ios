@@ -1,4 +1,4 @@
-import Core // Only reached on macOS, where Core stands in for the iOS-only SwiftUI API below.
+import Core
 import CoreData
 import SwiftUI
 
@@ -9,6 +9,7 @@ struct BookingEditorView: View {
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.managedObjectContext) private var modelContext
+    @Environment(\.tripPersistentContainer) private var container
 
     @State private var title = ""
     @State private var kind: BookingKind = .lodging
@@ -41,7 +42,13 @@ struct BookingEditorView: View {
         }
     }
 
-    private var canSave: Bool { !title.trimmingCharacters(in: .whitespaces).isEmpty }
+    // Gated on the trip, the share's root object — see ItemEditorView's own
+    // comment on this same pattern.
+    private var canEditShare: Bool {
+        guard let container else { return true }
+        return SharingStatusResolver.canEdit(trip, in: container)
+    }
+    private var canSave: Bool { !title.trimmingCharacters(in: .whitespaces).isEmpty && canEditShare }
 
     private var words: (start: String, end: String) {
         switch kind {
@@ -102,7 +109,7 @@ struct BookingEditorView: View {
                     Text("Encrypted in iCloud, hidden until you tap Show, and never written into the shared PDF.")
                 }
 
-                if booking != nil {
+                if booking != nil, canEditShare {
                     Section {
                         Button("Delete Booking", role: .destructive) { confirmingDelete = true }
                     }

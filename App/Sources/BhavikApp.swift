@@ -48,6 +48,15 @@ struct BhavikApp: App {
     /// `\.managedObjectContext`.
     let exploreContainer: NSPersistentCloudKitContainer
     @AppStorage(Appearance.defaultsKey) private var appearanceRaw = Appearance.system.rawValue
+    /// Fed by `\.presentShareSheet` (Core's `ShareSheetPresenting.swift`) and
+    /// presented below via `.sheet(item:)` — the one place a feature package's
+    /// Share button actually reaches iOS's `UICloudSharingController` or
+    /// macOS's custom sheet, both in `ShareSheetHost.swift`. Top-level state
+    /// here rather than in `HomeView` since a module's own root view (inside
+    /// the fullScreenCover/detail pane) is what calls `presentShareSheet`, and
+    /// that closure has to reach all the way back up to this WindowGroup to
+    /// present over everything, not just the presenting module.
+    @State private var shareSheetRequest: ShareSheetRequest?
 
     // Only reason for an app/scene delegate in an otherwise pure SwiftUI App:
     // CKShare-accept has no SwiftUI-native entry point on either platform.
@@ -136,24 +145,33 @@ struct BhavikApp: App {
 
     var body: some Scene {
         WindowGroup {
-            #if DEBUG
-            if CloudKitSchemaInitializer.isRequested {
-                CloudKitSchemaInitializerView(containerID: Self.cloudContainerID)
-            } else {
+            Group {
+                #if DEBUG
+                if CloudKitSchemaInitializer.isRequested {
+                    CloudKitSchemaInitializerView(containerID: Self.cloudContainerID)
+                } else {
+                    HomeView()
+                        .preferredColorScheme(Appearance.stored(appearanceRaw).colorScheme)
+                        .modifier(WeatherStub())
+                        #if os(macOS)
+                        .frame(minWidth: 860, minHeight: 560)
+                        #endif
+                }
+                #else
                 HomeView()
                     .preferredColorScheme(Appearance.stored(appearanceRaw).colorScheme)
-                    .modifier(WeatherStub())
                     #if os(macOS)
                     .frame(minWidth: 860, minHeight: 560)
                     #endif
-            }
-            #else
-            HomeView()
-                .preferredColorScheme(Appearance.stored(appearanceRaw).colorScheme)
-                #if os(macOS)
-                .frame(minWidth: 860, minHeight: 560)
                 #endif
-            #endif
+            }
+            // The presentation seam every module's Share button reaches
+            // through (Core's \.presentShareSheet), and where its result gets
+            // shown — see ShareSheetHost.swift for the iOS/macOS split.
+            .environment(\.presentShareSheet) { shareSheetRequest = $0 }
+            .sheet(item: $shareSheetRequest) { request in
+                ShareSheetHostView(request: request)
+            }
         }
         .modelContainer(container)
         // Threads Trips' Core Data context to HomeView (its own @FetchRequest,
@@ -161,11 +179,24 @@ struct BhavikApp: App {
         // and to the module itself once opened, the same way .modelContainer
         // above threads the SwiftData context to every other module's @Query.
         .environment(\.managedObjectContext, tripContainer.viewContext)
+        // The container itself (not just its context) — Trips' Share button
+        // and its sharing-status badges need it to call `presentShareSheet`
+        // and `SharingStatusResolver`. See Core's `ModulePersistentContainers.swift`.
+        .environment(\.tripPersistentContainer, tripContainer)
         // Fuel's own key — see `fuelContainer`'s doc comment above for why
         // this isn't also `\.managedObjectContext`.
         .environment(\.fuelManagedObjectContext, fuelContainer.viewContext)
+        // The container itself (not just its context) — Fuel's Share button
+        // and its sharing-status badges need it to call `presentShareSheet`
+        // and `SharingStatusResolver`. See Core's `ModulePersistentContainers.swift`.
+        .environment(\.fuelPersistentContainer, fuelContainer)
         // Explore's own key — same reasoning as Fuel's.
         .environment(\.exploreManagedObjectContext, exploreContainer.viewContext)
+        // The container itself (not just its context) — Explore's Share
+        // button and its sharing-status badges need it to call
+        // `presentShareSheet` and `SharingStatusResolver`. See Core's
+        // `ModulePersistentContainers.swift`.
+        .environment(\.explorePersistentContainer, exploreContainer)
         #if os(macOS)
         // A left-over default-sized window reads as an unfinished iPhone app
         // squeezed onto a Mac; a sidebar layout wants the width to show it.

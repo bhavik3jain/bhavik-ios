@@ -24,10 +24,17 @@ public enum TripTrackerModule {
     /// rather than relying on the app shell having set it globally — every
     /// view below this one that reads `@Environment(\.managedObjectContext)`
     /// gets it from here.
+    ///
+    /// `container` is that same store's `NSPersistentCloudKitContainer`
+    /// itself — the Share button and sharing-status badges (`TripDetailView`,
+    /// `TripListView`) need it to call `presentShareSheet` and
+    /// `SharingStatusResolver`, which a context alone can't get them back to.
+    /// See Core's `ModulePersistentContainers.swift`.
     @MainActor
-    public static func rootView(context: NSManagedObjectContext) -> some View {
+    public static func rootView(context: NSManagedObjectContext, container: NSPersistentCloudKitContainer) -> some View {
         TripRootView()
             .environment(\.managedObjectContext, context)
+            .environment(\.tripPersistentContainer, container)
     }
 
     /// The line under "Trips" on the home screen.

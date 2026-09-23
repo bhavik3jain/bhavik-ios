@@ -1,4 +1,4 @@
-import Core // Only reached on macOS, where Core stands in for the iOS-only SwiftUI API below.
+import Core
 import CoreData
 import MapKit
 import SwiftUI
@@ -10,6 +10,7 @@ struct ItemEditorView: View {
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.managedObjectContext) private var modelContext
+    @Environment(\.tripPersistentContainer) private var container
 
     @State private var title = ""
     @State private var kind: ItemKind = .sight
@@ -43,7 +44,13 @@ struct ItemEditorView: View {
         }
     }
 
-    private var canSave: Bool { !title.trimmingCharacters(in: .whitespaces).isEmpty }
+    // Gated on the trip, the share's root object — a read-only participant
+    // can't save or delete anything hanging off it, item included.
+    private var canEditShare: Bool {
+        guard let container else { return true }
+        return SharingStatusResolver.canEdit(trip, in: container)
+    }
+    private var canSave: Bool { !title.trimmingCharacters(in: .whitespaces).isEmpty && canEditShare }
 
     var body: some View {
         NavigationStack {
@@ -122,7 +129,7 @@ struct ItemEditorView: View {
                         .lineLimit(2...6)
                 }
 
-                if let item {
+                if let item, canEditShare {
                     Section {
                         Button(item.isDone ? "Mark as Not Done" : "Mark as Done") {
                             item.toggleDone()
