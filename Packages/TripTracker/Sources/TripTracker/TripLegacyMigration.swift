@@ -34,7 +34,10 @@ public enum TripLegacyMigration {
     /// `startDate` and `endDate`) in the destination store — when a trip
     /// already exists, its items/flights/bookings are assumed to have already
     /// been copied along with it, so they are not re-walked. Called from
-    /// `TripRootView`'s `.task`, ahead of the debug seeder.
+    /// `TripRootView`'s `.task`, ahead of the debug seeder, and only after
+    /// `CloudKitImportGate` — the existence check sees only the local store,
+    /// so it guards against another device's copies only once those have been
+    /// imported.
     ///
     /// The per-trip existence check above is the actual guard against
     /// duplicating data — not `completedDefaultsKey` below. A flag plus an

@@ -1,4 +1,4 @@
-import Core // Only reached on macOS, where Core stands in for the iOS-only SwiftUI API below.
+import Core // Used on iOS too now, for SharingStatus/SharingStatusResolver/ShareSheetRequest.
 import CoreData
 import SwiftUI
 
@@ -7,6 +7,7 @@ struct AddPlaceView: View {
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.managedObjectContext) private var modelContext
+    @Environment(\.explorePersistentContainer) private var container
 
     @State private var search: PlaceSearch
     @State private var chosen: Choice?
@@ -42,8 +43,16 @@ struct AddPlaceView: View {
         search.query.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
+    // Gated on the guide, the share's root object — a read-only participant
+    // can't add a place to it.
+    private var canEditShare: Bool {
+        guard let container else { return true }
+        return SharingStatusResolver.canEdit(guide, in: container)
+    }
+
     private var canSave: Bool {
-        switch chosen {
+        guard canEditShare else { return false }
+        return switch chosen {
         case .found: true
         case .manual: !manualName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         case nil: false

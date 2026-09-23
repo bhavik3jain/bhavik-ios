@@ -58,6 +58,14 @@ public enum CloudSharedStore {
         if inMemory {
             privateDescription.type = NSInMemoryStoreType
             sharedDescription.type = NSInMemoryStoreType
+            // The default description picks up the entitlements' iCloud container
+            // on its own, and the copy inherits it: two stores, one container, one
+            // scope, which Core Data throws on ("Cannot assign the same iCloud
+            // Container Identifier to multiple persistent stores with the same
+            // database scope"). Tests have no entitlements so never saw it; the
+            // -InitializeCloudKitSchema launch crashed on it.
+            privateDescription.cloudKitContainerOptions = nil
+            sharedDescription.cloudKitContainerOptions = nil
         } else {
             configureForCloudKitMirroring(privateDescription)
             configureForCloudKitMirroring(sharedDescription)
@@ -76,6 +84,12 @@ public enum CloudSharedStore {
 
         container.persistentStoreDescriptions = [privateDescription, sharedDescription]
 
+        // Before loading, not after: mirroring starts the moment a store loads,
+        // and a first import that finished before anyone subscribed would
+        // never be seen — leaving the legacy importers waiting on it for their
+        // whole timeout. See CloudKitImportGate.swift.
+        CloudKitImportGate.track(container)
+
         var loadError: Error?
         container.loadPersistentStores { _, error in loadError = error }
         if let loadError {
@@ -83,5 +97,24 @@ public enum CloudSharedStore {
         }
         container.viewContext.automaticallyMergesChangesFromParent = true
         return container
+    }
+}
+
+public extension NSPersistentCloudKitContainer {
+    /// The store backed by the owner's private CloudKit database — where data
+    /// that must never reach a share participant has to be written, via
+    /// `NSManagedObjectContext.assign(_:to:)`.
+    ///
+    /// Found by the description's database scope rather than by position, so
+    /// it can't silently become the shared store if the description order in
+    /// `CloudSharedStore.makeContainer` ever changes. An in-memory (test)
+    /// container carries no CloudKit options at all, so there it falls back
+    /// to the first description — which `makeContainer` always makes the
+    /// private one.
+    var privatePersistentStore: NSPersistentStore? {
+        let description = persistentStoreDescriptions.first { $0.cloudKitContainerOptions?.databaseScope == .private }
+            ?? persistentStoreDescriptions.first
+        guard let url = description?.url else { return nil }
+        return persistentStoreCoordinator.persistentStore(for: url)
     }
 }

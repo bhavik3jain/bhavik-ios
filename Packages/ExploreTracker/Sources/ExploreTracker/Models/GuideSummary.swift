@@ -133,8 +133,10 @@ public struct GuideSummary: Identifiable, Sendable, Equatable {
 }
 
 public extension GuideSummary {
+    /// `pinnedAt` comes from the caller's `GuidePin` rows (`GuidePins`), not
+    /// from the guide — a pin isn't part of the guide record any more.
     @MainActor
-    static func summarize(_ guide: SharedGuide) -> GuideSummary {
+    static func summarize(_ guide: SharedGuide, pinnedAt: Date? = nil) -> GuideSummary {
         let places = guide.allPlaces
         var counts: [PlaceCategory: Int] = [:]
         for place in places {
@@ -148,7 +150,7 @@ public extension GuideSummary {
             triedCount: places.count { $0.isTried },
             counts: counts,
             region: GuideRegion.enclosing(places.compactMap(\.point)),
-            isPinned: guide.isPinned
+            isPinned: pinnedAt != nil
         )
     }
 
@@ -159,11 +161,15 @@ public extension GuideSummary {
     /// a large card, so whichever guide happened to be created last looked
     /// featured for no reason. Now all cards are the same size and standing out
     /// is something you choose, by pinning.
+    ///
+    /// `pinDates` is `GuidePins.earliestPinDates` — keyed by `GuidePins.key(for:)`,
+    /// earliest date per guide, so duplicate pin rows can't reorder anything.
     @MainActor
-    static func all(_ guides: [SharedGuide]) -> [GuideSummary] {
-        guides
+    static func all(_ guides: [SharedGuide], pinDates: [String: Date]) -> [GuideSummary] {
+        let pinnedAt = { (guide: SharedGuide) in pinDates[GuidePins.key(for: guide)] }
+        return guides
             .sorted { lhs, rhs in
-                switch (lhs.pinnedAt, rhs.pinnedAt) {
+                switch (pinnedAt(lhs), pinnedAt(rhs)) {
                 case let (left?, right?):
                     left < right
                 case (_?, nil):
@@ -174,6 +180,6 @@ public extension GuideSummary {
                     lhs.createdAt > rhs.createdAt
                 }
             }
-            .map(summarize)
+            .map { summarize($0, pinnedAt: pinnedAt($0)) }
     }
 }

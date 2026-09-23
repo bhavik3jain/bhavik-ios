@@ -5,14 +5,22 @@ import SwiftUI
 
 struct GuideListView: View {
     @Environment(\.managedObjectContext) private var modelContext
+    @Environment(\.explorePersistentContainer) private var container
     @FetchRequest(sortDescriptors: [NSSortDescriptor(keyPath: \SharedGuide.createdAt, ascending: false)])
     private var guideResults: FetchedResults<SharedGuide>
     private var guides: [SharedGuide] { Array(guideResults) }
+    /// Fetched here rather than looked up per guide so a pin made on another
+    /// of this person's devices re-sorts the list the moment it's imported.
+    @FetchRequest(sortDescriptors: [])
+    private var pinResults: FetchedResults<GuidePin>
 
     @State private var showingNewGuide = false
     @State private var pendingDeletion: GuideSummary?
 
-    private var summaries: [GuideSummary] { GuideSummary.all(guides) }
+    private var summaries: [GuideSummary] {
+        GuideSummary.all(guides, pinDates: GuidePins.earliestPinDates(pinResults))
+    }
+    private var pins: GuidePins { GuidePins(context: modelContext, container: container) }
 
     var body: some View {
         NavigationStack {
@@ -34,7 +42,7 @@ struct GuideListView: View {
                                     NavigationLink {
                                         GuideDetailView(guide: guide)
                                     } label: {
-                                        GuideCard(summary: summary, points: guide.allPlaces.compactMap(\.point))
+                                        GuideCard(guide: guide, summary: summary, points: guide.allPlaces.compactMap(\.point))
                                     }
                                     .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                                         // Red explicitly: the module's magenta tint otherwise
@@ -45,11 +53,11 @@ struct GuideListView: View {
                                         .tint(.red)
                                     }
                                     .swipeActions(edge: .leading) {
-                                        pinButton(for: guide)
+                                        pinButton(for: guide, isPinned: summary.isPinned)
                                             .tint(ExploreTrackerModule.accent.color)
                                     }
                                     .contextMenu {
-                                        pinButton(for: guide)
+                                        pinButton(for: guide, isPinned: summary.isPinned)
                                         Button("Delete Guide", systemImage: "trash", role: .destructive) {
                                             pendingDeletion = summary
                                         }
@@ -97,6 +105,10 @@ struct GuideListView: View {
             ) { summary in
                 Button("Delete Guide", role: .destructive) {
                     if let guide = guide(for: summary) {
+                        // A pin has no relationship to cascade through (see
+                        // `GuidePin`), so it's removed by hand or it outlives
+                        // its guide forever.
+                        pins.setPinned(false, guide)
                         modelContext.delete(guide)
                         try? modelContext.saveIfNeeded()
                     }
@@ -114,12 +126,14 @@ struct GuideListView: View {
         pendingDeletion.map { "Delete “\($0.name)”?" } ?? "Delete guide?"
     }
 
-    private func pinButton(for guide: SharedGuide) -> some View {
+    /// Offered on every guide, shared read-only ones included — a pin is this
+    /// person's own record, not an edit to the guide.
+    private func pinButton(for guide: SharedGuide, isPinned: Bool) -> some View {
         Button(
-            guide.isPinned ? "Unpin" : "Pin",
-            systemImage: guide.isPinned ? "pin.slash" : "pin"
+            isPinned ? "Unpin" : "Pin",
+            systemImage: isPinned ? "pin.slash" : "pin"
         ) {
-            withAnimation { guide.setPinned(!guide.isPinned) }
+            withAnimation { pins.setPinned(!isPinned, guide) }
             try? modelContext.saveIfNeeded()
         }
     }
@@ -134,8 +148,15 @@ struct GuideListView: View {
 /// a large card purely because it was the newest, which read as featured for
 /// no reason. Pinned guides sort to the top and carry a pin instead.
 struct GuideCard: View {
+    let guide: SharedGuide
     let summary: GuideSummary
     let points: [GeoPoint]
+
+    @Environment(\.explorePersistentContainer) private var container
+    private var sharingLabel: String? {
+        guard let container else { return nil }
+        return SharingStatusResolver.status(for: guide, in: container).guideBadgeLabel
+    }
 
     var body: some View {
         HStack(spacing: 12) {
@@ -153,6 +174,12 @@ struct GuideCard: View {
                     Text(summary.name)
                         .font(.headline)
                         .lineLimit(2)
+                    if let sharingLabel {
+                        Label(sharingLabel, systemImage: "person.2.fill")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .labelStyle(.titleAndIcon)
+                    }
                 }
                 Text(summary.detailLine)
                     .font(.caption)

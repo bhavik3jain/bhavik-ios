@@ -10,6 +10,16 @@ struct TripPlanView: View {
     let present: (TripSheet) -> Void
 
     @Environment(\.managedObjectContext) private var modelContext
+    @Environment(\.tripPersistentContainer) private var container
+
+    // A read-only shared participant can't mark an item done or delete it —
+    // same gate `ItemEditorView`'s own "Mark as Done"/"Delete" section already
+    // applies, so tapping or swiping this row can't do the same mutation from
+    // a side door.
+    private var canEdit: Bool {
+        guard let container else { return true }
+        return SharingStatusResolver.canEdit(trip, in: container)
+    }
 
     var body: some View {
         // Once a minute, so the NOW line and "up next" keep moving while the
@@ -89,27 +99,31 @@ struct TripPlanView: View {
     private func row(for entry: DayPlan.Entry, in plan: DayPlan, isUpNext: Bool) -> some View {
         switch entry {
         case .item(let item):
-            TimelineRow(entry: entry, plan: plan, isUpNext: isUpNext) {
+            TimelineRow(entry: entry, plan: plan, isUpNext: isUpNext, toggle: canEdit ? {
                 withAnimation { item.toggleDone() }
                 try? modelContext.saveIfNeeded()
-            } open: {
+            } : nil) {
                 present(.item(item))
             }
             .swipeActions(edge: .leading) {
-                Button {
-                    withAnimation { item.toggleDone() }
-                    try? modelContext.saveIfNeeded()
-                } label: {
-                    Label(item.isDone ? "Not done" : "Done", systemImage: item.isDone ? "arrow.uturn.backward" : "checkmark")
+                if canEdit {
+                    Button {
+                        withAnimation { item.toggleDone() }
+                        try? modelContext.saveIfNeeded()
+                    } label: {
+                        Label(item.isDone ? "Not done" : "Done", systemImage: item.isDone ? "arrow.uturn.backward" : "checkmark")
+                    }
+                    .tint(.green)
                 }
-                .tint(.green)
             }
             .swipeActions(edge: .trailing) {
-                Button(role: .destructive) {
-                    modelContext.delete(item)
-                    try? modelContext.saveIfNeeded()
-                } label: {
-                    Label("Delete", systemImage: "trash")
+                if canEdit {
+                    Button(role: .destructive) {
+                        modelContext.delete(item)
+                        try? modelContext.saveIfNeeded()
+                    } label: {
+                        Label("Delete", systemImage: "trash")
+                    }
                 }
             }
         case .flight(let flight):

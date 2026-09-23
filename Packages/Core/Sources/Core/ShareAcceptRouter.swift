@@ -7,8 +7,7 @@ import CoreData
 /// type as "CD_" + entity name), so the app shell's single share-accept
 /// delegate method can route an incoming CKShare invitation to the right
 /// module's container without the app shell — or this router — needing to
-/// import any module's models directly. Trip/Vehicle/Guide don't exist as
-/// Core Data models yet; this phase only builds the routing mechanism.
+/// import any module's models directly.
 @MainActor
 public final class ShareAcceptRouter {
     public static let shared = ShareAcceptRouter()
@@ -26,12 +25,39 @@ public final class ShareAcceptRouter {
     /// share's root record type to find which registered container should
     /// accept it.
     ///
-    /// `metadata.rootRecord` is only populated when whatever fetched this
-    /// metadata asked for it — `CKFetchShareMetadataOperation.shouldFetchRootRecord
-    /// = true`, or the equivalent on the scene/app-delegate path. The OS doesn't
-    /// guarantee it's already there, so the app shell's delegate must fetch with
-    /// that flag set before calling here, or every invitation reads as unroutable.
+    /// **Confirmed finding**: `metadata.rootRecord` is *not* reliably populated
+    /// on the metadata the OS hands this callback. `CKShare.Metadata`'s own
+    /// header doc comment says `rootRecord` is only filled in "if you set the
+    /// `shouldFetchRootRecord` property of the operation that fetches the
+    /// metadata to `true`" — and Apple's own sample code for this exact
+    /// callback, in `CKAcceptSharesOperation.h`'s header comment, accepts the
+    /// share first and only *then* "schedule[s] a fetch of the share's root
+    /// record", which would be pointless if the root record were already
+    /// sitting on the metadata the OS just handed over. So this re-fetches the
+    /// metadata itself with `shouldFetchRootRecord = true` before routing,
+    /// rather than trusting `metadata.rootRecord` as originally written here.
     public func accept(_ metadata: CKShare.Metadata, completion: (@Sendable (Error?) -> Void)? = nil) {
+        guard let shareURL = metadata.share.url else {
+            completion?(CocoaError(.coderInvalidValue))
+            return
+        }
+        let cloudKitContainer = CKContainer(identifier: metadata.containerIdentifier)
+        let operation = CKFetchShareMetadataOperation(shareURLs: [shareURL])
+        operation.shouldFetchRootRecord = true
+        operation.perShareMetadataResultBlock = { [weak self] _, result in
+            Task { @MainActor in
+                switch result {
+                case .success(let refetchedMetadata):
+                    self?.routeAndAccept(refetchedMetadata, completion: completion)
+                case .failure(let error):
+                    completion?(error)
+                }
+            }
+        }
+        cloudKitContainer.add(operation)
+    }
+
+    private func routeAndAccept(_ metadata: CKShare.Metadata, completion: (@Sendable (Error?) -> Void)?) {
         guard let recordType = metadata.rootRecord?.recordType,
               let container = containersByRecordTypePrefix[recordType] else {
             completion?(CocoaError(.coderInvalidValue))

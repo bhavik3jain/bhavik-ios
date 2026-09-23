@@ -27,6 +27,9 @@ struct HomeView: View {
     // set globally, since a second Core Data module (Fuel, Explore) will need
     // a context of its own that can't share this one environment key.
     @Environment(\.managedObjectContext) private var tripContext
+    // The container itself, for Trips' Share button and sharing-status badges
+    // — see Core's `ModulePersistentContainers.swift`.
+    @Environment(\.tripPersistentContainer) private var tripPersistentContainer
     // Phase (under way, upcoming, finished) is worked out from the dates in
     // Swift; only the stored archive flag can go in the predicate.
     @FetchRequest(sortDescriptors: [], predicate: NSPredicate(format: "isArchived == NO"))
@@ -43,6 +46,9 @@ struct HomeView: View {
     // `ManagedObjectFetch` fetches directly against the context it's handed
     // instead — see its own doc comment.
     @Environment(\.fuelManagedObjectContext) private var fuelContext
+    // The container itself, for Fuel's Share button and sharing-status badges
+    // — same reasoning as `tripPersistentContainer` above.
+    @Environment(\.fuelPersistentContainer) private var fuelPersistentContainer
     @StateObject private var vehicleFetch = ManagedObjectFetch<SharedVehicle>(
         SharedVehicle.fetchRequest(sortDescriptors: [NSSortDescriptor(keyPath: \SharedVehicle.createdAt, ascending: true)])
     )
@@ -51,6 +57,9 @@ struct HomeView: View {
     // and its own `\.exploreManagedObjectContext` key, the same reasoning as
     // Fuel's `fuelContext`/`vehicleFetch` above.
     @Environment(\.exploreManagedObjectContext) private var exploreContext
+    // The container itself, for Explore's Share button and sharing-status
+    // badges — same reasoning as `fuelPersistentContainer` above.
+    @Environment(\.explorePersistentContainer) private var explorePersistentContainer
     @StateObject private var guideFetch = ManagedObjectFetch<SharedGuide>(
         SharedGuide.fetchRequest(sortDescriptors: [NSSortDescriptor(keyPath: \SharedGuide.createdAt, ascending: false)])
     )
@@ -188,20 +197,25 @@ struct HomeView: View {
             GymTrackerModule.rootView()
         case .fuel:
             // Always set by the time a module can be opened — BhavikApp's
-            // WindowGroup sets `\.fuelManagedObjectContext` unconditionally
-            // in `.init()`, before any view (this one included) exists.
-            FuelTrackerModule.rootView(context: fuelContext!)
+            // WindowGroup sets `\.fuelManagedObjectContext` and
+            // `\.fuelPersistentContainer` unconditionally in `.init()`,
+            // before any view (this one included) exists.
+            FuelTrackerModule.rootView(context: fuelContext!, container: fuelPersistentContainer!)
         case .tv:
             TVTrackerModule.rootView()
         case .parcels:
             ParcelTrackerModule.rootView()
         case .trips:
-            TripTrackerModule.rootView(context: tripContext)
+            // Always set by the time a module can be opened — BhavikApp's
+            // WindowGroup sets `\.tripPersistentContainer` unconditionally in
+            // `.init()`, before any view (this one included) exists.
+            TripTrackerModule.rootView(context: tripContext, container: tripPersistentContainer!)
         case .explore:
             // Always set by the time a module can be opened — BhavikApp's
-            // WindowGroup sets `\.exploreManagedObjectContext` unconditionally
-            // in `.init()`, before any view (this one included) exists.
-            ExploreTrackerModule.rootView(context: exploreContext!)
+            // WindowGroup sets `\.exploreManagedObjectContext` and
+            // `\.explorePersistentContainer` unconditionally in `.init()`,
+            // before any view (this one included) exists.
+            ExploreTrackerModule.rootView(context: exploreContext!, container: explorePersistentContainer!)
         }
     }
 
@@ -230,7 +244,8 @@ struct HomeView: View {
     private func detail(for module: SelectedModule) -> String {
         switch module {
         case .trips: TripTrackerModule.homeDetail(trips: trips)
-        case .explore: GuideSummary.homeDetail(for: GuideSummary.all(guides))
+        // Counts only, so no pins needed — order doesn't change a total.
+        case .explore: GuideSummary.homeDetail(for: guides.map { GuideSummary.summarize($0) })
         case .gym: gymDetail
         case .tv: tvDetail
         case .parcels: parcelDetail

@@ -1,4 +1,4 @@
-import Core // Only reached on macOS, where Core stands in for the iOS-only SwiftUI API below.
+import Core
 import CoreData
 import SwiftUI
 
@@ -8,6 +8,7 @@ struct TripEditorView: View {
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.managedObjectContext) private var modelContext
+    @Environment(\.tripPersistentContainer) private var container
 
     @State private var title = ""
     @State private var destination = ""
@@ -19,7 +20,13 @@ struct TripEditorView: View {
     @State private var search = PlaceSearch(kinds: .address)
     @State private var loaded = false
 
-    private var canSave: Bool { !title.trimmingCharacters(in: .whitespaces).isEmpty }
+    // A new trip (`trip == nil`) has no share yet, so it's always editable —
+    // only an existing, possibly-shared trip can be read-only.
+    private var canEditShare: Bool {
+        guard let trip, let container else { return true }
+        return SharingStatusResolver.canEdit(trip, in: container)
+    }
+    private var canSave: Bool { !title.trimmingCharacters(in: .whitespaces).isEmpty && canEditShare }
 
     var body: some View {
         NavigationStack {

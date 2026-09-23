@@ -34,14 +34,14 @@ final class SceneDelegate: NSObject, UIWindowSceneDelegate {
     // Called after the user taps "Accept" on a share invitation while the app
     // is already running. (The not-running case arrives via
     // scene(_:willConnectTo:options:)'s connectionOptions instead — not
-    // wired up here, since nothing in this app can currently be shared yet.)
-    // NB for whoever registers the first container with ShareAcceptRouter:
-    // its own doc comment notes `accept` keys off `metadata.rootRecord`, but
-    // the metadata the OS hands this callback only has that populated if
-    // something asked for it with CKFetchShareMetadataOperation's
-    // shouldFetchRootRecord — which nothing has, at this stage. Passing it
-    // straight through (as here) will read as unroutable until a re-fetch
-    // step is added once there's a real container to route to.
+    // wired up here, since nothing needs it until a launch-time share accept
+    // is reported as missed.)
+    //
+    // ShareAcceptRouter.accept(_:) re-fetches this metadata itself with
+    // shouldFetchRootRecord = true before routing — the metadata the OS hands
+    // this callback doesn't reliably have `rootRecord` populated (see that
+    // method's own doc comment) — so passing the raw metadata straight
+    // through, as here, is correct.
     func windowScene(
         _ windowScene: UIWindowScene,
         userDidAcceptCloudKitShareWith cloudKitShareMetadata: CKShare.Metadata
@@ -56,8 +56,8 @@ import AppKit
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     // macOS has no scene layer to thread this through — the app delegate
-    // gets the callback directly. Same rootRecord caveat as the iOS side
-    // above.
+    // gets the callback directly. Same reasoning as the iOS side above:
+    // ShareAcceptRouter.accept(_:) does its own re-fetch before routing.
     func application(_ application: NSApplication, userDidAcceptCloudKitShareWith metadata: CKShare.Metadata) {
         ShareAcceptRouter.shared.accept(metadata)
     }

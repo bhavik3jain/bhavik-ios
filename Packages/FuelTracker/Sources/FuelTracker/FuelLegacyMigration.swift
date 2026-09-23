@@ -32,7 +32,10 @@ public enum FuelLegacyMigration {
     /// Reads every `Vehicle` (and its fuel entries) out of `legacyContext` and
     /// re-creates it in `context`, skipping any legacy vehicle that already
     /// has a matching `SharedVehicle` (matched by `name`) in the destination
-    /// store. Called from `FuelRootView`'s `.task`, ahead of the debug seeder.
+    /// store. Called from `FuelRootView`'s `.task`, ahead of the debug seeder, and only after
+    /// `CloudKitImportGate` — the existence check sees only the local store,
+    /// so it guards against another device's copies only once those have been
+    /// imported.
     ///
     /// The per-vehicle existence check above is the actual guard against
     /// duplicating data — not `completedDefaultsKey` below. A flag plus an

@@ -23,10 +23,20 @@ public final class SharedGuide: NSManagedObject, Identifiable {
     @NSManaged public var areaLabel: String
     @NSManaged public var notes: String
     @NSManaged public var createdAt: Date
-    /// When the guide was pinned to the top of the list; `nil` when it isn't.
-    /// A date rather than a Bool so pinned guides keep the order they were
-    /// pinned in, instead of reshuffling each time another is pinned.
+    /// **Retired — nothing reads it and only `GuidePins.migrateRetiredPinnedAt`
+    /// writes it, to clear it.** Pins live in `GuidePin` now.
+    ///
+    /// A pin stored on the guide record was shared with the guide: once a
+    /// guide was shared, one person pinning it reordered everyone's list, and
+    /// a read-only participant's pin saved locally but could never be written
+    /// to CloudKit, so it silently never synced. Kept in the model only
+    /// because a field can't be removed from a deployed CloudKit schema.
     @NSManaged public var pinnedAt: Date?
+    /// Stable across devices and share participants because it syncs with
+    /// the record — unlike `objectID`, which is per store and per device. The
+    /// key `GuidePin` rows point at. A random UUID for a guide made on this
+    /// build; `GuideIdentity.derived` for one that predates the field.
+    @NSManaged public var identifier: String
 
     @NSManaged public var places: Set<SharedGuidePlace>?
 
@@ -37,6 +47,12 @@ public final class SharedGuide: NSManagedObject, Identifiable {
         self.areaLabel = areaLabel
         self.notes = notes
         self.createdAt = .now
+        // Here, not in `awakeFromInsert`: that also fires when CloudKit's
+        // import inserts a guide some other device made, and a record from
+        // before this field existed would then keep a random local UUID
+        // instead of reaching `GuideIdentity.backfill` — each device keying
+        // its pins to a different value for the same guide.
+        self.identifier = UUID().uuidString
     }
 
     @nonobjc public static func fetchRequest(
@@ -54,18 +70,6 @@ public extension SharedGuide {
     var id: NSManagedObjectID { objectID }
 
     var allPlaces: [SharedGuidePlace] { Array(places ?? []) }
-
-    var isPinned: Bool { pinnedAt != nil }
-
-    /// Pinning an already-pinned guide keeps its original date, so it doesn't
-    /// jump behind guides pinned after it.
-    func setPinned(_ pinned: Bool, asOf now: Date = .now) {
-        if pinned {
-            if pinnedAt == nil { pinnedAt = now }
-        } else {
-            pinnedAt = nil
-        }
-    }
 
     /// One category's places in the order the guide lists them.
     func places(in category: PlaceCategory) -> [SharedGuidePlace] {

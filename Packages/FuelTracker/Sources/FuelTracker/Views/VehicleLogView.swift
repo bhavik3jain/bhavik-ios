@@ -1,4 +1,5 @@
 import Core
+import CoreData
 import SwiftUI
 
 struct VehicleLogView: View {
@@ -7,6 +8,21 @@ struct VehicleLogView: View {
     let summaries: [VehicleSummary]
     @Binding var showingAddEntry: Bool
     let perform: (VehicleChipAction, VehicleSummary) -> Void
+
+    @Environment(\.fuelPersistentContainer) private var container
+    @Environment(\.presentShareSheet) private var presentShareSheet
+
+    // Sharing status is a cheap, synchronous CloudKit cache lookup (see
+    // `SharingStatusResolver`'s own doc comment), not something worth a round
+    // trip through `@State` — read fresh on every body evaluation.
+    private var sharingStatus: SharingStatus {
+        guard let vehicle, let container else { return .notShared }
+        return SharingStatusResolver.status(for: vehicle, in: container)
+    }
+    private var canEdit: Bool {
+        guard let vehicle, let container else { return true }
+        return SharingStatusResolver.canEdit(vehicle, in: container)
+    }
 
     private var fillUps: [SharedFuelEntry] {
         (vehicle?.orderedFillUps ?? []).reversed()
@@ -28,6 +44,14 @@ struct VehicleLogView: View {
                     selectedID: summary?.id,
                     perform: perform
                 )
+
+                if let label = sharingStatus.vehicleBadgeLabel {
+                    Label(label, systemImage: "person.2.fill")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal)
+                        .padding(.bottom, 4)
+                }
 
                 Group {
                     if let vehicle, let summary {
@@ -71,14 +95,30 @@ struct VehicleLogView: View {
             }
             .navigationTitle(summary?.name ?? "Fuel")
             .toolbar {
-                if vehicle != nil {
+                if let vehicle {
                     ToolbarItem(placement: .primaryAction) {
                         Button {
-                            showingAddEntry = true
+                            if let container {
+                                presentShareSheet(ShareSheetRequest(object: vehicle, container: container))
+                            }
                         } label: {
-                            Image(systemName: "plus")
+                            Image(systemName: "person.crop.circle.badge.plus")
                         }
-                        .accessibilityLabel("Add fill-up")
+                        .disabled(container == nil)
+                        .accessibilityLabel("Share vehicle")
+                    }
+                    // A read-only participant can't add a fill-up either
+                    // (AddFillUpView's own Save is gated the same way) — no
+                    // point opening a sheet that can't be saved.
+                    if canEdit {
+                        ToolbarItem(placement: .primaryAction) {
+                            Button {
+                                showingAddEntry = true
+                            } label: {
+                                Image(systemName: "plus")
+                            }
+                            .accessibilityLabel("Add fill-up")
+                        }
                     }
                 }
             }

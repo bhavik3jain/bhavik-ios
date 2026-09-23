@@ -6,7 +6,11 @@ public extension ExploreTrackerModule {
     /// how big each is and how much of it has been tried.
     @MainActor
     static func homePeek(guides: [SharedGuide]) -> some View {
-        ExploreHomePeek(summaries: GuideSummary.all(guides))
+        // Pins read from the guides' own context rather than passed in, so the
+        // hub doesn't need to know pins are a separate entity. A one-off read
+        // is enough: a peek is built fresh each time it's opened.
+        let pinDates = guides.first?.managedObjectContext.map(GuidePins.pinDates(in:)) ?? [:]
+        return ExploreHomePeek(summaries: GuideSummary.all(guides, pinDates: pinDates))
     }
 }
 

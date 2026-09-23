@@ -34,7 +34,9 @@ public enum ExploreLegacyMigration {
     /// destination store — when a guide already exists, its places are
     /// assumed to have already been copied along with it, so they are not
     /// re-walked. Called from `ExploreRootView`'s `.task`, ahead of the debug
-    /// seeder.
+    /// seeder, and only after `CloudKitImportGate` — the existence check below
+    /// sees only the local store, so it's only a guard against another
+    /// device's copies once those have been imported.
     ///
     /// The per-guide existence check above is the actual guard against
     /// duplicating data — not `completedDefaultsKey` below. A flag plus an
@@ -72,6 +74,14 @@ public enum ExploreLegacyMigration {
 
             let guide = SharedGuide(context: context, name: legacyGuide.name, areaLabel: legacyGuide.areaLabel, notes: legacyGuide.notes)
             guide.createdAt = legacyGuide.createdAt
+            // Derived, not the random UUID the initializer gave it: if two
+            // devices ever do both import this guide, their pins at least key
+            // to the same value.
+            guide.identifier = GuideIdentity.derived(for: guide)
+            // Into the retired field on purpose: `GuidePins.migrateRetiredPinnedAt`,
+            // which runs straight after this, is the one place that turns a
+            // `pinnedAt` into a private-store `GuidePin` and clears it, whether
+            // it came from here or from a guide already in the store.
             guide.pinnedAt = legacyGuide.pinnedAt
 
             for legacyPlace in legacyGuide.allPlaces {

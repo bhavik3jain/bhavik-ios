@@ -61,6 +61,12 @@ models, and that launch opens an in-memory container instead of the real store. 
 any of this. (It replaced a seed-then-purge seeder whose comment claimed SwiftData had no bridge to
 Core Data — it has had one since iOS 17.)
 
+The same launch also initializes the three hand-built Core Data models (`TripModel`, `FuelModel`,
+`GuideModel` — Trips, Fuel and Explore moved off SwiftData for CloudKit sharing). Adding an entity
+or attribute to one of those needs the same ritual. Production never creates record types on its
+own, only Development does: before the Core Data models were added here, TestFlight builds saved
+those modules' data locally and never exported any of it to iCloud.
+
 **Adding a whole module** needs these further edits, none optional: `packages:` **and** the
 `&appDependencies` anchor in `project.yml` (the anchor covers both targets, so the Mac build follows
 for free); the `AppSchema.models` sum in `BhavikApp.swift`; a `ModuleRow` (with its `.contextMenu` peek) in

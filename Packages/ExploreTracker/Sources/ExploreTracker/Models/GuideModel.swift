@@ -16,6 +16,7 @@ import Foundation
 /// |---------------------|------------------------|
 /// | `SharedGuide`       | `SharedGuide`          |
 /// | `SharedGuidePlace`  | `SharedGuidePlace`     |
+/// | `GuidePin`          | `GuidePin`             |
 ///
 /// The Swift class name and the entity name happen to match here — both are
 /// `Shared*`, kept distinct from the SwiftData models' original names
@@ -28,6 +29,9 @@ import Foundation
 ///
 /// Sharing granularity is one `SharedGuide` (with its `SharedGuidePlace`
 /// children), not the whole guide list — `SharedGuide` is the CKShare root.
+///
+/// `GuidePin` is deliberately *not* part of that graph: no relationship to
+/// `SharedGuide`, and always assigned to the private store. See `GuidePin`.
 public enum GuideModel {
     /// Entity names, kept next to the model that defines them rather than
     /// scattered across each class file, so the table above and the code can
@@ -35,6 +39,7 @@ public enum GuideModel {
     enum EntityName {
         static let guide = "SharedGuide"
         static let place = "SharedGuidePlace"
+        static let pin = "GuidePin"
     }
 
     @MainActor
@@ -49,12 +54,28 @@ public enum GuideModel {
         place.name = EntityName.place
         place.managedObjectClassName = NSStringFromClass(SharedGuidePlace.self)
 
+        let pin = NSEntityDescription()
+        pin.name = EntityName.pin
+        pin.managedObjectClassName = NSStringFromClass(GuidePin.self)
+
         guide.properties = [
             string("name", default: ""),
             string("areaLabel", default: ""),
             string("notes", default: ""),
             date("createdAt", optional: false, default: .now),
+            // Retired — see `SharedGuide.pinnedAt`. Still declared because a
+            // field can't be removed from a CloudKit schema once deployed.
             date("pinnedAt"),
+            // Appended after the rest, and defaulted, so the store's
+            // lightweight migration and CloudKit's additive schema both accept
+            // it — existing rows arrive as "" and get backfilled by
+            // `GuideIdentity.backfill`.
+            string("identifier", default: ""),
+        ]
+
+        pin.properties = [
+            string("guideIdentifier", default: ""),
+            date("pinnedAt", optional: false, default: .now),
         ]
 
         place.properties = [
@@ -82,7 +103,7 @@ public enum GuideModel {
         guide.properties += [places]
         place.properties += [placeGuide]
 
-        model.entities = [guide, place]
+        model.entities = [guide, place, pin]
         return model
     }
 
