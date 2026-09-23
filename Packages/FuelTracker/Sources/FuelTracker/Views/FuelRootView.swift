@@ -11,6 +11,7 @@ struct FuelRootView: View {
     /// for Gym/TV/Orders — read here only so `FuelLegacyMigration` has
     /// something to copy real vehicles out of.
     @Environment(\.modelContext) private var legacyContext
+    @Environment(\.fuelPersistentContainer) private var container
     @FetchRequest(sortDescriptors: [NSSortDescriptor(keyPath: \SharedVehicle.createdAt, ascending: true)])
     private var vehicleResults: FetchedResults<SharedVehicle>
     private var vehicles: [SharedVehicle] { Array(vehicleResults) }
@@ -70,6 +71,13 @@ struct FuelRootView: View {
         .minimizesTabBarOnScroll()
         .dismissesOnHomeTab($selection, restoringTo: "vehicle")
         .task {
+            // The importer de-duplicates against this device's store only, so
+            // it waits until that store has caught up with iCloud — otherwise
+            // a second device re-copies what the first already exported. See
+            // CloudKitImportGate.
+            if !FuelLegacyMigration.hasRun {
+                guard await CloudKitImportGate.waitForFirstImport(of: container) else { return }
+            }
             FuelLegacyMigration.runIfNeeded(from: legacyContext, into: context)
             #if DEBUG
             guard FuelDebugSeed.isRequested else { return }

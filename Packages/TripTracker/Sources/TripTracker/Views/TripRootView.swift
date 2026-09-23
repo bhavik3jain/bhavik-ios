@@ -12,6 +12,7 @@ struct TripRootView: View {
     /// for Gym/TV/Orders — read here only so `TripLegacyMigration` has
     /// something to copy real trips out of.
     @Environment(\.modelContext) private var legacyContext
+    @Environment(\.tripPersistentContainer) private var container
 
     @State private var selection = "trips"
 
@@ -28,6 +29,13 @@ struct TripRootView: View {
         .minimizesTabBarOnScroll()
         .dismissesOnHomeTab($selection, restoringTo: "trips")
         .task {
+            // The importer de-duplicates against this device's store only, so
+            // it waits until that store has caught up with iCloud — otherwise
+            // a second device re-copies what the first already exported. See
+            // CloudKitImportGate.
+            if !TripLegacyMigration.hasRun {
+                guard await CloudKitImportGate.waitForFirstImport(of: container) else { return }
+            }
             TripLegacyMigration.runIfNeeded(from: legacyContext, into: context)
             #if DEBUG
             guard TripDebugSeed.isRequested else { return }

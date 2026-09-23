@@ -197,7 +197,7 @@ func guessesCategoryFromMapsPointOfInterest(_ poi: MKPointOfInterestCategory, _ 
     addPlace("B", .places, to: kyoto, in: context)
     addPlace("C", .foodAndDrinks, to: soma, in: context)
 
-    let summaries = GuideSummary.all([kyoto, soma])
+    let summaries = GuideSummary.all([kyoto, soma], pinDates: [:])
     #expect(GuideSummary.overview(summaries) == "2 guides · 3 places")
     #expect(GuideSummary.homeDetail(for: Array(summaries.prefix(1))).hasPrefix("1 guide · "))
 }
@@ -209,7 +209,7 @@ func guessesCategoryFromMapsPointOfInterest(_ poi: MKPointOfInterestCategory, _ 
     older.createdAt = Date(timeIntervalSince1970: 1_000)
     let newer = SharedGuide(context: context, name: "Newer")
     newer.createdAt = Date(timeIntervalSince1970: 2_000)
-    #expect(GuideSummary.all([older, newer]).map(\.name) == ["Newer", "Older"])
+    #expect(GuideSummary.all([older, newer], pinDates: [:]).map(\.name) == ["Newer", "Older"])
 }
 
 @MainActor
@@ -359,15 +359,29 @@ private let germany = Locale(identifier: "de_DE")
         #expect(GuideSummary.summarize(guide).region != nil)
         #expect(guide.allPlaces.contains { $0.isTried })
     }
-    #expect(GuideSummary.all(guides).first?.name == "Gion & Higashiyama")
+    #expect(GuideSummary.all(guides, pinDates: [:]).first?.name == "Gion & Higashiyama")
 }
 #endif
 
 // MARK: - Pinning
 
+/// A context plus the pin API over its container's private store — the same
+/// way `GuideListView` builds one from `\.explorePersistentContainer`.
+@MainActor
+private func makePins() throws -> (context: NSManagedObjectContext, pins: GuidePins) {
+    let context = try makeContext()
+    let container = try #require(objc_getAssociatedObject(context, &associatedContainerKey) as? NSPersistentCloudKitContainer)
+    return (context, GuidePins(context: context, container: container))
+}
+
+@MainActor
+private func pinRows(in context: NSManagedObjectContext) throws -> [GuidePin] {
+    try context.fetch(GuidePin.fetchRequest())
+}
+
 @MainActor
 @Test func pinnedGuidesComeFirstInTheOrderTheyWerePinned() throws {
-    let context = try makeContext()
+    let (context, pins) = try makePins()
     let base = Date(timeIntervalSince1970: 1_800_000_000)
     let oldest = SharedGuide(context: context, name: "Oldest")
     oldest.createdAt = base
@@ -377,27 +391,190 @@ private let germany = Locale(identifier: "de_DE")
     newest.createdAt = base.addingTimeInterval(200)
 
     // Unpinned: newest first.
-    #expect(GuideSummary.all([oldest, middle, newest]).map(\.name) == ["Newest", "Middle", "Oldest"])
+    #expect(GuideSummary.all([oldest, middle, newest], pinDates: GuidePins.pinDates(in: context)).map(\.name)
+            == ["Newest", "Middle", "Oldest"])
 
     // Pin Oldest, then Middle: both jump above Newest, in the order pinned.
-    oldest.setPinned(true, asOf: base.addingTimeInterval(1_000))
-    middle.setPinned(true, asOf: base.addingTimeInterval(2_000))
-    let ordered = GuideSummary.all([newest, middle, oldest])
+    pins.setPinned(true, oldest, asOf: base.addingTimeInterval(1_000))
+    pins.setPinned(true, middle, asOf: base.addingTimeInterval(2_000))
+    try context.save()
+    let ordered = GuideSummary.all([newest, middle, oldest], pinDates: GuidePins.pinDates(in: context))
     #expect(ordered.map(\.name) == ["Oldest", "Middle", "Newest"])
     #expect(ordered.map(\.isPinned) == [true, true, false])
 }
 
 @MainActor
 @Test func repinningKeepsTheOriginalDateAndUnpinningClearsIt() throws {
-    let context = try makeContext()
+    let (context, pins) = try makePins()
     let guide = SharedGuide(context: context, name: "Kyoto")
     let first = Date(timeIntervalSince1970: 1_800_000_000)
 
-    guide.setPinned(true, asOf: first)
-    guide.setPinned(true, asOf: first.addingTimeInterval(500))
-    #expect(guide.pinnedAt == first, "Pinning again must not move it behind later pins")
+    pins.setPinned(true, guide, asOf: first)
+    pins.setPinned(true, guide, asOf: first.addingTimeInterval(500))
+    #expect(pins.pinnedAt(for: guide) == first, "Pinning again must not move it behind later pins")
+    #expect(try pinRows(in: context).count == 1)
 
-    guide.setPinned(false)
+    pins.setPinned(false, guide)
+    #expect(pins.pinnedAt(for: guide) == nil)
+    #expect(!pins.isPinned(guide))
+}
+
+@MainActor
+@Test func pinningNeverTouchesTheGuideAndLandsInThePrivateStore() throws {
+    let (context, pins) = try makePins()
+    let guide = SharedGuide(context: context, name: "Kyoto")
+    try context.save()
+
+    pins.setPinned(true, guide)
+    #expect(!guide.hasChanges, "A pin is its own record — the (possibly shared) guide must stay untouched")
     #expect(guide.pinnedAt == nil)
-    #expect(!guide.isPinned)
+    try context.save()
+
+    let pin = try #require(try pinRows(in: context).first)
+    #expect(pin.guideIdentifier == guide.identifier)
+    #expect(pin.objectID.persistentStore == pins.privateStore)
+}
+
+@MainActor
+@Test func duplicatePinRowsOrderByTheEarliest() throws {
+    let (context, pins) = try makePins()
+    let base = Date(timeIntervalSince1970: 1_800_000_000)
+    let kyoto = SharedGuide(context: context, name: "Kyoto")
+    let soma = SharedGuide(context: context, name: "SoMa")
+    pins.setPinned(true, soma, asOf: base.addingTimeInterval(200))
+    // Two devices each pinned Kyoto before syncing: one before SoMa, one after.
+    _ = GuidePin(context: context, guideIdentifier: kyoto.identifier, pinnedAt: base.addingTimeInterval(300))
+    _ = GuidePin(context: context, guideIdentifier: kyoto.identifier, pinnedAt: base.addingTimeInterval(100))
+    try context.save()
+
+    let dates = GuidePins.pinDates(in: context)
+    #expect(dates[kyoto.identifier] == base.addingTimeInterval(100))
+    #expect(pins.pinnedAt(for: kyoto) == base.addingTimeInterval(100))
+    #expect(GuideSummary.all([soma, kyoto], pinDates: dates).map(\.name) == ["Kyoto", "SoMa"])
+}
+
+@MainActor
+@Test func unpinningRemovesEveryDuplicateRow() throws {
+    let (context, pins) = try makePins()
+    let guide = SharedGuide(context: context, name: "Kyoto")
+    let other = SharedGuide(context: context, name: "SoMa")
+    for offset in 0..<3 {
+        _ = GuidePin(context: context, guideIdentifier: guide.identifier, pinnedAt: .now.addingTimeInterval(Double(offset)))
+    }
+    pins.setPinned(true, other)
+    try context.save()
+
+    pins.setPinned(false, guide)
+    try context.save()
+    #expect(!pins.isPinned(guide), "A surviving duplicate would re-pin it")
+    #expect(try pinRows(in: context).map(\.guideIdentifier) == [other.identifier])
+}
+
+@MainActor
+@Test func migratingRetiredPinsIsIdempotentAndClearsTheOldField() throws {
+    let (context, pins) = try makePins()
+    let pinnedAt = Date(timeIntervalSince1970: 1_800_000_000)
+    let pinned = SharedGuide(context: context, name: "Kyoto")
+    pinned.pinnedAt = pinnedAt
+    let unpinned = SharedGuide(context: context, name: "SoMa")
+    try context.save()
+    #expect(pins.hasRetiredPinsToMigrate())
+
+    pins.migrateRetiredPinnedAt()
+    pins.migrateRetiredPinnedAt()
+
+    let rows = try pinRows(in: context)
+    #expect(rows.count == 1)
+    #expect(rows.first?.guideIdentifier == pinned.identifier)
+    #expect(rows.first?.pinnedAt == pinnedAt)
+    #expect(pinned.pinnedAt == nil)
+    #expect(!pins.isPinned(unpinned))
+    #expect(!pins.hasRetiredPinsToMigrate())
+
+    // Unpinned afterwards: running again (a later launch) must not revive it.
+    pins.setPinned(false, pinned)
+    try context.save()
+    pins.migrateRetiredPinnedAt()
+    #expect(try pinRows(in: context).isEmpty)
+}
+
+@MainActor
+@Test func migratingARetiredPinKeepsAPinThatAlreadyExists() throws {
+    let (context, pins) = try makePins()
+    let guide = SharedGuide(context: context, name: "Kyoto")
+    let earlier = Date(timeIntervalSince1970: 1_700_000_000)
+    guide.pinnedAt = Date(timeIntervalSince1970: 1_800_000_000)
+    // Another device already migrated it and that pin has synced in.
+    _ = GuidePin(context: context, guideIdentifier: guide.identifier, pinnedAt: earlier)
+    try context.save()
+
+    pins.migrateRetiredPinnedAt()
+    #expect(try pinRows(in: context).count == 1)
+    #expect(pins.pinnedAt(for: guide) == earlier)
+}
+
+@MainActor
+@Test func migratingRetiredPinsBackfillsMissingIdentifiersFirst() throws {
+    let (context, pins) = try makePins()
+    let guide = SharedGuide(context: context, name: "Kyoto", areaLabel: "Kyoto, Japan")
+    guide.identifier = "" // As a guide from before the field existed arrives.
+    guide.pinnedAt = Date(timeIntervalSince1970: 1_800_000_000)
+    try context.save()
+
+    pins.migrateRetiredPinnedAt()
+    let expected = GuideIdentity.derived(name: "Kyoto", areaLabel: "Kyoto, Japan", createdAt: guide.createdAt)
+    #expect(guide.identifier == expected)
+    #expect(try pinRows(in: context).first?.guideIdentifier == expected)
+}
+
+// MARK: - Guide identity
+
+@MainActor
+@Test func newGuidesGetDistinctRandomIdentifiers() throws {
+    let context = try makeContext()
+    let first = SharedGuide(context: context, name: "Kyoto")
+    let second = SharedGuide(context: context, name: "Kyoto")
+    #expect(!first.identifier.isEmpty)
+    #expect(first.identifier != second.identifier)
+}
+
+@Test func derivedIdentifiersDependOnlyOnContent() {
+    let created = Date(timeIntervalSinceReferenceDate: 800_000_000.123_456)
+    let identifier = GuideIdentity.derived(name: "Kyoto", areaLabel: "Kyoto, Japan", createdAt: created)
+
+    // The same content always gives the same value — every device, every run.
+    #expect(identifier == GuideIdentity.derived(name: "Kyoto", areaLabel: "Kyoto, Japan", createdAt: created))
+    // CloudKit hands other devices the date to the millisecond only.
+    let throughCloudKit = Date(timeIntervalSinceReferenceDate: 800_000_000.123)
+    #expect(identifier == GuideIdentity.derived(name: "Kyoto", areaLabel: "Kyoto, Japan", createdAt: throughCloudKit))
+    // A literal value, so a change to the derivation can't pass unnoticed —
+    // it would re-key every backfilled guide on devices that haven't run yet.
+    #expect(identifier == "derived-e3030801c2c33e2f76e2aa59239081947182fa004507a3b483c8d4ea49397163")
+
+    #expect(identifier != GuideIdentity.derived(name: "Kyoto!", areaLabel: "Kyoto, Japan", createdAt: created))
+    #expect(identifier != GuideIdentity.derived(name: "Kyoto", areaLabel: "Japan", createdAt: created))
+    #expect(identifier != GuideIdentity.derived(name: "Kyoto", areaLabel: "Kyoto, Japan", createdAt: created + 1))
+    // The separator keeps the fields apart: moving text across them changes it.
+    #expect(GuideIdentity.derived(name: "ab", areaLabel: "c", createdAt: created)
+            != GuideIdentity.derived(name: "a", areaLabel: "bc", createdAt: created))
+}
+
+@MainActor
+@Test func backfillFillsOnlyEmptyIdentifiersAndIsIdempotent() throws {
+    let (context, pins) = try makePins()
+    let store = try #require(pins.privateStore)
+    let old = SharedGuide(context: context, name: "Kyoto", areaLabel: "Kyoto, Japan")
+    old.identifier = ""
+    let current = SharedGuide(context: context, name: "SoMa")
+    let currentIdentifier = current.identifier
+    try context.save()
+
+    // Before the backfill, pins already key to the value it will write.
+    let expected = GuideIdentity.derived(name: "Kyoto", areaLabel: "Kyoto, Japan", createdAt: old.createdAt)
+    #expect(GuidePins.key(for: old) == expected)
+
+    GuideIdentity.backfill(in: context, store: store)
+    GuideIdentity.backfill(in: context, store: store)
+    #expect(old.identifier == expected)
+    #expect(current.identifier == currentIdentifier)
 }

@@ -244,7 +244,8 @@ struct HomeView: View {
     private func detail(for module: SelectedModule) -> String {
         switch module {
         case .trips: TripTrackerModule.homeDetail(trips: trips)
-        case .explore: GuideSummary.homeDetail(for: GuideSummary.all(guides))
+        // Counts only, so no pins needed — order doesn't change a total.
+        case .explore: GuideSummary.homeDetail(for: guides.map { GuideSummary.summarize($0) })
         case .gym: gymDetail
         case .tv: tvDetail
         case .parcels: parcelDetail

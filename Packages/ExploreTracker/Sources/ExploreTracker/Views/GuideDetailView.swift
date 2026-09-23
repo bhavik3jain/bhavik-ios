@@ -9,6 +9,11 @@ struct GuideDetailView: View {
     @Environment(\.managedObjectContext) private var modelContext
     @Environment(\.explorePersistentContainer) private var container
     @Environment(\.presentShareSheet) private var presentShareSheet
+    /// Every pin, not just this guide's: there are only ever a handful, and a
+    /// fetch keyed on the guide would need building in `init`. Fetched rather
+    /// than asked for once so the button follows a pin synced in meanwhile.
+    @FetchRequest(sortDescriptors: [])
+    private var pinResults: FetchedResults<GuidePin>
     @State private var category: PlaceCategory = .foodAndDrinks
     @State private var showingAddPlace = false
     @State private var showingEdit = false
@@ -16,6 +21,9 @@ struct GuideDetailView: View {
 
     private var summary: GuideSummary { GuideSummary.summarize(guide) }
     private var shown: [SharedGuidePlace] { guide.places(in: category) }
+    private var isPinned: Bool {
+        GuidePins.earliestPinDates(pinResults)[GuidePins.key(for: guide)] != nil
+    }
 
     // Sharing status is a cheap, synchronous CloudKit cache lookup (see
     // `SharingStatusResolver`'s own doc comment), not something worth a round
@@ -139,12 +147,14 @@ struct GuideDetailView: View {
                     Button("Edit Guide", systemImage: "pencil") { showingEdit = true }
                 }
             }
+            // Deliberately outside the `canEdit` gate: a pin is this person's
+            // own private record, so a read-only participant can pin too.
             ToolbarItem(placement: .secondaryAction) {
                 Button(
-                    guide.isPinned ? "Unpin Guide" : "Pin to Top",
-                    systemImage: guide.isPinned ? "pin.slash" : "pin"
+                    isPinned ? "Unpin Guide" : "Pin to Top",
+                    systemImage: isPinned ? "pin.slash" : "pin"
                 ) {
-                    guide.setPinned(!guide.isPinned)
+                    GuidePins(context: modelContext, container: container).setPinned(!isPinned, guide)
                     try? modelContext.saveIfNeeded()
                 }
             }

@@ -169,3 +169,28 @@ private func addLegacyGuide(_ name: String, areaLabel: String = "", to legacyCon
     #expect(try context.count(for: SharedGuide.fetchRequest()) == 0)
     #expect(ExploreLegacyMigration.hasRun)
 }
+
+// MARK: - Pins and identifiers
+
+@MainActor
+@Test func aPinnedLegacyGuideArrivesPinnedThroughAPrivateGuidePin() throws {
+    resetMigrationFlag()
+    let legacyContext = try makeLegacyContext()
+    let context = try makeContext()
+    let container = try #require(objc_getAssociatedObject(context, &associatedContainerKey) as? NSPersistentCloudKitContainer)
+    let pins = GuidePins(context: context, container: container)
+
+    let pinnedAt = Date(timeIntervalSince1970: 1_800_000_000)
+    let legacy = addLegacyGuide("Kyoto", areaLabel: "Kyoto, Japan", to: legacyContext)
+    legacy.pinnedAt = pinnedAt
+    try legacyContext.save()
+
+    // The order `ExploreRootView`'s `.task` runs them in.
+    ExploreLegacyMigration.runIfNeeded(from: legacyContext, into: context)
+    pins.migrateRetiredPinnedAt()
+
+    let guide = try #require(try context.fetch(SharedGuide.fetchRequest()).first)
+    #expect(guide.identifier == GuideIdentity.derived(name: "Kyoto", areaLabel: "Kyoto, Japan", createdAt: legacy.createdAt))
+    #expect(pins.pinnedAt(for: guide) == pinnedAt)
+    #expect(guide.pinnedAt == nil)
+}
