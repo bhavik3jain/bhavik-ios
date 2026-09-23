@@ -58,6 +58,14 @@ public enum CloudSharedStore {
         if inMemory {
             privateDescription.type = NSInMemoryStoreType
             sharedDescription.type = NSInMemoryStoreType
+            // The default description picks up the entitlements' iCloud container
+            // on its own, and the copy inherits it: two stores, one container, one
+            // scope, which Core Data throws on ("Cannot assign the same iCloud
+            // Container Identifier to multiple persistent stores with the same
+            // database scope"). Tests have no entitlements so never saw it; the
+            // -InitializeCloudKitSchema launch crashed on it.
+            privateDescription.cloudKitContainerOptions = nil
+            sharedDescription.cloudKitContainerOptions = nil
         } else {
             configureForCloudKitMirroring(privateDescription)
             configureForCloudKitMirroring(sharedDescription)
