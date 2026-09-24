@@ -1,4 +1,5 @@
 #if DEBUG
+import CloudKit
 import CoreData
 import ExploreTracker
 import FuelTracker
@@ -111,7 +112,95 @@ enum CloudKitSchemaInitializer {
         for pass in passes {
             recordTypes += try initialize(pass, in: folder, containerID: containerID)
         }
+        if let sharable = coreDataModels.first {
+            recordTypes.append(try createShareRecordType(using: sharable, in: folder, containerID: containerID))
+        }
         return recordTypes.sorted()
+    }
+
+    /// A share is saved as a record of CloudKit's own `cloudkit.share` type,
+    /// and like any other record type Production won't create it: it only
+    /// exists there once a share has been made in Development and the schema
+    /// deployed. The first deploy happened before anything had ever been
+    /// shared, so on TestFlight every Share button failed at the moment the
+    /// link was being made. Sharing one throwaway object here, then deleting
+    /// its zone, puts the type into Development for the next deploy.
+    private static func createShareRecordType(using pass: CoreDataModel, in folder: URL, containerID: String) throws -> String {
+        let description = NSPersistentStoreDescription(url: folder.appendingPathComponent("ShareProbe.sqlite"))
+        description.cloudKitContainerOptions = NSPersistentCloudKitContainerOptions(containerIdentifier: containerID)
+        description.shouldAddStoreAsynchronously = false
+        // Unlike the schema passes, this one saves and shares, and mirroring
+        // needs history for that: without it the save failed with SQLite
+        // error 1, "ShareProbe.sqlite couldn't be opened".
+        description.setOption(true as NSNumber, forKey: NSPersistentHistoryTrackingKey)
+        description.setOption(true as NSNumber, forKey: NSPersistentStoreRemoteChangeNotificationPostOptionKey)
+
+        let container = NSPersistentCloudKitContainer(name: "ShareProbe", managedObjectModel: pass.model)
+        container.persistentStoreDescriptions = [description]
+
+        // Mirroring builds its bookkeeping tables in the background after the
+        // store loads; sharing straight away failed with "no such table:
+        // ANSCKRECORDMETADATA". Subscribed before loading so a fast setup
+        // isn't missed.
+        let setUp = DispatchSemaphore(value: 0)
+        let observer = NotificationCenter.default.addObserver(
+            forName: NSPersistentCloudKitContainer.eventChangedNotification, object: container, queue: nil
+        ) { note in
+            guard let event = note.userInfo?[NSPersistentCloudKitContainer.eventNotificationUserInfoKey]
+                    as? NSPersistentCloudKitContainer.Event,
+                  event.type == .setup, event.endDate != nil else { return }
+            setUp.signal()
+        }
+        defer { NotificationCenter.default.removeObserver(observer) }
+
+        var loadError: Error?
+        container.loadPersistentStores { _, error in loadError = error }
+        if let loadError { throw Failure.storeLoad("ShareProbe: \(loadError.localizedDescription)") }
+        if setUp.wait(timeout: .now() + 60) == .timedOut {
+            throw Failure.storeLoad("ShareProbe: CloudKit setup didn't finish within a minute")
+        }
+        defer {
+            let coordinator = container.persistentStoreCoordinator
+            for store in coordinator.persistentStores {
+                try? coordinator.remove(store)
+            }
+        }
+
+        guard let entity = pass.model.entities.sorted(by: { ($0.name ?? "") < ($1.name ?? "") }).first,
+              let store = container.persistentStoreCoordinator.persistentStores.first else {
+            throw Failure.storeLoad("ShareProbe: no entity to share")
+        }
+        let context = container.newBackgroundContext()
+        var object: NSManagedObject?
+        var saveError: Error?
+        context.performAndWait {
+            let probe = NSManagedObject(entity: entity, insertInto: context)
+            do { try context.save() } catch { saveError = error }
+            object = probe
+        }
+        if let saveError { throw saveError }
+        guard let object else { throw Failure.storeLoad("ShareProbe: nothing inserted") }
+
+        let shared = DispatchSemaphore(value: 0)
+        var share: CKShare?
+        var shareError: Error?
+        container.share([object], to: nil) { _, result, _, error in
+            share = result
+            shareError = error
+            shared.signal()
+        }
+        shared.wait()
+        if let shareError { throw shareError }
+
+        // The type is what's wanted, not the share: remove the zone the share
+        // was made in, record and all.
+        if let zoneID = share?.recordID.zoneID {
+            let purged = DispatchSemaphore(value: 0)
+            container.purgeObjectsAndRecordsInZone(with: zoneID, in: store) { _, _ in purged.signal() }
+            purged.wait()
+        }
+        print("[CloudKitSchemaInitializer] ShareProbe: made and removed a test share, so cloudkit.share exists")
+        return "cloudkit.share"
     }
 
     /// One model on its own throwaway container: a private-scope store only.

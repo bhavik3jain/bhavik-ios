@@ -66,7 +66,9 @@ The same launch also initializes the four hand-built Core Data models (`TripMode
 Points was born on Core Data). Adding an entity
 or attribute to one of those needs the same ritual. Production never creates record types on its
 own, only Development does: before the Core Data models were added here, TestFlight builds saved
-those modules' data locally and never exported any of it to iCloud.
+those modules' data locally and never exported any of it to iCloud. That includes CloudKit's own
+`cloudkit.share` type, which only appears once something has been shared: the run makes and deletes
+one test share for it. Before it did, every Share button on TestFlight failed while making the link.
 
 **Adding a whole module** needs these further edits, none optional: `packages:` **and** the
 `&appDependencies` anchor in `project.yml` (the anchor covers both targets, so the Mac build follows
