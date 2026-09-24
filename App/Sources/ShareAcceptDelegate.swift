@@ -31,17 +31,21 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
 }
 
 final class SceneDelegate: NSObject, UIWindowSceneDelegate {
-    // Called after the user taps "Accept" on a share invitation while the app
-    // is already running. (The not-running case arrives via
-    // scene(_:willConnectTo:options:)'s connectionOptions instead — not
-    // wired up here, since nothing needs it until a launch-time share accept
-    // is reported as missed.)
-    //
-    // ShareAcceptRouter.accept(_:) re-fetches this metadata itself with
-    // shouldFetchRootRecord = true before routing — the metadata the OS hands
-    // this callback doesn't reliably have `rootRecord` populated (see that
-    // method's own doc comment) — so passing the raw metadata straight
-    // through, as here, is correct.
+    // When the tap launches the app rather than bringing it forward, the
+    // invitation arrives here and the callback below is never called. This
+    // path wasn't wired up at first, so an invite opened with the app closed
+    // opened the app and did nothing.
+    func scene(
+        _ scene: UIScene,
+        willConnectTo session: UISceneSession,
+        options connectionOptions: UIScene.ConnectionOptions
+    ) {
+        if let metadata = connectionOptions.cloudKitShareMetadata {
+            ShareAcceptRouter.shared.accept(metadata)
+        }
+    }
+
+    // The app was already running when the invitation was accepted.
     func windowScene(
         _ windowScene: UIWindowScene,
         userDidAcceptCloudKitShareWith cloudKitShareMetadata: CKShare.Metadata
@@ -56,8 +60,7 @@ import AppKit
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     // macOS has no scene layer to thread this through — the app delegate
-    // gets the callback directly. Same reasoning as the iOS side above:
-    // ShareAcceptRouter.accept(_:) does its own re-fetch before routing.
+    // gets the callback directly, whether or not the app was running.
     func application(_ application: NSApplication, userDidAcceptCloudKitShareWith metadata: CKShare.Metadata) {
         ShareAcceptRouter.shared.accept(metadata)
     }

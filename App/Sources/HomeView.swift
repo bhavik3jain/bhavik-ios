@@ -108,6 +108,7 @@ struct HomeView: View {
             guard let pointsContext else { return }
             pointsAccountFetch.start(context: pointsContext)
         }
+        .showsShareAcceptOutcome()
     }
 
     // MARK: - iOS: hub list, modules as a full-screen cover

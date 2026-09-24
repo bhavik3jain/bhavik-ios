@@ -38,6 +38,29 @@ private struct PresentsShareSheets: ViewModifier {
 extension View {
     func presentsShareSheets() -> some View {
         modifier(PresentsShareSheets())
+            .showsShareAcceptOutcome()
+    }
+
+    /// Says whether a tapped invitation was accepted. On the home screen and
+    /// again inside each module, since an alert under a fullScreenCover can't
+    /// show while the cover is up.
+    func showsShareAcceptOutcome() -> some View {
+        modifier(ShareAcceptOutcomeAlert())
+    }
+}
+
+private struct ShareAcceptOutcomeAlert: ViewModifier {
+    @ObservedObject private var router = ShareAcceptRouter.shared
+
+    func body(content: Content) -> some View {
+        content.alert(
+            router.outcome?.title ?? "",
+            isPresented: Binding(get: { router.outcome != nil }, set: { if !$0 { router.outcome = nil } })
+        ) {
+            Button("OK") { router.outcome = nil }
+        } message: {
+            Text(router.outcome?.message ?? "")
+        }
     }
 }
 
@@ -75,14 +98,28 @@ enum CloudSharingPresenter {
         let controller: UICloudSharingController
         if let share = try? container.fetchShares(matching: [object.objectID])[object.objectID],
            let identifier = container.persistentStoreDescriptions.first?.cloudKitContainerOptions?.containerIdentifier {
+            // A share made before shares were stamped can't be accepted;
+            // stamping it here fixes every invitation already sent for it.
+            if ShareAcceptRouter.stamp(share, for: object), let store = object.objectID.persistentStore {
+                container.persistUpdatedShare(share, in: store) { _, _ in }
+            }
             controller = UICloudSharingController(share: share, container: CKContainer(identifier: identifier))
         } else {
             controller = UICloudSharingController { _, preparationCompletionHandler in
                 container.share([object], to: nil) { _, share, ckContainer, error in
-                    // Without a title the invitation names nothing — the
-                    // person receiving it can't tell which trip it is.
-                    share?[CKShare.SystemFieldKey.title] = title
-                    preparationCompletionHandler(share, ckContainer, error)
+                    guard let share, let store = object.objectID.persistentStore else {
+                        preparationCompletionHandler(share, ckContainer, error)
+                        return
+                    }
+                    // Without a title the invitation names nothing, and
+                    // without the stamp the other person's app can't tell
+                    // which tracker it belongs to. Saved before handing it
+                    // over, since share(_:to:) already saved the share.
+                    share[CKShare.SystemFieldKey.title] = title
+                    ShareAcceptRouter.stamp(share, for: object)
+                    container.persistUpdatedShare(share, in: store) { saved, saveError in
+                        preparationCompletionHandler(saved ?? share, ckContainer, saveError)
+                    }
                 }
             }
         }
@@ -285,7 +322,10 @@ private final class ShareCoordinator: ObservableObject {
            let existing = existingShares[request.object.objectID] {
             share = existing
             isLoading = false
-            if existing.url == nil {
+            // Stamped so the other person's app can route it; see
+            // ShareAcceptRouter.stamp.
+            let stamped = ShareAcceptRouter.stamp(existing, for: request.object)
+            if existing.url == nil || stamped {
                 persist(existing)
             }
             return
@@ -306,6 +346,7 @@ private final class ShareCoordinator: ObservableObject {
                     if let error {
                         self.errorMessage = error.localizedDescription
                     } else if let newShare {
+                        ShareAcceptRouter.stamp(newShare, for: self.request.object)
                         self.share = newShare
                         self.persist(newShare)
                     }

@@ -192,6 +192,22 @@ enum CloudKitSchemaInitializer {
         shared.wait()
         if let shareError { throw shareError }
 
+        // The app saves every share with a title and a stamp saying which
+        // tracker it's for (ShareAcceptRouter.stamp). Saving them here too
+        // puts those fields into the schema along with the type.
+        if let share, let store = container.persistentStoreCoordinator.persistentStores.first {
+            share[CKShare.SystemFieldKey.title] = "Schema probe" as CKRecordValue
+            share[CKShare.SystemFieldKey.shareType] = "CD_\(entity.name ?? "")" as CKRecordValue
+            let saved = DispatchSemaphore(value: 0)
+            var saveShareError: Error?
+            container.persistUpdatedShare(share, in: store) { _, error in
+                saveShareError = error
+                saved.signal()
+            }
+            saved.wait()
+            if let saveShareError { throw saveShareError }
+        }
+
         // The type is what's wanted, not the share: remove the zone the share
         // was made in, record and all.
         if let zoneID = share?.recordID.zoneID {
