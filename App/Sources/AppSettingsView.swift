@@ -4,6 +4,7 @@ import ExploreTracker
 import FuelTracker
 import GymTracker
 import ParcelTracker
+import PointsTracker
 import SwiftData
 import SwiftUI
 import TripTracker
@@ -47,6 +48,12 @@ struct AppSettingsView: View {
     @StateObject private var guidePlaceFetch = ManagedObjectFetch<SharedGuidePlace>(SharedGuidePlace.fetchRequest())
     private var guides: [SharedGuide] { guideFetch.results }
     private var guidePlaces: [SharedGuidePlace] { guidePlaceFetch.results }
+    // Points is Core Data too — same reasoning as Explore's fetches above.
+    @Environment(\.pointsManagedObjectContext) private var pointsContext
+    @StateObject private var pointsOwnerFetch = ManagedObjectFetch<SharedPointsOwner>(SharedPointsOwner.fetchRequest())
+    @StateObject private var pointsAccountFetch = ManagedObjectFetch<SharedPointsAccount>(SharedPointsAccount.fetchRequest())
+    private var pointsOwners: [SharedPointsOwner] { pointsOwnerFetch.results }
+    private var pointsAccounts: [SharedPointsAccount] { pointsAccountFetch.results }
 
     var body: some View {
         Form {
@@ -124,6 +131,11 @@ struct AppSettingsView: View {
             guideFetch.start(context: exploreContext)
             guidePlaceFetch.start(context: exploreContext)
         }
+        .task(id: pointsContext) {
+            guard let pointsContext else { return }
+            pointsOwnerFetch.start(context: pointsContext)
+            pointsAccountFetch.start(context: pointsContext)
+        }
     }
 
     private func trackerDetail(for module: SelectedModule) -> String {
@@ -134,6 +146,7 @@ struct AppSettingsView: View {
         case .tv: "\(counted(shows.count, "show")), \(counted(movies.count, "movie"))"
         case .parcels: counted(parcels.count, "order")
         case .fuel: "\(counted(vehicles.count, "vehicle")), \(counted(fuelEntries.count, "entry", plural: "entries"))"
+        case .points: "\(counted(pointsOwners.count, "person", plural: "people")), \(counted(pointsAccounts.count, "account"))"
         }
     }
 }

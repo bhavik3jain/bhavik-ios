@@ -1,0 +1,57 @@
+{
+  "skill_name": "add-tracker",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "/add-tracker plan only, don't build anything yet: I want a tracker for my houseplants \u2014 name, room, when I last watered each one and how often it needs water, so I can see which are thirsty. Just for me, no sharing.",
+      "expected_output": "A spec plus exact Workflow args choosing SwiftData (ParcelTracker reference), a plant model with raw-string enums/inline defaults, a unique accent and SF Symbol, a 'due for water' home detail, and no workflow launched.",
+      "files": [],
+      "assertions": [
+        "Chooses SwiftData (not Core Data) because no sharing was requested",
+        "Adds the models to the module's models array and AppSchema.models",
+        "Watering-due logic takes asOf now: Date = .now",
+        "Gives concrete Workflow args JSON with storage swiftdata",
+        "Did not modify the repo or launch a workflow (plan only)",
+        "Root view plan follows Module chrome: Home tab first, dismissesOnHomeTab restoring to a real tab",
+        "Enum-like status/cycle fields are stored as raw strings with a computed accessor",
+        "Lists every app-shell wiring point: project.yml packages + appDependencies, HomeView SelectedModule + moduleContent, AppSettingsView row, tests.yml loop",
+        "Names the CloudKit schema ritual (-InitializeCloudKitSchema, deploy to Production) as a manual follow-up",
+        "Picks an accent colour and SF Symbol and checks they don't collide with existing modules"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "dry run of /add-tracker for a subscriptions tracker (netflix, spotify, gym etc) \u2014 cost, billing cycle, next renewal date. my wife and I split these so we both need to see and edit it. show me the plan and the args you'd run with",
+      "expected_output": "Chooses Core Data + CKShare (PointsTracker reference) with a sensible share root, lists the extra Core Data wiring (container in both BhavikApp branches, ShareAcceptRouter prefix, env keys, CloudKitSchemaInitializer), renewal-soon logic taking asOf now, and does not launch the workflow.",
+      "files": [],
+      "assertions": [
+        "Chooses Core Data + CKShare because the partner must see and edit",
+        "Names a single CKShare root entity and justifies it",
+        "Covers Core Data wiring: container in both BhavikApp branches, ShareAcceptRouter prefix, Core env keys, CloudKitSchemaInitializer entry, not AppSchema.models",
+        "Gives concrete Workflow args JSON with storage coredata",
+        "Did not modify the repo or launch a workflow (plan only)",
+        "Root view plan follows Module chrome: Home tab first, dismissesOnHomeTab restoring to a real tab",
+        "Enum-like status/cycle fields are stored as raw strings with a computed accessor",
+        "Lists every app-shell wiring point: project.yml packages + appDependencies, HomeView SelectedModule + moduleContent, AppSettingsView row, tests.yml loop",
+        "Names the CloudKit schema ritual (-InitializeCloudKitSchema, deploy to Production) as a manual follow-up",
+        "Picks an accent colour and SF Symbol and checks they don't collide with existing modules"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "I'm thinking of adding a books tracker to the app - reading list, currently reading, finished, with ratings. What would /add-tracker set up? Don't run it.",
+      "expected_output": "Asks or assumes sharing explicitly, keeps status as a raw string enum, picks names that won't need renaming, notes the CloudKit schema ritual as a manual follow-up, and gives args without launching.",
+      "files": [],
+      "assertions": [
+        "Raises or explicitly assumes whether books need sharing, explaining it decides storage",
+        "Gives concrete Workflow args JSON",
+        "Did not modify the repo or launch a workflow (plan only)",
+        "Root view plan follows Module chrome: Home tab first, dismissesOnHomeTab restoring to a real tab",
+        "Enum-like status/cycle fields are stored as raw strings with a computed accessor",
+        "Lists every app-shell wiring point: project.yml packages + appDependencies, HomeView SelectedModule + moduleContent, AppSettingsView row, tests.yml loop",
+        "Names the CloudKit schema ritual (-InitializeCloudKitSchema, deploy to Production) as a manual follow-up",
+        "Picks an accent colour and SF Symbol and checks they don't collide with existing modules"
+      ]
+    }
+  ]
+}

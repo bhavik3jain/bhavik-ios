@@ -34,4 +34,10 @@ public extension EnvironmentValues {
     /// `\.managedObjectContext`, re-scoped to the same context by
     /// `ExploreTrackerModule.rootView(context:)`.
     @Entry var exploreManagedObjectContext: NSManagedObjectContext?
+
+    /// Points' Core Data context, for the app shell's own top-level use
+    /// (`HomeView`'s summary and peek, `AppSettingsView`'s counts). Points'
+    /// own views read `\.managedObjectContext`, re-scoped by
+    /// `PointsTrackerModule.rootView(context:container:)`.
+    @Entry var pointsManagedObjectContext: NSManagedObjectContext?
 }

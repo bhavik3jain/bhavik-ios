@@ -20,6 +20,8 @@ packages:
     path: Packages/TripTracker
   ExploreTracker:
     path: Packages/ExploreTracker
+  PointsTracker:
+    path: Packages/PointsTracker
 
 targets:
   bhavik-ios:
@@ -55,6 +57,7 @@ targets:
       - package: ParcelTracker
       - package: TripTracker
       - package: ExploreTracker
+      - package: PointsTracker
     info:
       path: App/Resources/Info.plist
       properties:

@@ -2,6 +2,7 @@
 import CoreData
 import ExploreTracker
 import FuelTracker
+import PointsTracker
 import SwiftData
 import SwiftUI
 import TripTracker
@@ -25,7 +26,8 @@ import TripTracker
 /// `GuideModel`). Those were first left out of this run, so their `CD_Shared*`
 /// record types never reached Development, never got deployed, and Production
 /// — which never creates a record type on its own — refused every export from
-/// those three modules on TestFlight. Each now gets its own pass below.
+/// those three modules on TestFlight. Each now gets its own pass below, as
+/// does Points (`PointsModel`), which was built on Core Data from the start.
 ///
 /// It works on throwaway stores in a temporary folder, and on a launch that
 /// asks for it the app opens an in-memory database instead of the real one (see
@@ -80,14 +82,15 @@ enum CloudKitSchemaInitializer {
         let model: NSManagedObjectModel
     }
 
-    /// The three modules that moved off SwiftData, built fresh — never the
-    /// instances the app's own containers hold.
+    /// The modules on Core Data — the three that moved off SwiftData, plus
+    /// Points — built fresh, never the instances the app's own containers hold.
     @MainActor
     static func coreDataModels() -> [CoreDataModel] {
         [
             CoreDataModel(name: "TripSchema", model: TripModel.make()),
             CoreDataModel(name: "FuelSchema", model: FuelModel.make()),
             CoreDataModel(name: "ExploreSchema", model: GuideModel.make()),
+            CoreDataModel(name: "PointsSchema", model: PointsModel.make()),
         ]
     }
 

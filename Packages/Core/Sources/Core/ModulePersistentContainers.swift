@@ -29,4 +29,10 @@ public extension EnvironmentValues {
     /// `exploreContainer` and re-scoped into Explore's own subtree by
     /// `ExploreTrackerModule.rootView(context:container:)`.
     @Entry var explorePersistentContainer: NSPersistentCloudKitContainer?
+
+    /// Points' own Core Data container — same reasoning as
+    /// `tripPersistentContainer` above; the Share button needs it. Set from
+    /// `BhavikApp.init()`'s `pointsContainer` and re-scoped by
+    /// `PointsTrackerModule.rootView(context:container:)`.
+    @Entry var pointsPersistentContainer: NSPersistentCloudKitContainer?
 }

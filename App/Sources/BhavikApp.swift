@@ -4,6 +4,7 @@ import ExploreTracker
 import FuelTracker
 import GymTracker
 import ParcelTracker
+import PointsTracker
 import SwiftData
 import SwiftUI
 import TripTracker
@@ -47,6 +48,12 @@ struct BhavikApp: App {
     /// reason `fuelContainer` needed one rather than sharing Trips'
     /// `\.managedObjectContext`.
     let exploreContainer: NSPersistentCloudKitContainer
+    /// Points' own Core Data store — built on `CloudSharedStore` from the
+    /// start rather than migrated off SwiftData, so a household can be shared
+    /// via CKShare. Threaded to `HomeView` via its own
+    /// `\.pointsManagedObjectContext` key, the same reason `fuelContainer`
+    /// and `exploreContainer` needed one.
+    let pointsContainer: NSPersistentCloudKitContainer
     @AppStorage(Appearance.defaultsKey) private var appearanceRaw = Appearance.system.rawValue
     // Only reason for an app/scene delegate in an otherwise pure SwiftUI App:
     // CKShare-accept has no SwiftUI-native entry point on either platform.
@@ -85,6 +92,12 @@ struct BhavikApp: App {
                 exploreContainer = CloudSharedStore.makeContainer(
                     name: "ExploreStore",
                     model: GuideModel.make(),
+                    containerID: Self.cloudContainerID,
+                    inMemory: true
+                )
+                pointsContainer = CloudSharedStore.makeContainer(
+                    name: "PointsStore",
+                    model: PointsModel.make(),
                     containerID: Self.cloudContainerID,
                     inMemory: true
                 )
@@ -128,6 +141,17 @@ struct BhavikApp: App {
             // Explore's CKShare root (GuideModel's Guide entity is named
             // "SharedGuide", not "Guide" — see GuideModel.swift).
             ShareAcceptRouter.shared.register(recordTypePrefix: "CD_SharedGuide", container: exploreContainer)
+
+            pointsContainer = CloudSharedStore.makeContainer(
+                name: "PointsStore",
+                model: PointsModel.make(),
+                containerID: Self.cloudContainerID
+            )
+            // "CD_SharedPointsHousehold" — same "CD_" + entity name
+            // convention, for Points' CKShare root (a household, so every
+            // owner, account and entry under it shares with it — see
+            // PointsModel.swift).
+            ShareAcceptRouter.shared.register(recordTypePrefix: "CD_SharedPointsHousehold", container: pointsContainer)
         } catch {
             fatalError("Failed to create ModelContainer: \(error)")
         }
@@ -180,6 +204,11 @@ struct BhavikApp: App {
         // `presentShareSheet` and `SharingStatusResolver`. See Core's
         // `ModulePersistentContainers.swift`.
         .environment(\.explorePersistentContainer, exploreContainer)
+        // Points' own key — same reasoning as Fuel's.
+        .environment(\.pointsManagedObjectContext, pointsContainer.viewContext)
+        // The container itself (not just its context) — Points' Share button
+        // and its sharing-status badges need it, same as Explore's above.
+        .environment(\.pointsPersistentContainer, pointsContainer)
         #if os(macOS)
         // A left-over default-sized window reads as an unfinished iPhone app
         // squeezed onto a Mac; a sidebar layout wants the width to show it.

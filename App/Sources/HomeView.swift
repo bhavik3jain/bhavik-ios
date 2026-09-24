@@ -4,6 +4,7 @@ import ExploreTracker
 import FuelTracker
 import GymTracker
 import ParcelTracker
+import PointsTracker
 import SwiftData
 import SwiftUI
 import TripTracker
@@ -67,6 +68,17 @@ struct HomeView: View {
         SharedGuide.fetchRequest(sortDescriptors: [NSSortDescriptor(keyPath: \SharedGuide.createdAt, ascending: false)])
     )
     private var guides: [SharedGuide] { guideFetch.results }
+    // Points is Core Data too — see BhavikApp.init()'s pointsContainer and
+    // its own `\.pointsManagedObjectContext` key, the same reasoning as
+    // Explore's `exploreContext`/`guideFetch` above.
+    @Environment(\.pointsManagedObjectContext) private var pointsContext
+    // The container itself, for Points' Share button and sharing-status
+    // badges — same reasoning as `fuelPersistentContainer` above.
+    @Environment(\.pointsPersistentContainer) private var pointsPersistentContainer
+    @StateObject private var pointsAccountFetch = ManagedObjectFetch<SharedPointsAccount>(
+        SharedPointsAccount.fetchRequest(sortDescriptors: [NSSortDescriptor(keyPath: \SharedPointsAccount.createdAt, ascending: true)])
+    )
+    private var pointsAccounts: [SharedPointsAccount] { pointsAccountFetch.results }
     /// Written by a Fuel peek's "Open My X3" so the module opens on that car.
     @AppStorage(FuelTrackerModule.selectedVehicleDefaultsKey) private var selectedVehicleName = ""
 
@@ -90,6 +102,11 @@ struct HomeView: View {
         .task(id: exploreContext) {
             guard let exploreContext else { return }
             guideFetch.start(context: exploreContext)
+        }
+        // Starts (or restarts) the Points fetch, same reasoning again.
+        .task(id: pointsContext) {
+            guard let pointsContext else { return }
+            pointsAccountFetch.start(context: pointsContext)
         }
     }
 
@@ -228,6 +245,12 @@ struct HomeView: View {
             // `\.explorePersistentContainer` unconditionally in `.init()`,
             // before any view (this one included) exists.
             ExploreTrackerModule.rootView(context: exploreContext!, container: explorePersistentContainer!)
+        case .points:
+            // Always set by the time a module can be opened — BhavikApp's
+            // WindowGroup sets `\.pointsManagedObjectContext` and
+            // `\.pointsPersistentContainer` unconditionally in `.init()`,
+            // before any view (this one included) exists.
+            PointsTrackerModule.rootView(context: pointsContext!, container: pointsPersistentContainer!)
         }
     }
 
@@ -240,6 +263,7 @@ struct HomeView: View {
         case .tv: tvDetail
         case .parcels: parcelDetail
         case .fuel: fuelDetail
+        case .points: PointsTrackerModule.homeDetail(accounts: pointsAccounts)
         }
     }
 
@@ -252,6 +276,7 @@ struct HomeView: View {
         case .tv: TVTrackerModule.homePeek(shows: shows)
         case .parcels: ParcelTrackerModule.homePeek(parcels: parcels)
         case .fuel: FuelTrackerModule.homePeek(vehicles: vehicles)
+        case .points: PointsTrackerModule.homePeek(accounts: pointsAccounts)
         }
     }
 
@@ -316,6 +341,8 @@ enum SelectedModule: String, Identifiable, Hashable, CaseIterable {
     case tv
     case parcels
     case fuel
+    // Last, so an existing saved layout picks it up at the end of the list.
+    case points
     var id: String { rawValue }
 
     /// Name and color, for the hub, the sidebar, Settings and the Trackers menu.
@@ -327,6 +354,7 @@ enum SelectedModule: String, Identifiable, Hashable, CaseIterable {
         case .tv: TVTrackerModule.accent
         case .parcels: ParcelTrackerModule.accent
         case .fuel: FuelTrackerModule.accent
+        case .points: PointsTrackerModule.accent
         }
     }
 
@@ -338,6 +366,7 @@ enum SelectedModule: String, Identifiable, Hashable, CaseIterable {
         case .tv: "tv.fill"
         case .parcels: "shippingbox.fill"
         case .fuel: "fuelpump.fill"
+        case .points: "star.circle.fill"
         }
     }
 }
