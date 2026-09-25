@@ -1,12 +1,13 @@
 # CLAUDE.md
 
-Multitrack — a personal iOS/macOS app, seven tracker modules (Trips, Explore, Gym, TV, Orders, Fuel, Points)
+Multitrack — a personal iOS/macOS app, eight tracker modules (Trips, Explore, Gym, TV, Orders, Fuel, Points,
+Finance)
 behind one home screen. SwiftUI + SwiftData + CloudKit, live on TestFlight. `README.md` has what it does, the layout,
 credentials, the CloudKit Console ritual and how to run tests — read it rather than asking here. This
 file is only the things that will cost you an hour if you don't know them.
 
 Repo slug `bhavik3jain/bhavik-ios`. Needs the iOS 26 SDK to compile at all (Xcode 26 or newer; CI selects the
-newest installed Xcode at run time). Core depends on nothing, the seven trackers depend only on Core,
+newest installed Xcode at run time). Core depends on nothing, the eight trackers depend only on Core,
 no feature package imports another, zero remote dependencies — keep it that way. Each module's
 namespace is a `<Module>TrackerModule` caseless enum (`models`, `accent`, `rootView()`).
 
@@ -16,6 +17,10 @@ unfiltered `grep -rn '#if os(' Packages` returns 16 artefact hits when the true 
 ## The .xcodeproj is generated — never edit it
 
 Only ever edit `project.yml`, files under `App/` and `Packages/`, the two workflows, and docs.
+`scripts/finance/` (Mac-only Python, month JSON ↔ the Numbers sheet) is also fair game, but never commit
+real `.numbers`/`.json` there — its `.gitignore` blocks them. The blank `Finance Template.numbers` goes
+in only after `make_template.py --check` prints `clean`: pivots and Numbers' calc cache kept card
+names and merchants after every cell was cleared, until Numbers itself re-saved the file.
 
 - `bhavik-ios.xcodeproj` is XcodeGen output and is **gitignored**. (Three stale iCloud conflict
   copies, `bhavik-ios 2/3/4.xcodeproj`, also sit in the root — ignore them.)
@@ -61,9 +66,9 @@ models, and that launch opens an in-memory container instead of the real store. 
 any of this. (It replaced a seed-then-purge seeder whose comment claimed SwiftData had no bridge to
 Core Data — it has had one since iOS 17.)
 
-The same launch also initializes the four hand-built Core Data models (`TripModel`, `FuelModel`,
-`GuideModel`, `PointsModel` — Trips, Fuel and Explore moved off SwiftData for CloudKit sharing;
-Points was born on Core Data). Adding an entity
+The same launch also initializes the five hand-built Core Data models (`TripModel`, `FuelModel`,
+`GuideModel`, `PointsModel`, `FinanceModel` — Trips, Fuel and Explore moved off SwiftData for CloudKit sharing;
+Points and Finance were born on Core Data). Adding an entity
 or attribute to one of those needs the same ritual. Production never creates record types on its
 own, only Development does: before the Core Data models were added here, TestFlight builds saved
 those modules' data locally and never exported any of it to iCloud. That includes CloudKit's own
@@ -77,7 +82,7 @@ for free); the `AppSchema.models` sum in `BhavikApp.swift`; a `ModuleRow` (with 
 arm; a `TrackerRow` in `AppSettingsView.swift`;
 the package loop in `tests.yml` — leave it out and CI never runs that suite, silently.
 
-A **Core Data module** (like Points) has no `models` array and is **not** added to
+A **Core Data module** (like Points or Finance) has no `models` array and is **not** added to
 `AppSchema.models`. Instead it needs: its own container in `BhavikApp.init()` — **both** branches,
 or the schema-init / in-memory launch crashes on a missing env value; a
 `ShareAcceptRouter.shared.register(recordTypePrefix: "CD_Shared…")` for its share root, or accepted
@@ -94,7 +99,7 @@ view must therefore be a `TabView(selection:)` over `String` tab values that ope
 deliberate, selecting it dismisses rather than showing a screen — and ends with
 `.tint(<Module>TrackerModule.accent.color)`, `.minimizesTabBarOnScroll()` and
 `.dismissesOnHomeTab($selection, restoringTo: "<this module's own first tab>")`. `restoringTo:` must
-name a real tab, never `ModuleTab.home`, or the module reopens blank. All seven root views do this
+name a real tab, never `ModuleTab.home`, or the module reopens blank. All eight root views do this
 identically, and nothing can catch a violation: views are untested by policy.
 
 ## macOS: one file holds every platform conditional *inside a module*
@@ -109,7 +114,7 @@ This rule is scoped to `Packages/<Module>` — a module's own screens genuinely 
 platforms. `App/Sources/HomeView.swift` and `BhavikApp.swift` are the composition root, not a feature
 package, and **do** carry `#if os(macOS)` directly: the hub itself is platform-specific by design —
 iOS gets the hub list + `fullScreenCover`, macOS gets a `NavigationSplitView` sidebar with each
-module's `rootView()` embedded straight into the detail pane (no sheet), plus a `⌘1`–`⌘7` Trackers
+module's `rootView()` embedded straight into the detail pane (no sheet), plus a `⌘1`–`⌘8` Trackers
 menu that reaches `HomeView`'s selection via a `Notification.Name` (a Scene's `.commands` sits outside
 the `WindowGroup` and has no other way in). Don't move this into Core — it isn't a shim for
 iOS-only API, it's the two platforms genuinely wanting different navigation, and it belongs where the
@@ -142,7 +147,7 @@ logic into a value type and leave the view declarative.**
 Debug launch arguments, all `#if DEBUG`: `-InitializeCloudKitSchema YES`, plus
 the module seeders that are the only way to get a simulator into a state worth looking at —
 `-TVSeedShows` (needs a TMDB key, no-ops if any `Show` exists), `-FuelSeedCSV`, `-ParcelSeed`,
-`-TripSeed`, `-ExploreSeed`, `-PointsSeed` (each no-ops once its store has a record). Seeders run from the module
+`-TripSeed`, `-ExploreSeed`, `-PointsSeed`, `-FinanceSeed` (each no-ops once its store has a record). Seeders run from the module
 root view's `.task`, so nothing happens until the module is opened. `-WeatherStub YES` injects
 `StubWeatherProvider` at the app root — the only way to see weather on a simulator today.
 

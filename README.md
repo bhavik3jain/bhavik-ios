@@ -1,6 +1,6 @@
 # Multitrack
 
-A personal app with seven self-contained tracker modules behind one home screen. Ships to iPhone
+A personal app with eight self-contained tracker modules behind one home screen. Ships to iPhone
 through TestFlight; also builds for the Mac.
 
 | Module | What it does |
@@ -12,6 +12,7 @@ through TestFlight; also builds for the Mac.
 | Fuel | Log fill-ups per vehicle, track MPG and cost, import a Fuelly CSV export |
 | Orders | Track FedEx, UPS and USPS deliveries, with an in-app browser for the ones that can't be read automatically |
 | Points | Track credit card, hotel and airline points for everyone in the household, with balance history, expiry warnings, and sharing with a partner |
+| Finance | Track net worth month by month — balances, cards, loans, gold and silver, spending and budgets — shared with a partner, with a JSON export that scripts turn back into the old Numbers sheet |
 
 Each tracker is its own local Swift package so the modules stay independent and can be developed —
 or removed — without disturbing the others.
@@ -56,6 +57,9 @@ Packages/
   FuelTracker/    Vehicles, fill-ups, MPG, Fuelly import
   ParcelTracker/  Parcels, carriers, tracking-number detection
   PointsTracker/  Household, people, loyalty accounts, balance history, expiry warnings
+  FinanceTracker/ Household, accounts, monthly balances, metals, card transactions, budgets, month JSON
+scripts/
+  finance/        Mac-only Python (uv + numbers-parser): month JSON <-> the Numbers sheet; see its README
 .github/workflows/
   tests.yml       Runs on every push
   testflight.yml  Ships a build
@@ -102,11 +106,13 @@ reinstalling the app. Two constraints this places on the models, both enforced b
 
 Breaking either one fails at launch when the container loads, not at compile time.
 
-Trips, Explore, Fuel and Points are the exception: they use hand-built Core Data models
-(`TripModel`, `GuideModel`, `FuelModel`, `PointsModel`) on their own `NSPersistentCloudKitContainer`s,
+Trips, Explore, Fuel, Points and Finance are the exception: they use hand-built Core Data models
+(`TripModel`, `GuideModel`, `FuelModel`, `PointsModel`, `FinanceModel`) on their own `NSPersistentCloudKitContainer`s,
 so their data can be shared with another iCloud account through a `CKShare`. In Points the shared
 root is the household, so sharing it shares everyone in it — people, accounts and balance history.
 Once you accept a partner's share, new people and accounts you add go into that shared household.
+Finance works the same way: its household (`SharedFinanceHousehold`) is the share root, and sharing it
+shares every owner, account, month, metal item and transaction in it.
 The schema ritual below covers these models too.
 
 **Adding or changing a `@Model` needs one extra step.** CloudKit only creates a record type when a
@@ -166,6 +172,7 @@ All debug-only, and inert unless passed (Product → Scheme → Edit Scheme → 
 | `-TripSeed YES` | Adds four trips, one under way today (does nothing if any trip exists) |
 | `-ExploreSeed YES` | Adds three guides with real places (does nothing if any guide exists) |
 | `-PointsSeed YES` | Adds a sample household with people and points accounts (does nothing if any account exists) |
+| `-FinanceSeed YES` | Adds a sample household with accounts, cards, metals, three months and budgets (does nothing if any household has data) |
 | `-WeatherStub YES` | Made-up weather in place of WeatherKit |
 
 The module seeders run when their module is first opened, not at launch.
@@ -178,7 +185,7 @@ Each module carries its own suite. Run one the way CI does:
 cd Packages/FuelTracker && xcodebuild test -scheme FuelTracker -destination 'platform=iOS Simulator,name=iPhone 17 Pro'
 ```
 
-Swap in `Core`, `GymTracker`, `TVTracker`, `ParcelTracker`, `TripTracker`, `ExploreTracker` or `PointsTracker` for the others.
+Swap in `Core`, `GymTracker`, `TVTracker`, `ParcelTracker`, `TripTracker`, `ExploreTracker`, `PointsTracker` or `FinanceTracker` for the others.
 
 The TV suite also carries tests that hit the real TMDB API. They are skipped by default and report
 *why* they skipped, so a missing key can never read as a pass. To run them, put a key in a file and
@@ -188,7 +195,7 @@ into the simulator, so exporting the variable in a shell will not work.
 
 ## Releasing
 
-`Tests` runs on every push to `main`: the eight package suites, an iOS app build, and an unsigned macOS
+`Tests` runs on every push to `main`: the nine package suites, an iOS app build, and an unsigned macOS
 build.
 
 `TestFlight` ships. It is deliberately **not** triggered by every push — otherwise each
@@ -214,9 +221,9 @@ distribution certificate through the App Store Connect API key.
 ## macOS
 
 `bhavik-macOS` builds and runs, sharing every source file with the iPhone app and the same CloudKit
-container — so the two see the same data. The hub is a `NavigationSplitView`: a sidebar lists the seven
+container — so the two see the same data. The hub is a `NavigationSplitView`: a sidebar lists the eight
 trackers, and the selected one's content sits in the detail pane — no sheet, no segmented strip.
-`⌘1`–`⌘7` (the Trackers menu) jump straight to a tracker. Each module's own screens are otherwise
+`⌘1`–`⌘8` (the Trackers menu) jump straight to a tracker. Each module's own screens are otherwise
 identical to iOS, including its internal "Home" tab, which has nothing to dismiss once embedded in
 the detail pane and just bounces back to the module's own first tab — leaving a tracker is what the
 sidebar is for now. Only `App/Sources/HomeView.swift` and `BhavikApp.swift` know about any of this;
