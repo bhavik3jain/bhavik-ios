@@ -67,6 +67,9 @@ private func approximately(_ lhs: Double, _ rhs: Double, within tolerance: Doubl
     #expect(FinanceInput.parse("") == nil)
     #expect(FinanceInput.parse("abc") == nil)
     #expect(FinanceInput.parse(FinanceFormat.editable(4500.5)) == 4500.5, "What the field shows reads back")
+    let german = Locale(identifier: "de_DE")
+    #expect(FinanceInput.parse("12,5", locale: german) == 12.5, "A comma decimal isn't read as 125")
+    #expect(FinanceInput.parse("1.234,56", locale: german) == 1234.56)
     #expect(FinanceFormat.editable(0) == "")
 }
 
@@ -581,4 +584,49 @@ private func makeSeptember() throws -> (household: SharedFinanceHousehold, month
     #expect(document.metals.first?.manualValue == nil)
     #expect(document.transactions.first?.actualCost == 12.5, "A missing actual cost is the whole cost")
     #expect(FinanceMonthDocument.fileName(for: "2026-09") == "Finance 2026-09.json")
+}
+
+@MainActor
+@Test func aDoubleSpacedCardImportsOnce() throws {
+    // The real sheet has "Bank of America -  Cash Rewards", two spaces.
+    let document = FinanceMonthDocument(
+        month: "2026-09",
+        cards: [.init(institution: "Bank of America", name: " Cash Rewards", owner: "Bhavik", limit: 7_000, annualFee: 0)],
+        transactions: [
+            .init(date: "2026-09-05", cost: 18, actualCost: 18, merchant: "Cafe", category: "Food", expense: "", breakDown: "", card: "Bank of America -  Cash Rewards"),
+        ]
+    )
+    let household = makeHousehold()
+    let context = try #require(household.managedObjectContext)
+    _ = try FinanceMonthExchange.apply(document, to: household)
+    try context.save()
+    let second = try FinanceMonthExchange.apply(document, to: household)
+    try context.save()
+    #expect(second.transactionsAdded == 0)
+    #expect(second.cardsAdded == 0)
+    #expect(try context.count(for: SharedFinanceTransaction.fetchRequest()) == 1)
+    #expect(try context.count(for: SharedFinanceAccount.fetchRequest()) == 1)
+}
+
+@MainActor
+@Test func aFileWithoutPricesOrOwnersKeepsWhatsThere() throws {
+    let full = FinanceMonthDocument(
+        month: "2026-09",
+        metalPrices: .init(gold: 4_500, silver: 52),
+        owners: ["Saloni"],
+        metals: [.init(name: "Gold - Bar 1", metal: "gold", grams: 100, pricePaidPerOz: 0, purchaseValue: 0, manualValue: nil, location: "Locker", owner: "Saloni")]
+    )
+    let trimmed = FinanceMonthDocument(
+        month: "2026-09",
+        metals: [.init(name: "Gold - Bar 1", metal: "gold", grams: 100, pricePaidPerOz: 0, purchaseValue: 0, manualValue: nil, location: "Locker", owner: "")]
+    )
+    let household = makeHousehold()
+    let context = try #require(household.managedObjectContext)
+    _ = try FinanceMonthExchange.apply(full, to: household)
+    _ = try FinanceMonthExchange.apply(trimmed, to: household)
+    try context.save()
+    let month = try #require(household.month(for: september))
+    #expect(month.goldPricePerOz == 4_500)
+    #expect(month.silverPricePerOz == 52)
+    #expect(household.sortedMetals.first?.owner?.name == "Saloni")
 }

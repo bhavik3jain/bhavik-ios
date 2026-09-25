@@ -183,8 +183,10 @@ public enum FinanceMonthExchange {
 
         // The month.
         let month = household.month(for: period) ?? SharedFinanceMonth(period: period, household: household)
-        month.goldPricePerOz = document.metalPrices.gold
-        month.silverPricePerOz = document.metalPrices.silver
+        // A hand-trimmed file with no metalPrices decodes them as 0; writing
+        // that would value every gold and silver item at $0.
+        if document.metalPrices.gold > 0 { month.goldPricePerOz = document.metalPrices.gold }
+        if document.metalPrices.silver > 0 { month.silverPricePerOz = document.metalPrices.silver }
 
         // Accounts and cards, one lookup for both.
         var accountsByKey: [String: SharedFinanceAccount] = [:]
@@ -250,7 +252,7 @@ public enum FinanceMonthExchange {
             item.hasManualValue = entry.manualValue != nil
             item.manualValue = entry.manualValue ?? 0
             item.location = entry.location.trimmingCharacters(in: .whitespaces)
-            item.owner = owner(named: entry.owner)
+            item.owner = owner(named: entry.owner) ?? item.owner
         }
 
         // Transactions.
@@ -317,8 +319,13 @@ public enum FinanceMonthExchange {
 
     // MARK: - Keys
 
+    /// Collapses inner runs of spaces too: the sheet names a card
+    /// "Bank of America -  Cash Rewards" (two spaces), import_numbers.py keeps
+    /// that byte for byte, and the card it becomes is rebuilt from trimmed
+    /// parts with one. Keyed on the raw text, a second import of the same file
+    /// matched none of that card's transactions and added them all again.
     static func nameKey(_ name: String) -> String {
-        name.trimmingCharacters(in: .whitespaces).lowercased()
+        name.split(whereSeparator: \.isWhitespace).joined(separator: " ").lowercased()
     }
 
     static func accountKey(_ displayName: String, _ category: AccountCategory) -> String {

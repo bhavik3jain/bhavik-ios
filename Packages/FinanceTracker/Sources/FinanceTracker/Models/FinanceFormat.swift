@@ -48,8 +48,16 @@ public enum FinanceFormat {
 public enum FinanceInput {
     /// "$1,234.56", "1234.56", "-20" and "(20)" all read; nil for nothing
     /// numeric at all.
-    public static func parse(_ text: String) -> Double? {
+    public static func parse(_ text: String, locale: Locale = .current) -> Double? {
         var trimmed = text.trimmingCharacters(in: .whitespaces)
+        // The decimal pad types the region's own separator. Where that's a
+        // comma, keeping only digits and "." read "12,5" as 125.
+        if let decimal = locale.decimalSeparator, decimal != "." {
+            if let grouping = locale.groupingSeparator, !grouping.isEmpty {
+                trimmed = trimmed.replacingOccurrences(of: grouping, with: "")
+            }
+            trimmed = trimmed.replacingOccurrences(of: decimal, with: ".")
+        }
         var negative = false
         if trimmed.hasPrefix("(") && trimmed.hasSuffix(")") {
             negative = true

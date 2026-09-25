@@ -29,6 +29,7 @@ struct AmountField: View {
     @State private var text = ""
     @State private var loaded = false
     @FocusState private var focused: Bool
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         TextField(title, text: $text)
@@ -54,6 +55,13 @@ struct AmountField: View {
                     commit(0)
                 }
                 text = FinanceFormat.editable(FinanceInput.parse(text) ?? 0)
+                endEditing()
+            }
+            // Leaving the app mid-edit never moves focus, so the figure typed
+            // was changed in memory but never saved, and lost if the system
+            // then ended the app.
+            .onChange(of: scenePhase) { _, phase in
+                guard focused, phase != .active else { return }
                 endEditing()
             }
             // A partner's edit arriving while the field isn't being typed in.
