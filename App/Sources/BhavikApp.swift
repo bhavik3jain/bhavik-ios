@@ -1,6 +1,7 @@
 import Core
 import CoreData
 import ExploreTracker
+import FinanceTracker
 import FuelTracker
 import GymTracker
 import ParcelTracker
@@ -54,6 +55,12 @@ struct BhavikApp: App {
     /// `\.pointsManagedObjectContext` key, the same reason `fuelContainer`
     /// and `exploreContainer` needed one.
     let pointsContainer: NSPersistentCloudKitContainer
+    /// Finance's own Core Data store — built on `CloudSharedStore` from the
+    /// start, like Points, so a household's balance sheet can be shared via
+    /// CKShare. Threaded to `HomeView` via its own
+    /// `\.financeManagedObjectContext` key, the same reason `pointsContainer`
+    /// needed one.
+    let financeContainer: NSPersistentCloudKitContainer
     @AppStorage(Appearance.defaultsKey) private var appearanceRaw = Appearance.system.rawValue
     // Only reason for an app/scene delegate in an otherwise pure SwiftUI App:
     // CKShare-accept has no SwiftUI-native entry point on either platform.
@@ -98,6 +105,12 @@ struct BhavikApp: App {
                 pointsContainer = CloudSharedStore.makeContainer(
                     name: "PointsStore",
                     model: PointsModel.make(),
+                    containerID: Self.cloudContainerID,
+                    inMemory: true
+                )
+                financeContainer = CloudSharedStore.makeContainer(
+                    name: "FinanceStore",
+                    model: FinanceModel.make(),
                     containerID: Self.cloudContainerID,
                     inMemory: true
                 )
@@ -152,6 +165,17 @@ struct BhavikApp: App {
             // owner, account and entry under it shares with it — see
             // PointsModel.swift).
             ShareAcceptRouter.shared.register(recordTypePrefix: "CD_SharedPointsHousehold", container: pointsContainer)
+
+            financeContainer = CloudSharedStore.makeContainer(
+                name: "FinanceStore",
+                model: FinanceModel.make(),
+                containerID: Self.cloudContainerID
+            )
+            // "CD_SharedFinanceHousehold" — same "CD_" + entity name
+            // convention, for Finance's CKShare root (a household, so every
+            // owner, account and month under it shares with it — see
+            // FinanceModel.swift).
+            ShareAcceptRouter.shared.register(recordTypePrefix: "CD_SharedFinanceHousehold", container: financeContainer)
         } catch {
             fatalError("Failed to create ModelContainer: \(error)")
         }
@@ -209,6 +233,11 @@ struct BhavikApp: App {
         // The container itself (not just its context) — Points' Share button
         // and its sharing-status badges need it, same as Explore's above.
         .environment(\.pointsPersistentContainer, pointsContainer)
+        // Finance's own key — same reasoning as Fuel's.
+        .environment(\.financeManagedObjectContext, financeContainer.viewContext)
+        // The container itself (not just its context) — Finance's Share
+        // button and its sharing-status badges need it, same as Points' above.
+        .environment(\.financePersistentContainer, financeContainer)
         #if os(macOS)
         // A left-over default-sized window reads as an unfinished iPhone app
         // squeezed onto a Mac; a sidebar layout wants the width to show it.

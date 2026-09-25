@@ -1,6 +1,7 @@
 import Core
 import CoreData
 import ExploreTracker
+import FinanceTracker
 import FuelTracker
 import GymTracker
 import ParcelTracker
@@ -54,6 +55,12 @@ struct AppSettingsView: View {
     @StateObject private var pointsAccountFetch = ManagedObjectFetch<SharedPointsAccount>(SharedPointsAccount.fetchRequest())
     private var pointsOwners: [SharedPointsOwner] { pointsOwnerFetch.results }
     private var pointsAccounts: [SharedPointsAccount] { pointsAccountFetch.results }
+    // Finance is Core Data too — same reasoning as Points' fetches above.
+    @Environment(\.financeManagedObjectContext) private var financeContext
+    @StateObject private var financeOwnerFetch = ManagedObjectFetch<SharedFinanceOwner>(SharedFinanceOwner.fetchRequest())
+    @StateObject private var financeAccountFetch = ManagedObjectFetch<SharedFinanceAccount>(SharedFinanceAccount.fetchRequest())
+    private var financeOwners: [SharedFinanceOwner] { financeOwnerFetch.results }
+    private var financeAccounts: [SharedFinanceAccount] { financeAccountFetch.results }
 
     var body: some View {
         Form {
@@ -136,6 +143,11 @@ struct AppSettingsView: View {
             pointsOwnerFetch.start(context: pointsContext)
             pointsAccountFetch.start(context: pointsContext)
         }
+        .task(id: financeContext) {
+            guard let financeContext else { return }
+            financeOwnerFetch.start(context: financeContext)
+            financeAccountFetch.start(context: financeContext)
+        }
     }
 
     private func trackerDetail(for module: SelectedModule) -> String {
@@ -147,6 +159,7 @@ struct AppSettingsView: View {
         case .parcels: counted(parcels.count, "order")
         case .fuel: "\(counted(vehicles.count, "vehicle")), \(counted(fuelEntries.count, "entry", plural: "entries"))"
         case .points: "\(counted(pointsOwners.count, "person", plural: "people")), \(counted(pointsAccounts.count, "account"))"
+        case .finance: "\(counted(financeOwners.count, "person", plural: "people")), \(counted(financeAccounts.count, "account"))"
         }
     }
 }

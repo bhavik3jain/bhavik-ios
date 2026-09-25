@@ -1,6 +1,7 @@
 import Core
 import CoreData
 import ExploreTracker
+import FinanceTracker
 import FuelTracker
 import GymTracker
 import ParcelTracker
@@ -79,6 +80,18 @@ struct HomeView: View {
         SharedPointsAccount.fetchRequest(sortDescriptors: [NSSortDescriptor(keyPath: \SharedPointsAccount.createdAt, ascending: true)])
     )
     private var pointsAccounts: [SharedPointsAccount] { pointsAccountFetch.results }
+    // Finance is Core Data too — see BhavikApp.init()'s financeContainer and
+    // its own `\.financeManagedObjectContext` key, the same reasoning as
+    // Points' `pointsContext`/`pointsAccountFetch` above. Every household's
+    // months come back; the peek and detail pick the newest.
+    @Environment(\.financeManagedObjectContext) private var financeContext
+    // The container itself, for Finance's Share button and sharing-status
+    // badges — same reasoning as `fuelPersistentContainer` above.
+    @Environment(\.financePersistentContainer) private var financePersistentContainer
+    @StateObject private var financeMonthFetch = ManagedObjectFetch<SharedFinanceMonth>(
+        SharedFinanceMonth.fetchRequest(sortDescriptors: [NSSortDescriptor(keyPath: \SharedFinanceMonth.yearMonth, ascending: true)])
+    )
+    private var financeMonths: [SharedFinanceMonth] { financeMonthFetch.results }
     /// Written by a Fuel peek's "Open My X3" so the module opens on that car.
     @AppStorage(FuelTrackerModule.selectedVehicleDefaultsKey) private var selectedVehicleName = ""
 
@@ -107,6 +120,11 @@ struct HomeView: View {
         .task(id: pointsContext) {
             guard let pointsContext else { return }
             pointsAccountFetch.start(context: pointsContext)
+        }
+        // Starts (or restarts) the Finance fetch, same reasoning again.
+        .task(id: financeContext) {
+            guard let financeContext else { return }
+            financeMonthFetch.start(context: financeContext)
         }
         .showsShareAcceptOutcome()
     }
@@ -252,6 +270,12 @@ struct HomeView: View {
             // `\.pointsPersistentContainer` unconditionally in `.init()`,
             // before any view (this one included) exists.
             PointsTrackerModule.rootView(context: pointsContext!, container: pointsPersistentContainer!)
+        case .finance:
+            // Always set by the time a module can be opened — BhavikApp's
+            // WindowGroup sets `\.financeManagedObjectContext` and
+            // `\.financePersistentContainer` unconditionally in `.init()`,
+            // before any view (this one included) exists.
+            FinanceTrackerModule.rootView(context: financeContext!, container: financePersistentContainer!)
         }
     }
 
@@ -265,6 +289,7 @@ struct HomeView: View {
         case .parcels: parcelDetail
         case .fuel: fuelDetail
         case .points: PointsTrackerModule.homeDetail(accounts: pointsAccounts)
+        case .finance: FinanceTrackerModule.homeDetail(months: financeMonths)
         }
     }
 
@@ -278,6 +303,7 @@ struct HomeView: View {
         case .parcels: ParcelTrackerModule.homePeek(parcels: parcels)
         case .fuel: FuelTrackerModule.homePeek(vehicles: vehicles)
         case .points: PointsTrackerModule.homePeek(accounts: pointsAccounts)
+        case .finance: FinanceTrackerModule.homePeek(months: financeMonths)
         }
     }
 
@@ -344,6 +370,8 @@ enum SelectedModule: String, Identifiable, Hashable, CaseIterable {
     case fuel
     // Last, so an existing saved layout picks it up at the end of the list.
     case points
+    // Last for the same reason.
+    case finance
     var id: String { rawValue }
 
     /// Name and color, for the hub, the sidebar, Settings and the Trackers menu.
@@ -356,6 +384,7 @@ enum SelectedModule: String, Identifiable, Hashable, CaseIterable {
         case .parcels: ParcelTrackerModule.accent
         case .fuel: FuelTrackerModule.accent
         case .points: PointsTrackerModule.accent
+        case .finance: FinanceTrackerModule.accent
         }
     }
 
@@ -368,6 +397,7 @@ enum SelectedModule: String, Identifiable, Hashable, CaseIterable {
         case .parcels: "shippingbox.fill"
         case .fuel: "fuelpump.fill"
         case .points: "star.circle.fill"
+        case .finance: FinanceTrackerModule.symbolName
         }
     }
 }
