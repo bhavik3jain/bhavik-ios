@@ -231,6 +231,109 @@ private func count<T: NSManagedObject>(_ type: T.Type, in context: NSManagedObje
     #expect(!FinanceFold.foldDuplicateMonths(in: household))
 }
 
+// MARK: - Merging into a partner's share
+
+@MainActor
+@Test func mergingIntoAnEditableShareCopiesEverythingAcross() throws {
+    let container = makeContainer()
+    let context = container.viewContext
+    let privateStore = try #require(container.privatePersistentStore)
+    let shared = try sharedStore(of: container)
+
+    let mine = FinanceHouseholdResolver.forWriting(in: context, container: container)
+    let myJoint = try owner("Joint", in: mine)
+    let myChecking = SharedFinanceAccount(institution: "Bank", name: "Checking", category: .cash, household: mine, owner: myJoint)
+    let myBrokerage = SharedFinanceAccount(institution: "Broker", name: "Taxable", category: .investments, household: mine, owner: try owner("Bhavik", in: mine))
+    let myCard = SharedFinanceAccount(institution: "Chase", name: "Sapphire", category: .card, household: mine)
+    myCard.limit = 10_000
+    let mySeptember = SharedFinanceMonth(period: september, household: mine)
+    mySeptember.goldPricePerOz = 4_000
+    mySeptember.setBalance(1_000, for: myChecking)
+    mySeptember.setBalance(20_000, for: myBrokerage)
+    _ = SharedFinanceBudget(category: "Travel", limit: 300, month: mySeptember)
+    let myOctober = SharedFinanceMonth(period: october, household: mine)
+    myOctober.setBalance(21_000, for: myBrokerage)
+    let ring = SharedFinanceMetalItem(name: "Ring", metal: .gold, grams: 5, household: mine)
+    ring.hasManualValue = true
+    ring.manualValue = 800
+    let charge = SharedFinanceTransaction(date: day(2026, 9, 3), cost: 30, merchant: "Cafe", household: mine, card: myCard)
+    charge.actualCost = 15
+    charge.category = "Food"
+    try context.save()
+
+    let partners = household("Household", in: context, store: shared, createdAt: mine.createdAt.addingTimeInterval(60))
+    let theirChecking = SharedFinanceAccount(institution: "Bank", name: "Checking", category: .cash, household: partners, owner: try owner("Joint", in: partners))
+    let theirSeptember = SharedFinanceMonth(period: september, household: partners)
+    theirSeptember.setBalance(1_200, for: theirChecking)
+    _ = SharedFinanceBudget(category: "Food", limit: 500, month: theirSeptember)
+    try context.save()
+
+    let households = try context.fetch(SharedFinanceHousehold.fetchRequest())
+    let offer = try #require(FinanceHouseholdResolver.mergeOffer(among: households, privateStore: privateStore, canEdit: { _ in true }))
+    #expect(offer.own == mine)
+    #expect(offer.shared == partners)
+    #expect(offer.message.contains("3 accounts") && offer.message.contains("2 months") && offer.message.contains("1 transaction"))
+
+    offer.merge()
+    try context.save()
+
+    #expect(try context.fetch(SharedFinanceHousehold.fetchRequest()) == [partners], "The emptied private household is gone")
+    #expect(partners.sortedOwners.map(\.name) == ["Bhavik", "Saloni", "Joint"])
+    #expect(partners.sortedAccounts.map(\.displayName) == ["Bank - Checking", "Broker - Taxable", "Chase - Sapphire"])
+    #expect(partners.sortedMonths.map(\.yearMonth) == ["2026-09", "2026-10"])
+
+    let merged = try #require(partners.month(for: september))
+    let brokerage = try #require(partners.sortedAccounts.first { $0.category == .investments })
+    let card = try #require(partners.sortedAccounts.first { $0.category == .card })
+    #expect(merged.balance(for: theirChecking)?.amount == 1_200, "Both typed in: the share's figure is kept")
+    #expect(merged.balance(for: brokerage)?.amount == 20_000)
+    #expect(partners.month(for: october)?.balance(for: brokerage)?.amount == 21_000)
+    #expect(merged.goldPricePerOz == 4_000)
+    #expect(merged.sortedBudgets.map(\.category) == ["Food", "Travel"])
+    #expect(brokerage.owner?.name == "Bhavik" && brokerage.owner?.household == partners)
+    #expect(card.limit == 10_000)
+    #expect(partners.sortedMetals.first?.value(at: merged.metalPrices) == 800)
+    let copied = try #require(card.transactions?.first)
+    #expect(copied.actualCost == 15 && copied.category == "Food")
+
+    // Everything now lives where the partner can see it.
+    for entity in ["SharedFinanceOwner", "SharedFinanceAccount", "SharedFinanceMonth", "SharedFinanceBalance",
+                   "SharedFinanceBudget", "SharedFinanceMetalItem", "SharedFinanceTransaction"] {
+        let objects = try context.fetch(NSFetchRequest<NSManagedObject>(entityName: entity))
+        #expect(!objects.isEmpty)
+        #expect(objects.allSatisfy { $0.objectID.persistentStore == shared }, "\(entity) left behind in the private store")
+    }
+
+    let remaining = try context.fetch(SharedFinanceHousehold.fetchRequest())
+    #expect(FinanceHouseholdResolver.mergeOffer(among: remaining, privateStore: privateStore, canEdit: { _ in true }) == nil)
+}
+
+@MainActor
+@Test func aMergeIsOfferedOnlyForAnEditableShareAndAnOwnHouseholdWithSomethingInIt() throws {
+    let container = makeContainer()
+    let context = container.viewContext
+    let privateStore = try #require(container.privatePersistentStore)
+    let shared = try sharedStore(of: container)
+
+    let mine = FinanceHouseholdResolver.forWriting(in: context, container: container)
+    try context.save()
+    #expect(FinanceHouseholdResolver.mergeOffer(among: [mine], privateStore: privateStore, canEdit: { _ in true }) == nil, "No share")
+
+    let partners = household("Household", in: context, store: shared, createdAt: mine.createdAt.addingTimeInterval(60))
+    try context.save()
+    #expect(FinanceHouseholdResolver.mergeOffer(among: [mine, partners], privateStore: privateStore, canEdit: { _ in true }) == nil,
+            "Nothing of my own but the default people")
+
+    _ = SharedFinanceAccount(institution: "Bank", name: "Checking", category: .cash, household: mine)
+    try context.save()
+    #expect(FinanceHouseholdResolver.mergeOffer(among: [mine, partners], privateStore: privateStore, canEdit: { _ in true }) != nil)
+
+    let viewOnly: (SharedFinanceHousehold) -> Bool = { $0.objectID.persistentStore == privateStore }
+    #expect(FinanceHouseholdResolver.mergeOffer(among: [mine, partners], privateStore: privateStore, canEdit: viewOnly) == nil,
+            "A view-only share is never offered a merge")
+    #expect(FinanceHouseholdResolver.mergeOffer(among: [mine, partners], privateStore: nil, canEdit: { _ in true }) == nil)
+}
+
 // MARK: - Home
 
 @MainActor

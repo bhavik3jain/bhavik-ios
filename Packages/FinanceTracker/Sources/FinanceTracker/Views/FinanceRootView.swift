@@ -19,6 +19,9 @@ struct FinanceRootView: View {
     /// Whether this launch's first iCloud import has landed (or the wait
     /// gave up). See `financeCanCreateHousehold`.
     @State private var hasCaughtUp = false
+    @State private var mergeOffer: FinanceMergeOffer?
+    /// The share whose merge offer was turned down, so it isn't made again.
+    @AppStorage("finance.declinedMergeInto") private var declinedMergeInto = ""
 
     var body: some View {
         TabView(selection: $selection) {
@@ -66,6 +69,20 @@ struct FinanceRootView: View {
                 try? context.saveIfNeeded()
             }
         }
+        .onChange(of: pendingOfferKey, initial: true) { _, key in
+            guard key != nil else { return }
+            mergeOffer = FinanceHouseholdResolver.mergeOffer(among: Array(households), container: container)
+        }
+        .alert(
+            "Add Your Finances to the Shared Household?",
+            isPresented: Binding(get: { mergeOffer != nil }, set: { if !$0 { mergeOffer = nil } }),
+            presenting: mergeOffer
+        ) { offer in
+            Button("Merge") { merge(offer) }
+            Button("Keep Separate", role: .cancel) { declinedMergeInto = offer.sharedKey }
+        } message: { offer in
+            Text(offer.message)
+        }
         .tint(FinanceTrackerModule.accent.color)
         .minimizesTabBarOnScroll()
         .dismissesOnHomeTab($selection, restoringTo: "summary")
@@ -78,5 +95,31 @@ struct FinanceRootView: View {
             privateStore: container?.privatePersistentStore,
             canEdit: { canEdit($0, in: container) }
         )
+    }
+
+    /// The share a merge could be offered for, once iCloud has caught up
+    /// (so the own household is complete) and unless it was turned down.
+    /// Cheap enough for every render; the full check, which asks CloudKit
+    /// whether the own household is itself shared, runs only when this changes.
+    private var pendingOfferKey: String? {
+        guard hasCaughtUp, let container else { return nil }
+        _ = months.count
+        let offer = FinanceHouseholdResolver.mergeOffer(
+            among: Array(households),
+            privateStore: container.privatePersistentStore,
+            canEdit: { canEdit($0, in: container) }
+        )
+        guard let offer, offer.sharedKey != declinedMergeInto else { return nil }
+        return offer.sharedKey
+    }
+
+    private func merge(_ offer: FinanceMergeOffer) {
+        offer.merge(tiebreak: .cloudKit(container))
+        do {
+            try context.saveIfNeeded()
+        } catch {
+            // Nothing half-merged is left to sync by the next save.
+            context.rollback()
+        }
     }
 }
