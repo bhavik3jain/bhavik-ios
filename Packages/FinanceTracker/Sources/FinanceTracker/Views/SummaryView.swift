@@ -25,9 +25,11 @@ struct SummaryView: View {
                     } description: {
                         Text("Start a month, then type in each account's balance. Next month starts as a copy, so only what moved needs changing.")
                     } actions: {
-                        if canEdit(snapshot.household, in: container) {
+                        if snapshot.canEdit {
                             Button("Start \(YearMonth(containing: .now).title)") { startFirstMonth() }
                                 .primaryActionStyle(tint: FinanceTrackerModule.accent.color)
+                        } else if snapshot.isWaitingForICloud {
+                            ProgressView("Checking iCloud…")
                         }
                     }
                 }

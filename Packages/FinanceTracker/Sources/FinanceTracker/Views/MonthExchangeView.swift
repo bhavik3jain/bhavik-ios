@@ -34,6 +34,7 @@ struct MonthExchangeView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.managedObjectContext) private var context
     @Environment(\.financePersistentContainer) private var container
+    @Environment(\.financeCanCreateHousehold) private var canCreateHousehold
 
     @State private var selectedMonth: String?
     @State private var exportFile: FinanceJSONFile?
@@ -76,7 +77,9 @@ struct MonthExchangeView: View {
                     Button("Import a Month…", systemImage: "square.and.arrow.down") {
                         showingImporter = true
                     }
-                    .disabled(!canEdit(household, in: container))
+                    // With no household yet, importing would create one —
+                    // which waits for iCloud, see `financeCanCreateHousehold`.
+                    .disabled(!canEdit(household, in: container) || (household == nil && !canCreateHousehold))
                 } header: {
                     Text("Import")
                 } footer: {

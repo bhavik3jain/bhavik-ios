@@ -17,7 +17,7 @@ struct MonthsView: View {
 
     var body: some View {
         let snapshot = data.snapshot
-        let isEditable = canEdit(snapshot.household, in: container)
+        let isEditable = snapshot.canEdit
         NavigationStack {
             Group {
                 if snapshot.months.isEmpty {
@@ -29,6 +29,8 @@ struct MonthsView: View {
                         if isEditable {
                             Button("Start \(YearMonth(containing: .now).title)") { startNextMonth() }
                                 .primaryActionStyle(tint: FinanceTrackerModule.accent.color)
+                        } else if snapshot.isWaitingForICloud {
+                            ProgressView("Checking iCloud…")
                         }
                     }
                 } else {

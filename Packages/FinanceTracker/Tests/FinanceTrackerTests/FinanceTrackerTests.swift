@@ -392,13 +392,13 @@ private func makeSeptember() throws -> (household: SharedFinanceHousehold, month
 
 @MainActor
 @Test func homeDetailShowsTheLatestNetWorth() throws {
-    #expect(FinanceHome.homeDetail(for: []) == "No months yet")
+    #expect(FinanceHome.homeDetail(for: [], container: nil) == "No months yet")
 
     let (_, september) = try makeSeptember()
     let october = try #require(MonthRollover.startMonth(after: september))
     let expected = MonthSummary(month: october).netWorth
-    #expect(FinanceHome.homeDetail(for: [october, september]) == "Net worth \(FinanceFormat.money(expected))")
-    #expect(FinanceTrackerModule.homeDetail(months: [september]) == "Net worth \(FinanceFormat.money(MonthSummary(month: september).netWorth))")
+    #expect(FinanceHome.homeDetail(for: [october, september], container: nil) == "Net worth \(FinanceFormat.money(expected))")
+    #expect(FinanceTrackerModule.homeDetail(months: [september], container: nil) == "Net worth \(FinanceFormat.money(MonthSummary(month: september).netWorth))")
 }
 
 // MARK: - Households

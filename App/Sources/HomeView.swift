@@ -83,7 +83,8 @@ struct HomeView: View {
     // Finance is Core Data too — see BhavikApp.init()'s financeContainer and
     // its own `\.financeManagedObjectContext` key, the same reasoning as
     // Points' `pointsContext`/`pointsAccountFetch` above. Every household's
-    // months come back; the peek and detail pick the newest.
+    // months come back; the peek and detail keep the household the module
+    // shows (which is why they take the container) and pick its newest.
     @Environment(\.financeManagedObjectContext) private var financeContext
     // The container itself, for Finance's Share button and sharing-status
     // badges — same reasoning as `fuelPersistentContainer` above.
@@ -289,7 +290,7 @@ struct HomeView: View {
         case .parcels: parcelDetail
         case .fuel: fuelDetail
         case .points: PointsTrackerModule.homeDetail(accounts: pointsAccounts)
-        case .finance: FinanceTrackerModule.homeDetail(months: financeMonths)
+        case .finance: FinanceTrackerModule.homeDetail(months: financeMonths, container: financePersistentContainer)
         }
     }
 
@@ -303,7 +304,7 @@ struct HomeView: View {
         case .parcels: ParcelTrackerModule.homePeek(parcels: parcels)
         case .fuel: FuelTrackerModule.homePeek(vehicles: vehicles)
         case .points: PointsTrackerModule.homePeek(accounts: pointsAccounts)
-        case .finance: FinanceTrackerModule.homePeek(months: financeMonths)
+        case .finance: FinanceTrackerModule.homePeek(months: financeMonths, container: financePersistentContainer)
         }
     }
 

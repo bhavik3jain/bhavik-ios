@@ -20,7 +20,10 @@ public enum FinanceHouseholdResolver {
     ///
     /// Two private households can exist if a second device added something
     /// before its first sync arrived; oldest-first means both devices settle
-    /// on the same one once it does.
+    /// on the same one once it does. That alone left the newer one — and
+    /// whatever had been typed into it — hidden for good, so `FinanceRootView`
+    /// now holds off creating one until iCloud has caught up, and
+    /// `FinanceFold.tidy` folds any newer one into the oldest.
     @MainActor
     public static func forWriting(in context: NSManagedObjectContext, container: NSPersistentCloudKitContainer?) -> SharedFinanceHousehold {
         let households = fetchAll(in: context)
@@ -104,3 +107,4 @@ public enum FinanceHouseholdResolver {
         return household
     }
 }
+
