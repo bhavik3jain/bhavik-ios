@@ -74,6 +74,13 @@ public struct ItineraryDocument: Sendable, Equatable {
 
     /// Builds the document for `trip`: a cover, a page per day (more when a day
     /// runs long) and the confirmation codes.
+    ///
+    /// Ideas — items on no day yet — are left out on purpose, and not counted
+    /// among the cover's places. The PDF is what gets sent to the people
+    /// meeting you, the house-sitter, the family group chat: a list of maybes
+    /// at the end reads as more plan, and "might go to the Aventine" isn't
+    /// something anyone else can act on. They stay in the app, where they can
+    /// still be moved onto a day.
     public init(trip: SharedTrip, linesPerPage: Int = ItineraryDocument.linesPerPage, calendar: Calendar = .current) {
         let dates = TripDates(start: trip.startDate, end: trip.endDate, calendar: calendar)
         // Core Data's to-many relationships are `Set<T>?`, not `[T]?` — turned
@@ -83,7 +90,7 @@ public struct ItineraryDocument: Sendable, Equatable {
 
         let facts = [
             counted(dates.dayCount, "day"),
-            counted(trip.places.count, "place"),
+            counted(trip.plannedPlaces.count, "place"),
             flights.isEmpty ? nil : counted(flights.count, "flight"),
         ].compactMap(\.self).joined(separator: " · ")
         pages.append(.cover(Cover(
@@ -93,6 +100,7 @@ public struct ItineraryDocument: Sendable, Equatable {
             facts: facts
         )))
 
+        // Day by day from 0, so `DayPlan` never sees an idea's -1.
         for index in 0..<dates.dayCount {
             let plan = DayPlan(dayIndex: index, items: Array(trip.items ?? []), flights: flights, dates: dates)
             let lines = plan.entries.map { ItineraryFormat.line(for: $0, in: plan) }

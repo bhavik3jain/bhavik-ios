@@ -100,6 +100,23 @@ func addFlight(
     return flight
 }
 
+/// An item at a given spot — `addItem`'s `placed:` puts everything on one point.
+@MainActor
+@discardableResult
+func addPlace(
+    _ title: String,
+    to trip: SharedTrip,
+    in context: NSManagedObjectContext,
+    day index: Int = SharedItineraryItem.unassignedDayIndex,
+    at point: (Double, Double)?,
+    kind: ItemKind = .sight
+) -> SharedItineraryItem {
+    let item = addItem(title, to: trip, in: context, day: index, kind: kind)
+    item.latitude = point?.0
+    item.longitude = point?.1
+    return item
+}
+
 extension DayPlan {
     var titles: [String] { entries.map(\.title) }
 }

@@ -50,8 +50,14 @@ public struct DayPlan {
         self.dayIndex = dayIndex
         self.dates = dates
 
-        let dayItems = items.filter { $0.dayIndex == dayIndex }
-        let dayFlights = flights.filter { $0.dayIndex == dayIndex }
+        // No day below 0 has a plan. Ideas sit at `unassignedDayIndex` (-1),
+        // and `dates.offset(of:)` — which the trip list and home peek pass
+        // straight in as "today" — is -1 the day before a trip starts. They
+        // only ask about trips already under way, but with the equality filter
+        // alone, any caller that didn't would get every idea back as the
+        // day's plan.
+        let dayItems = dayIndex < 0 ? [] : items.filter { $0.dayIndex == dayIndex }
+        let dayFlights = dayIndex < 0 ? [] : flights.filter { $0.dayIndex == dayIndex }
 
         struct Keyed {
             let entry: Entry
