@@ -2,9 +2,12 @@ import Core
 import CoreData
 import SwiftUI
 
-/// The three faces of one trip.
+/// The faces of one trip. Titles are one short word each: five of them share
+/// a segmented control the width of an iPhone.
 enum TripSection: String, CaseIterable, Identifiable {
     case plan
+    case ideas
+    case nearby
     case map
     case codes
 
@@ -13,6 +16,8 @@ enum TripSection: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .plan: "Plan"
+        case .ideas: "Ideas"
+        case .nearby: "Nearby"
         case .map: "Map"
         case .codes: "Codes"
         }
@@ -82,6 +87,10 @@ struct TripDetailView: View {
             switch section {
             case .plan:
                 TripPlanView(trip: trip, selectedDay: $selectedDay, weather: weather) { sheet = $0 }
+            case .ideas:
+                TripIdeasView(trip: trip) { sheet = $0 }
+            case .nearby:
+                TripNearbyView(trip: trip) { sheet = $0 }
             case .map:
                 TripMapView(trip: trip) { sheet = $0 }
             case .codes:
@@ -125,6 +134,11 @@ struct TripDetailView: View {
                             sheet = .newItem(day: selectedDay)
                         } label: {
                             Label("Add to Plan", systemImage: "mappin.and.ellipse")
+                        }
+                        Button {
+                            sheet = .newItem(day: SharedItineraryItem.unassignedDayIndex)
+                        } label: {
+                            Label("Add Idea", systemImage: "lightbulb")
                         }
                         Button {
                             sheet = .newFlight(day: selectedDay)
