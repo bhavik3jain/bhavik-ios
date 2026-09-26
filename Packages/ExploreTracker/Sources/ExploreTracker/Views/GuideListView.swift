@@ -6,6 +6,7 @@ import SwiftUI
 struct GuideListView: View {
     @Environment(\.managedObjectContext) private var modelContext
     @Environment(\.explorePersistentContainer) private var container
+    @Environment(\.presentShareSheet) private var presentShareSheet
     @FetchRequest(sortDescriptors: [NSSortDescriptor(keyPath: \SharedGuide.createdAt, ascending: false)])
     private var guideResults: FetchedResults<SharedGuide>
     private var guides: [SharedGuide] { Array(guideResults) }
@@ -58,6 +59,11 @@ struct GuideListView: View {
                                     }
                                     .contextMenu {
                                         pinButton(for: guide, isPinned: summary.isPinned)
+                                        if let container {
+                                            Button("Share Guide", systemImage: "person.crop.circle.badge.plus") {
+                                                presentShareSheet(ShareSheetRequest(object: guide, container: container))
+                                            }
+                                        }
                                         Button("Delete Guide", systemImage: "trash", role: .destructive) {
                                             pendingDeletion = summary
                                         }
