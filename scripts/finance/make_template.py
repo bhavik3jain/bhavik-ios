@@ -104,6 +104,10 @@ def leftovers(template: str, filled: str) -> dict[str, list[str]]:
     found: dict[str, list[str]] = {}
     with zipfile.ZipFile(template) as z:
         for info in z.infolist():
+            # Numbers' own build history ("Apple Numbers 14.4 …") is not sheet data;
+            # scanning it flagged the merchant "Apple" on every template.
+            if info.filename == "Metadata/BuildVersionHistory.plist":
+                continue
             data = z.read(info.filename)
             if info.filename.endswith(".iwa"):
                 data = _unsnappy(data)
