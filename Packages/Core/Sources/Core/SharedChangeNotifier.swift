@@ -196,6 +196,12 @@ public final class SharedChangeNotifier: @unchecked Sendable {
 
         if let last = transactions.last {
             let events = events(from: transactions, in: store)
+            // iCloud's own alert about an edit this account made on another
+            // device — see SharedChangeServerAlertCleanup.
+            let ownEditAlerts = SharedChangeServerAlertCleanup.ownEditAlertIDs(in: events)
+            if !ownEditAlerts.isEmpty {
+                SharedChangeServerAlertInbox.removeDelivered(subscriptionIDs: ownEditAlerts)
+            }
             let now = Date.now
             for event in arrivals.admit(events, asOf: now) {
                 coalescer.add(event, at: now)
@@ -230,6 +236,7 @@ public final class SharedChangeNotifier: @unchecked Sendable {
 
         var shares: [NSManagedObjectID: CKShare] = [:]
         var unshared: Set<NSManagedObjectID> = []
+        var serverAlertIDs: [NSManagedObjectID: String?] = [:]
         var events: [SharedChangeEvent] = []
         for change in SharedChangeFilter.relevantChanges(in: records, entityNames: entityNames) {
             guard let objectID = objectIDs[change.objectKey],
@@ -252,6 +259,9 @@ public final class SharedChangeNotifier: @unchecked Sendable {
                 lastModifiedBy: modifiedBy,
                 participants: share.map(SharedChangeAuthorResolver.participants(of:)) ?? []
             )
+            if serverAlertIDs[root] == nil {
+                serverAlertIDs[root] = serverAlertID(for: root, isSharedStore: isSharedStore)
+            }
             events.append(SharedChangeEvent(
                 moduleID: moduleID,
                 rootKey: root.uriRepresentation().absoluteString,
@@ -259,13 +269,23 @@ public final class SharedChangeNotifier: @unchecked Sendable {
                 objectKey: change.objectKey,
                 kind: change.kind,
                 action: description.action,
-                author: author
+                author: author,
+                serverAlertID: serverAlertIDs[root] ?? nil
             ))
         }
         // Don't keep every object from every batch registered and snapshotted
         // for the life of the app.
         context.reset()
         return events
+    }
+
+    /// The iCloud alert subscription that would cover `root`: the one on its
+    /// zone when this user owns it, the shared database's one when someone
+    /// else does. Read from the mirroring delegate's local metadata.
+    private func serverAlertID(for root: NSManagedObjectID, isSharedStore: Bool) -> String? {
+        if isSharedStore { return SharedChangeServerAlertID.shared }
+        guard let zoneName = container.recordID(for: root)?.zoneID.zoneName else { return nil }
+        return SharedChangeServerAlertID.zone(moduleID: moduleID, zoneName: zoneName)
     }
 
     private static func kind(of type: NSPersistentHistoryChangeType) -> SharedChangeKind {

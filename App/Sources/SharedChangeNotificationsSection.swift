@@ -5,6 +5,12 @@ import SwiftUI
 /// switch per tracker that can be shared. See Core's
 /// `SharedChangeNotifications` for what is sent and when.
 ///
+/// The switches also drive iCloud's own alerts (`SharedChangeServerAlerts`).
+/// Those are subscriptions on the iCloud account, not settings on this
+/// device: turning the main switch off deletes them for every device, and
+/// turning it on (or changing a tracker's switch) rebuilds them from this
+/// device's choices.
+///
 /// The main switch shows on only when the setting is on *and* the system
 /// permission is granted — a switch that reads on while iOS silently drops
 /// every notification would be a lie. Turning it on is also the one place
@@ -41,7 +47,7 @@ struct SharedChangeNotificationsSection: View {
             if denied {
                 Text("Notifications are turned off for this app. Turn them on in the Settings app to hear when someone changes something you share.")
             } else {
-                Text("A notification when someone you share a trip, car, guide or household with changes it. It arrives once this device has downloaded the change from iCloud, which may not be until the next time you open the app.")
+                Text("A notification when someone you share a trip, car, guide or household with changes it. iCloud sends a short alert even when the app is closed, to every device on your Apple Account; the app adds who changed what once it has downloaded the change, which may not be until you next open it.")
             }
         }
         .task { await refresh() }
@@ -54,10 +60,16 @@ struct SharedChangeNotificationsSection: View {
 
     private func setEnabled(_ isOn: Bool) {
         enabled = isOn
-        guard isOn else { return }
+        guard isOn else {
+            SharedChangeServerAlerts.shared.removeAll()
+            return
+        }
         Task {
             _ = await SharedChangeNotifications.requestAuthorization()
             await refresh()
+            // After the permission answer: the pass only creates
+            // subscriptions once notifications can actually be shown here.
+            SharedChangeServerAlerts.shared.sync(force: true)
         }
     }
 
@@ -78,5 +90,6 @@ private struct ModuleNotificationToggle: View {
 
     var body: some View {
         Toggle(module.accent.name, isOn: $isOn)
+            .onChange(of: isOn) { SharedChangeServerAlerts.shared.sync(force: true) }
     }
 }

@@ -67,6 +67,7 @@ struct BhavikApp: App {
     /// `CloudSyncMonitor`'s doc comment.
     let syncMonitor = CloudSyncMonitor(containerID: BhavikApp.cloudContainerID)
     @AppStorage(Appearance.defaultsKey) private var appearanceRaw = Appearance.system.rawValue
+    @Environment(\.scenePhase) private var scenePhase
     // Only reason for an app/scene delegate in an otherwise pure SwiftUI App:
     // CKShare-accept has no SwiftUI-native entry point on either platform.
     // See ShareAcceptDelegate.swift. (It also registers for CloudKit's
@@ -206,6 +207,11 @@ struct BhavikApp: App {
     /// sharing container, each with its module's own wording and the
     /// `SelectedModule` a tap opens. Only on the real stores: the
     /// schema-initialising launch returns before reaching this.
+    ///
+    /// The same table configures iCloud's own alerts
+    /// (`SharedChangeServerAlerts`), which reach a device whose app isn't
+    /// running. Those need each module's share-root entity — the name its
+    /// `ShareAcceptRouter` registration above spells as "CD_" + entity.
     private static func startSharedChangeNotifications(
         trips: NSPersistentCloudKitContainer,
         fuel: NSPersistentCloudKitContainer,
@@ -214,14 +220,14 @@ struct BhavikApp: App {
         finance: NSPersistentCloudKitContainer
     ) {
         SharedChangeNotifications.install()
-        let notifiers: [(NSPersistentCloudKitContainer, SelectedModule, SharedChangeDescriber)] = [
-            (trips, .trips, TripTrackerModule.describeSharedChange),
-            (fuel, .fuel, FuelTrackerModule.describeSharedChange),
-            (explore, .explore, ExploreTrackerModule.describeSharedChange),
-            (points, .points, PointsTrackerModule.describeSharedChange),
-            (finance, .finance, FinanceTrackerModule.describeSharedChange),
+        let notifiers: [(NSPersistentCloudKitContainer, SelectedModule, String, SharedChangeDescriber)] = [
+            (trips, .trips, "SharedTrip", TripTrackerModule.describeSharedChange),
+            (fuel, .fuel, "SharedVehicle", FuelTrackerModule.describeSharedChange),
+            (explore, .explore, "SharedGuide", ExploreTrackerModule.describeSharedChange),
+            (points, .points, "SharedPointsHousehold", PointsTrackerModule.describeSharedChange),
+            (finance, .finance, "SharedFinanceHousehold", FinanceTrackerModule.describeSharedChange),
         ]
-        for (container, module, describe) in notifiers {
+        for (container, module, _, describe) in notifiers {
             SharedChangeNotifier.start(
                 container: container,
                 moduleID: module.rawValue,
@@ -229,6 +235,18 @@ struct BhavikApp: App {
                 describe: describe
             )
         }
+        SharedChangeServerAlerts.shared.configure(
+            containerID: cloudContainerID,
+            sources: notifiers.map { container, module, rootEntity, describe in
+                SharedChangeServerAlerts.Source(
+                    container: container,
+                    moduleID: module.rawValue,
+                    moduleName: module.accent.name,
+                    rootEntityName: rootEntity,
+                    describe: describe
+                )
+            }
+        )
     }
 
     var body: some Scene {
@@ -255,6 +273,12 @@ struct BhavikApp: App {
             }
         }
         .providingStores(of: self)
+        // Launch and every return to the foreground: the moments a rename,
+        // a new share or a partner leaving has most likely synced in. Cheap
+        // when nothing changed — see SharedChangeServerAlerts.
+        .onChange(of: scenePhase, initial: true) { _, phase in
+            if phase == .active { SharedChangeServerAlerts.shared.sync() }
+        }
         #if os(macOS)
         // A left-over default-sized window reads as an unfinished iPhone app
         // squeezed onto a Mac; the sidebar, a three-column Overview and a
