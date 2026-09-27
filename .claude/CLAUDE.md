@@ -20,9 +20,12 @@ unfiltered `grep -rn '#if os(' Packages` returns 16 artefact hits when the true 
 
 Only ever edit `project.yml`, files under `App/` and `Packages/`, the two workflows, and docs.
 `scripts/finance/` (Mac-only Python, month JSON ↔ the Numbers sheet) is also fair game, but never commit
-real `.numbers`/`.json` there — its `.gitignore` blocks them. The blank `Finance Template.numbers` goes
-in only after `make_template.py --check` prints `clean`: pivots and Numbers' calc cache kept card
-names and merchants after every cell was cleared, until Numbers itself re-saved the file.
+real `.numbers`/`.json` there — its `.gitignore` blocks them. `Finance Template.numbers` is the
+user's sheet seeded with fake "Seed Data" rows, and goes in only after `make_template.py --check`
+prints `clean` (it checks text and amounts): pivots and Numbers' calc cache kept card names and
+merchants after every cell was cleared, until Numbers itself re-saved the file, so change the
+template's numbers only in Numbers too. The export drives Numbers itself (JXA) to grow tables —
+numbers-parser's `add_row` on a grouped table makes rows Numbers never shows.
 
 - `bhavik-ios.xcodeproj` is XcodeGen output and is **gitignored**. (Three stale iCloud conflict
   copies, `bhavik-ios 2/3/4.xcodeproj`, also sit in the root — ignore them.)

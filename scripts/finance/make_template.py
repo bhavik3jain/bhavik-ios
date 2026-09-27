@@ -1,4 +1,8 @@
-"""Make the blank Finance template from a filled-in copy of the spreadsheet.
+"""Check a Finance template holds nothing from the real sheet; or blank a filled-in copy of it.
+
+The committed template is the user's sheet seeded with fake "Seed Data" rows, made in Numbers:
+it's the source of truth now, and --check is what gates committing a new one. Blanking a filled
+copy (below) is only a starting point for making another.
 
     uv run --with numbers-parser --with pillow scripts/finance/make_template.py test.numbers \
         "scripts/finance/Finance Template.numbers"
@@ -14,7 +18,9 @@ What this can't clear: numbers-parser won't touch the two pivot tables ('Credit 
 merchants. Tried on the real sheet: jewelry names, card names, "MBTA" all survived. So the output is
 only blank after you open it in Numbers and save it once, which rebuilds both. Then run
 `make_template.py --check TEMPLATE FILLED`: it scans every stream in the template for any name,
-merchant or label from the filled sheet and must print "clean" before the template is committed.
+merchant or label from the filled sheet, and every cell for any of its limits, fees, balances,
+weights and prices, and must print "clean" before the template is committed. It says where it found
+something, never what.
 """
 
 from __future__ import annotations
@@ -131,20 +137,85 @@ def leftovers(template: str, filled: str) -> dict[str, list[str]]:
     return found
 
 
+# Columns of the filled sheet whose numbers identify the user: a card's limit and annual fee, a
+# balance, a metal's weight, price paid, purchase and current value, the metal prices. The first
+# seeded template kept three real (limit, fee) pairs on its fake cards and still printed "clean",
+# because only text was searched for. Transaction costs aren't needles: a seed $4.35 parking fee
+# matches some real $4.35, which says nothing about anyone, and every cost derived from the seed
+# rows (the card SUMIFS, the totals, the pivot) would then be flagged along with it.
+NUMBER_NEEDLES = {
+    **{name: (2,) for name in fn.ACCOUNT_TABLES},
+    fn.FIXED_TABLE: (1,), fn.LOAN_TABLE: (1,),
+    fn.CARD_TABLE: (2, 3),
+    fn.METAL_TABLE: (2, 3, 4, 5, 6),
+    fn.PRICE_TABLE: (1,),
+}
+# Below this an equal number is coincidence (a 0.5 oz coin), not a fingerprint.
+TRIVIAL = 1.0
+
+
+def _amount(v) -> float | None:
+    if isinstance(v, bool) or not isinstance(v, (int, float)) or abs(v) < TRIVIAL:
+        return None
+    return round(float(v), 2)
+
+
+def number_leftovers(template: str, filled: str) -> list[str]:
+    """Where the template holds a number that is also one of the filled sheet's amounts
+    (NUMBER_NEEDLES), in any table, the pivots and totals included. Locations only, never values."""
+    _, tables = fn.open_document(filled)
+    needles = set()
+    for name, cols in NUMBER_NEEDLES.items():
+        if name not in tables:
+            continue
+        all_rows = fn.rows(tables[name])
+        for i in fn.body_rows(tables[name]):
+            for col in cols:
+                if col < len(all_rows[i]) and (v := _amount(fn.value(all_rows[i][col]))) is not None:
+                    needles.add(v)
+    template_doc, _ = fn.open_document(template)
+    found = []
+    for sheet in template_doc.sheets:
+        for table in sheet.tables:
+            for i, row in enumerate(fn.rows(table)):
+                if i < table.num_header_rows:
+                    continue
+                for col, cell in enumerate(row):
+                    if _amount(fn.value(cell)) in needles:
+                        found.append(f"{table.name} row {i} column {col}")
+    return found
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("filled", nargs="?", help="the spreadsheet with real data")
     parser.add_argument("output", nargs="?", help="where to write the blank template")
     parser.add_argument("--check", nargs=2, metavar=("TEMPLATE", "FILLED"),
-                        help="only scan TEMPLATE for text from FILLED")
+                        help="only scan TEMPLATE for text and amounts from FILLED")
     args = parser.parse_args(argv)
     if args.check:
         found = leftovers(*args.check)
-        if found:
-            print(f"NOT clean: {len(found)} value(s) from the filled sheet are still in the template:")
-            for needle, where in sorted(found.items())[:30]:
-                print(f"  {needle!r} in {', '.join(sorted(set(where)))}")
-            print("Open the template in Numbers, save it, and check again.")
+        numbers = number_leftovers(*args.check)
+        if found or numbers:
+            if found:
+                # Where, never what: the value is the user's, and this output ends up in logs.
+                print(f"NOT clean: {len(found)} value(s) from the filled sheet are still in the template:")
+                streams: dict[str, int] = {}
+                for where in found.values():
+                    for stream in set(where):
+                        streams[stream] = streams.get(stream, 0) + 1
+                for stream, count in sorted(streams.items()):
+                    print(f"  {count} in {stream}")
+                print("Open the template in Numbers, save it, and check again.")
+            if numbers:
+                # Where, never what: this output ends up in logs.
+                print(f"NOT clean: {len(numbers)} cell(s) hold an amount from the filled sheet "
+                      "(a limit, fee, balance, weight or price):")
+                for where in numbers[:30]:
+                    print(f"  {where}")
+                print("Change those to made-up numbers in Numbers. In a pivot ('Credit Card', "
+                      "'Personal Items Pivot') it's the old seed data: click Refresh in the Organize "
+                      "sidebar, save, and check again.")
             return 1
         print("clean")
         return 0
@@ -158,8 +229,10 @@ def main(argv: list[str] | None = None) -> int:
     blank_previews(args.output)
     found = leftovers(args.output, args.filled)
     print(f"wrote {args.output}")
-    if found:
-        print(f"not blank yet: {len(found)} value(s) survive in the pivot tables / calculation cache.")
+    numbers = number_leftovers(args.output, args.filled)
+    if found or numbers:
+        print(f"not blank yet: {len(found) + len(numbers)} value(s) survive in the pivot tables / "
+              "calculation cache.")
         print("Open it in Numbers, save it once, then run --check before committing it.")
     return 0
 

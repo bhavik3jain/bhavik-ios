@@ -1,165 +1,258 @@
 """Fill a copy of the Finance Numbers template from a month the app exported.
 
-    uv run --with numbers-parser scripts/finance/export_numbers.py "Finance 2026-09.json" \
+    uv run scripts/finance/export_numbers.py "Finance 2026-09.json" \
         --template "scripts/finance/Finance Template.numbers" -o "Finance 2026-09.numbers"
 
-Only cell values are written. Every formula the template has keeps working (the totals, net worth,
-the SUMIFS card balances, Metal Price × weight), the charts follow them, and the two pivot tables
-are left untouched for Numbers to refresh when the file opens.
+Mac only, and Numbers does the writing: the script copies the template to the output path, opens
+that copy in Numbers, fills it through Numbers' own scripting (numbers_fill.js), saves and closes it.
+Every table grows to fit the month, however few rows the template has: rows are added the way
+Numbers adds them by hand, so they join the right owner group, copy the row's formulas (Actual Cost
+=Cost, the card SUMIFS) and every reference to a Total (Total Assets → Cash) still finds it. Rows
+the month doesn't use, the template's "Seed Data" rows included, are deleted.
 
-Rows: data goes into each table's existing rows in order and leftover rows are blanked. A table
-with too few rows is an error, except Transactions, which grows: see finance_numbers.py for why.
+Formulas stay wherever the template has them, as before: Actual Cost is only overwritten by a split
+and Outstanding Balance stays the SUMIFS. Every metal row gets the sheet's two formulas written into
+it, Weight (oz) = CONVERT(Weight (g),"g","ozm") and Current Value = Metal Price × Weight (oz) for
+its own metal, unless the item has a set value (the engagement ring, or any value that isn't
+price × weight).
 
---troy-fix writes Weight (oz) as grams ÷ 31.1035 instead of leaving the template's
-CONVERT(…,"g","ozm"), which uses the 28.35 g avoirdupois ounce and overstates metals by ~9.7%.
+--troy-fix writes Weight (oz) as grams ÷ 31.1035 instead of the CONVERT(…,"g","ozm") formula,
+which uses the 28.35 g avoirdupois ounce and overstates metals by ~9.7%.
+
+The two pivot tables aren't refreshed: Numbers' scripting can't, and Numbers doesn't on open or save.
 """
 
 from __future__ import annotations
 
 import argparse
-import datetime as dt
 import json
+import os
+import shutil
+import subprocess
 import sys
+import tempfile
 
 import finance_numbers as fn
 
+FILL_SCRIPT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "numbers_fill.js")
+
 
 def money(v) -> float:
-    # Numbers stores decimals with float noise (95.00000000000001); a sheet of money wants cents.
+    # Numbers stores decimals with float noise (0.30000000000000004); a sheet of money wants cents.
     return round(float(v), 2)
 
 
-def _fill(table, items: list, write_row, blank_cols: range, grow: bool = False) -> None:
-    targets = fn.body_rows(table)
-    if len(items) > len(targets):
-        if not grow:
-            raise fn.TemplateError(
-                f"'{table.name}' has {len(targets)} rows but this month needs {len(items)}. "
-                f"Add {len(items) - len(targets)} row(s) to that table in the template in Numbers "
-                f"(above its Total row) and run this again."
-            )
-        extra = len(items) - len(targets)
-        table.add_row(num_rows=extra)
-        targets = fn.body_rows(table)
-    all_rows = fn.rows(table)
-    for index, item in zip(targets, items):
-        write_row(index, all_rows[index], item)
-    for index in targets[len(items):]:
-        for col in blank_cols:
-            if not fn.has_formula(all_rows[index][col]):
-                table.write(index, col, "")
+# A table's rows are lists of [column, op, value], columns counted as numbers-parser counts them
+# (the group column Numbers adds to a grouped table doesn't count). numbers_fill.js runs the ops in
+# order, except that the grouping column (Owner, Metal, Card), whose write moves the row into that
+# group, and then the token column always go last: "set" writes a number, "text" writes text as
+# text (Numbers otherwise parses a merchant "76" as a number), "date" writes a yyyy-MM-dd date,
+# "keep" writes unless the cell has a formula, "formula" writes a formula ({ROW} is this row,
+# {COL:k} column k's header, {PRICE:gold} the Metal Price cell).
 
 
-def _set(table, row_index: int, cell, col: int, new_value, keep_formula: bool = True) -> None:
-    """Write unless the cell holds a formula we mean to keep."""
-    if keep_formula and fn.has_formula(cell):
-        return
-    table.write(row_index, col, "" if new_value is None else new_value)
+def _table(name: str, token_col: int, rows: list, width: int, group_col: int | None = None,
+           optional: bool = False) -> dict:
+    # With no rows the table keeps one, emptied: its formulas stay, everything else is cleared.
+    # Token then group column last, like a filled row: clearing the Owner first moved the row, and
+    # the token was then cleared in whichever row had slid into its place, leaving a "zzrow0zz"
+    # row the importer read back as an account.
+    rest = [col for col in range(width) if col not in (token_col, group_col)]
+    blank = [[col, "keep", ""] for col in rest] + [[token_col, "set", ""]]
+    if group_col is not None:
+        blank.append([group_col, "set", ""])
+    return {"name": name, "tokenCol": token_col, "groupCol": group_col, "rows": rows, "blank": blank,
+            "optional": optional}
 
 
-def fill(template: str, document: dict, output: str, troy_fix: bool = False) -> None:
-    doc, tables = fn.open_document(template)
+def build_spec(document: dict, output: str, troy_fix: bool = False) -> dict:
     prices = document.get("metalPrices", {})
+    tables = []
 
     for table_name, category in fn.ACCOUNT_TABLES.items():
-        t = tables[table_name]
-        items = [a for a in document["accounts"] if a["category"] == category]
-
-        def write_account(i, row, a, t=t):
-            t.write(i, 0, fn.display_name(a["institution"], a["name"]))
-            t.write(i, 1, a.get("owner") or fn.JOINT)
-            _set(t, i, row[2], 2, money(a["balance"]))
-
-        _fill(t, items, write_account, range(3))
+        rows = [
+            [[2, "keep", money(a["balance"])],
+             [0, "text", fn.display_name(a["institution"], a["name"])],
+             [1, "text", a.get("owner") or fn.JOINT]]
+            for a in document["accounts"] if a["category"] == category
+        ]
+        tables.append(_table(table_name, 0, rows, 3, group_col=1))
 
     for table_name, category in ((fn.FIXED_TABLE, "fixed"), (fn.LOAN_TABLE, "loan")):
-        t = tables[table_name]
-        items = [a for a in document["accounts"] if a["category"] == category]
-
-        def write_simple(i, row, a, t=t):
-            t.write(i, 0, fn.display_name(a["institution"], a["name"]))
-            _set(t, i, row[1], 1, money(a["balance"]))
-
-        _fill(t, items, write_simple, range(2))
-
-    t = tables[fn.PRICE_TABLE]
-    all_rows = fn.rows(t)
-    for i in fn.body_rows(t):
-        key = fn.text(all_rows[i][0]).strip().lower()
-        if key in prices:
-            t.write(i, 1, money(prices[key]))
+        rows = [
+            [[1, "keep", money(a["balance"])],
+             [0, "text", fn.display_name(a["institution"], a["name"])]]
+            for a in document["accounts"] if a["category"] == category
+        ]
+        tables.append(_table(table_name, 0, rows, 2))
 
     # Card balances are the template's own SUMIFS over Transactions; only a row that lost its
     # formula gets the same sum written as a value.
     spend: dict[str, float] = {}
     for tx in document["transactions"]:
         spend[tx["card"]] = spend.get(tx["card"], 0.0) + float(tx["actualCost"])
-    t = tables[fn.CARD_TABLE]
-
-    def write_card(i, row, c, t=t):
+    rows = []
+    for c in document["cards"]:
         name = fn.display_name(c["institution"], c["name"])
-        t.write(i, 0, name)
-        t.write(i, 1, c.get("owner") or fn.JOINT)
-        t.write(i, 2, money(c["limit"]))
-        t.write(i, 3, money(c["annualFee"]))
-        _set(t, i, row[4], 4, money(spend.get(name, 0.0)))
+        rows.append([
+            [2, "set", money(c["limit"])], [3, "set", money(c["annualFee"])],
+            [4, "keep", money(spend.get(name, 0.0))],
+            [0, "text", name], [1, "text", c.get("owner") or fn.JOINT],
+        ])
+    tables.append(_table(fn.CARD_TABLE, 0, rows, 5, group_col=1))
 
-    _fill(t, document["cards"], write_card, range(5))
-
-    t = tables[fn.METAL_TABLE]
-
-    def write_metal(i, row, m, t=t):
+    rows = []
+    for m in document["metals"]:
         grams = round(float(m["grams"]), 4)
-        metal = m["metal"].capitalize()
-        price = float(prices.get(m["metal"], 0.0))
-        t.write(i, 0, m["name"])
-        t.write(i, 1, metal)
         if troy_fix:
-            t.write(i, 2, round(grams / fn.TROY_OUNCE_GRAMS, 6))
-            t.write(i, 3, grams)
-        elif fn.has_formula(row[3]) and not fn.has_formula(row[2]):
-            # A row the user typed in ounces (Gold - Bar 1): Weight (g) is its formula.
-            t.write(i, 2, round(grams / fn.AVOIRDUPOIS_OUNCE_GRAMS, 6))
+            weights = [[3, "set", grams], [2, "set", round(grams / fn.TROY_OUNCE_GRAMS, 6)]]
         else:
-            _set(t, i, row[2], 2, round(grams / fn.AVOIRDUPOIS_OUNCE_GRAMS, 6))
-            t.write(i, 3, grams)
-        t.write(i, 4, money(m["pricePaidPerOz"]) if m.get("pricePaidPerOz") else "")
-        t.write(i, 5, money(m.get("purchaseValue") or 0.0))
+            # Weight (oz) is the sheet's CONVERT of grams, written into every row: "keep" left it to
+            # the row Numbers copied, and rows added below a row with a typed weight got none, so
+            # every added metal's ounces were a static number. Grams first, so a template row whose
+            # Weight (g) was the CONVERT of ounces is never, even briefly, circular. A row the
+            # user typed in ounces comes back as grams with the ounces worked out: same values.
+            weights = [[3, "set", grams],
+                       [2, "formula", '=CONVERT({COL:3} {ROW},"g","ozm")']]
         if m.get("manualValue") is not None:
-            t.write(i, 6, money(m["manualValue"]))
+            current = [6, "set", money(m["manualValue"])]
         else:
-            ounces = grams / (fn.TROY_OUNCE_GRAMS if troy_fix else fn.AVOIRDUPOIS_OUNCE_GRAMS)
-            _set(t, i, row[6], 6, money(ounces * price))
-        t.write(i, 7, m.get("location") or "")
+            # Written, never kept: a row Numbers adds copies its neighbour's formula, so a gold
+            # row added below a silver one would be priced at the silver price.
+            current = [6, "formula", "=Metal Price::{PRICE:%s}×{COL:2} {ROW}" % m["metal"].lower()]
+        rows.append([
+            *weights,
+            [4, "set", money(m["pricePaidPerOz"]) if m.get("pricePaidPerOz") else ""],
+            [5, "set", money(m.get("purchaseValue") or 0.0)],
+            current,  # while the row's token is still in its Asset cell, for {ROW}
+            [7, "text", m.get("location") or ""],
+            [0, "text", m["name"]],
+            [1, "text", m["metal"].capitalize()],
+        ])
+    tables.append(_table(fn.METAL_TABLE, 0, rows, 8, group_col=1))
 
-    _fill(t, document["metals"], write_metal, range(8))
+    rows = []
+    for tx in document["transactions"]:
+        actual = money(tx["actualCost"])
+        rows.append([
+            [0, "date", tx["date"][:10]],
+            [1, "set", money(tx["cost"])],
+            # Actual Cost is =Cost in the template; keep it unless this one is split.
+            [2, "keep" if actual == money(tx["cost"]) else "set", actual],
+            [4, "text", tx["category"]], [5, "text", tx["expense"]], [6, "text", tx["breakDown"]],
+            [3, "text", tx["merchant"]],
+            [7, "text", tx["card"]],
+        ])
+    # Merchant carries the row's token: Date is a date cell and Card is the grouping column.
+    tables.append(_table(fn.TRANSACTION_TABLE, 3, rows, 8, group_col=7))
 
-    t = tables[fn.TRANSACTION_TABLE]
+    rows = [[[1, "keep", money(b["limit"])], [0, "text", b["category"]]]
+            for b in document.get("budgets", [])]
+    if rows:  # the user's sheet has no Budget table yet; fill one only if the template has it
+        tables.append(_table(fn.BUDGET_TABLE, 0, rows, 2, optional=True))
 
-    def write_tx(i, row, tx, t=t):
-        t.write(i, 0, dt.datetime.fromisoformat(tx["date"]))
-        t.write(i, 1, money(tx["cost"]))
-        # Actual Cost is =Bn in the template; keep it unless this one is split.
-        _set(t, i, row[2], 2, money(tx["actualCost"]),
-             keep_formula=money(tx["actualCost"]) == money(tx["cost"]))
-        t.write(i, 3, tx["merchant"])
-        t.write(i, 4, tx["category"])
-        t.write(i, 5, tx["expense"])
-        t.write(i, 6, tx["breakDown"])
-        t.write(i, 7, tx["card"])
+    return {
+        "path": os.path.realpath(output),
+        "priceTable": {"name": fn.PRICE_TABLE, "keyCol": 0, "valueCol": 1,
+                       "values": {k: money(v) for k, v in prices.items()}},
+        "tables": tables,
+    }
 
-    _fill(t, document["transactions"], write_tx, range(8), grow=True)
 
-    if fn.BUDGET_TABLE in tables and document.get("budgets"):
-        t = tables[fn.BUDGET_TABLE]
+class NumbersError(Exception):
+    """Numbers couldn't be driven: not installed, not allowed, or it refused an edit."""
 
-        def write_budget(i, row, b, t=t):
-            t.write(i, 0, b["category"])
-            _set(t, i, row[1], 1, money(b["limit"]))
 
-        _fill(t, document["budgets"], write_budget, range(2))
+NOT_INSTALLED = "Numbers isn't installed. Get it from the App Store, then run this again."
+# A month of ~120 transactions takes one to two minutes; this is only for a Numbers that hung.
+FILL_TIMEOUT = 20 * 60
 
-    doc.save(output)
+PIVOT_NOTE = ("note: refresh the 'Credit Card' and 'Personal Items Pivot' pivot tables (select each, "
+              "Organize sidebar › Refresh) and save; until then they show the template's seed rows")
+
+
+def _explain(stderr: str) -> str:
+    if "-1743" in stderr or "Not authorized" in stderr:
+        return ("macOS didn't let this script control Numbers. Allow it in System Settings › "
+                "Privacy & Security › Automation (under your terminal app, turn on Numbers), "
+                "then run this again.")
+    # JXA says "Application can't be found. (-2700)", with either apostrophe; open -b says
+    # LSCopyApplicationURLsForBundleIdentifier failed. Matching "find" caught neither.
+    if "-2700" in stderr and "be found" in stderr or "LSCopyApplicationURLs" in stderr or "-10814" in stderr:
+        return NOT_INSTALLED
+    return stderr.strip().removeprefix("execution error: ").strip()
+
+
+def numbers_installed() -> bool:
+    # Asks Launch Services, which neither launches Numbers nor needs Automation permission.
+    check = ("ObjC.import('AppKit'); $.NSWorkspace.sharedWorkspace"
+             ".URLForApplicationWithBundleIdentifier('com.apple.Numbers').isNil()")
+    result = subprocess.run(["osascript", "-l", "JavaScript", "-e", check], capture_output=True, text=True)
+    return result.stdout.strip() != "true"
+
+
+def run_numbers(spec: dict) -> list[dict]:
+    if sys.platform != "darwin":
+        raise NumbersError("the export runs Numbers, so it needs a Mac")
+    if not numbers_installed():
+        raise NumbersError(NOT_INSTALLED)
+    fd, spec_path = tempfile.mkstemp(suffix=".json")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(spec, f, ensure_ascii=False)
+        result = subprocess.run(["osascript", "-l", "JavaScript", FILL_SCRIPT, spec_path],
+                                capture_output=True, text=True, timeout=FILL_TIMEOUT)
+    except subprocess.TimeoutExpired:
+        _close_without_saving(spec["path"])
+        raise NumbersError(f"Numbers didn't finish within {FILL_TIMEOUT // 60} minutes; "
+                           "quit it and run this again") from None
+    finally:
+        os.remove(spec_path)
+    if result.returncode != 0:
+        _close_without_saving(spec["path"])
+        raise NumbersError(_explain(result.stderr))
+    return json.loads(result.stdout)
+
+
+CLOSE_JS = """
+function run(argv) {
+  const Numbers = Application("com.apple.Numbers");
+  Numbers.documents().forEach(d => {
+    try { if (d.file().toString() === argv[0]) d.close({ saving: "no" }); } catch (e) {}
+  });
+}
+"""
+
+
+def _close_without_saving(path: str) -> None:
+    # numbers_fill.js closes its document even when it fails, unless Numbers stopped answering
+    # (a timed-out Apple event); then try once more, so a half-filled copy isn't left open.
+    # Best effort, never raising: a TimeoutExpired here once replaced the NumbersError that
+    # explained the failure with a traceback.
+    if not subprocess.run(["pgrep", "-x", "Numbers"], capture_output=True).stdout:
+        return
+    try:
+        subprocess.run(["osascript", "-l", "JavaScript", "-e", CLOSE_JS, path],
+                       capture_output=True, text=True, timeout=180)
+    except subprocess.TimeoutExpired:
+        pass
+
+
+def fill(template: str, document: dict, output: str, troy_fix: bool = False) -> list[dict]:
+    """Copy the template to output and fill it in Numbers. Returns what went into each table."""
+    if os.path.realpath(template) == os.path.realpath(output):
+        raise fn.TemplateError("the output would overwrite the template; choose another -o")
+    spec = build_spec(document, output, troy_fix=troy_fix)
+    shutil.copyfile(template, output)
+    try:
+        report = run_numbers(spec)
+    except BaseException:
+        os.remove(output)  # a half-filled copy is worse than none
+        raise
+    for r in report:
+        if r.get("missing"):
+            print(f"note: the template has no '{r['table']}' table, so it was left out", file=sys.stderr)
+    return report
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -176,11 +269,13 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     output = args.output or f"Finance {document['month']}.numbers"
     try:
-        fill(args.template, document, output, troy_fix=args.troy_fix)
-    except fn.TemplateError as error:
+        report = fill(args.template, document, output, troy_fix=args.troy_fix)
+    except (fn.TemplateError, NumbersError) as error:
         print(f"error: {error}", file=sys.stderr)
         return 1
-    print(f"wrote {output}")
+    rows = ", ".join(f"{r['table']} {r['written']}" for r in report if not r.get("missing"))
+    print(f"wrote {output} ({rows})")
+    print(PIVOT_NOTE, file=sys.stderr)
     return 0
 
 
