@@ -14,16 +14,27 @@ concurrency:
 jobs:
   test:
     name: Build and test
-    runs-on: macos-latest
+    runs-on: xcode-27
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Use the newest installed Xcode
+      - name: Use Xcode 27.0
+        # Pinned, not "newest installed": the xcode-27 image also carries 27.1
+        # and a 27.2 beta, and App Store Connect rejects a build made with a
+        # beta Xcode. Moved off macos-latest (Xcode 26.6) after its compiler
+        # crashed in IRGen on SharedChangeNotificationsSection.swift while the
+        # app is developed on Xcode 27. The image is a GitHub preview, so jobs
+        # can queue; falling back is runs-on: macos-latest plus this step
+        # picking the newest Xcode again.
         run: |
-          latest=$(ls -d /Applications/Xcode*.app | sort -V | tail -1)
-          echo "Selecting $latest"
-          sudo xcode-select -s "$latest"
+          xcode=/Applications/Xcode_27.0.app
+          if [ ! -d "$xcode" ]; then
+            echo "$xcode is not on this runner. Installed:"
+            ls -d /Applications/Xcode*.app
+            exit 1
+          fi
+          sudo xcode-select -s "$xcode"
           xcodebuild -version
 
       - name: Install XcodeGen

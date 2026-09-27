@@ -6,8 +6,9 @@ behind one home screen. SwiftUI + SwiftData + CloudKit, live on TestFlight. `REA
 credentials, the CloudKit Console ritual and how to run tests — read it rather than asking here. This
 file is only the things that will cost you an hour if you don't know them.
 
-Repo slug `bhavik3jain/bhavik-ios`. Needs the iOS 26 SDK to compile at all (Xcode 26 or newer; CI selects the
-newest installed Xcode at run time). Core depends on nothing, the eight trackers depend only on Core,
+Repo slug `bhavik3jain/bhavik-ios`. Needs the iOS 26 SDK to compile at all (Xcode 26 or newer; all three workflows
+run on GitHub's `xcode-27` preview image, pinned to Xcode 27.0 — not the newest installed, which there is a
+27.2 beta that App Store Connect rejects). Core depends on nothing, the eight trackers depend only on Core,
 no feature package imports another, zero remote dependencies — keep it that way. Each module's
 namespace is a `<Module>TrackerModule` caseless enum (`models`, `accent`, `symbolName`, `sections`,
 `rootView()`).
