@@ -6,29 +6,21 @@ struct TVRootView: View {
     @Environment(\.modelContext) private var modelContext
     @SyncedSecret(TVTrackerModule.apiKeyDefaultsKey) private var apiKey
 
-    @State private var selection = "watching"
+    /// The Mac sidebar's own selection when it picks the section; nil on the
+    /// phone, where the tab bar's selection below does.
+    var section: Binding<String>?
+    @State private var ownSection = TVTrackerModule.sections[0].id
 
     var body: some View {
-        TabView(selection: $selection) {
-            Tab("Home", systemImage: "house", value: ModuleTab.home) {
-                Color.clear
-            }
-            Tab("Watching", systemImage: "tv", value: "watching") {
-                WatchingListView()
-            }
-            Tab("Movies", systemImage: "film", value: "movies") {
-                MoviesListView()
-            }
-            Tab("Up Next", systemImage: "calendar", value: "upnext") {
-                ScheduleView()
-            }
-            Tab("Settings", systemImage: "gear", value: "settings") {
-                NavigationStack { TVSettingsView() }
+        ModuleTabView(selection: section ?? $ownSection, sections: TVTrackerModule.sections) { section in
+            switch section.id {
+            case "movies": MoviesListView()
+            case "upnext": ScheduleView()
+            case "settings": NavigationStack { TVSettingsView() }
+            default: WatchingListView()
             }
         }
         .tint(TVTrackerModule.accent.color)
-        .minimizesTabBarOnScroll()
-        .dismissesOnHomeTab($selection, restoringTo: "watching")
         #if DEBUG
         .task {
             guard DebugSeed.isRequested else { return }

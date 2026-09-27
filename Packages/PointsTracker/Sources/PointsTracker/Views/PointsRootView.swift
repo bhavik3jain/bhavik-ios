@@ -7,23 +7,19 @@ struct PointsRootView: View {
     @Environment(\.managedObjectContext) private var context
     @Environment(\.pointsPersistentContainer) private var container
 
-    @State private var selection = "accounts"
+    /// The Mac sidebar's own selection when it picks the section; nil on the
+    /// phone, where the tab bar's selection below does.
+    var section: Binding<String>?
+    @State private var ownSection = PointsTrackerModule.sections[0].id
 
     var body: some View {
-        TabView(selection: $selection) {
-            Tab("Home", systemImage: "house", value: ModuleTab.home) {
-                Color.clear
-            }
-            Tab("Accounts", systemImage: "star.circle", value: "accounts") {
-                AccountsListView()
-            }
-            Tab("People", systemImage: "person.2", value: "people") {
-                OwnersListView()
+        ModuleTabView(selection: section ?? $ownSection, sections: PointsTrackerModule.sections) { section in
+            switch section.id {
+            case "people": OwnersListView()
+            default: AccountsListView()
             }
         }
         .tint(PointsTrackerModule.accent.color)
-        .minimizesTabBarOnScroll()
-        .dismissesOnHomeTab($selection, restoringTo: "accounts")
         #if DEBUG
         .task {
             guard PointsDebugSeed.isRequested else { return }

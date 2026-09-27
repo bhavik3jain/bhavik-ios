@@ -11,6 +11,7 @@ struct VehicleLogView: View {
 
     @Environment(\.fuelPersistentContainer) private var container
     @Environment(\.presentShareSheet) private var presentShareSheet
+    @Environment(\.moduleLayout) private var layout
 
     // Sharing status is a cheap, synchronous CloudKit cache lookup (see
     // `SharingStatusResolver`'s own doc comment), not something worth a round
@@ -45,7 +46,7 @@ struct VehicleLogView: View {
                     perform: perform
                 )
 
-                if let label = sharingStatus.vehicleBadgeLabel {
+                if layout == .tabs, let label = sharingStatus.vehicleBadgeLabel {
                     Label(label, systemImage: "person.2.fill")
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -96,6 +97,10 @@ struct VehicleLogView: View {
             }
             .refreshesFromCloud()
             .navigationTitle(summary?.name ?? "Fuel")
+            // The Mac says who it's shared with under the toolbar's title
+            // rather than in a line of its own above the list.
+            .moduleSubtitle(sharingStatus.vehicleBadgeLabel)
+            .vehicleSwitcherToolbar(summaries: summaries, selectedID: summary?.id, perform: perform)
             .toolbar {
                 if let vehicle {
                     ToolbarItem(placement: .primaryAction) {

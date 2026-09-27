@@ -13,20 +13,15 @@ struct ExploreRootView: View {
     @Environment(\.modelContext) private var legacyContext
     @Environment(\.explorePersistentContainer) private var container
 
-    @State private var selection = "guides"
+    @State private var selection = ExploreTrackerModule.sections[0].id
 
     var body: some View {
-        TabView(selection: $selection) {
-            Tab("Home", systemImage: "house", value: ModuleTab.home) {
-                Color.clear
-            }
-            Tab("Guides", systemImage: "map", value: "guides") {
-                GuideListView()
-            }
+        // One section, so the Mac sidebar never nests anything under Explore
+        // and nobody outside needs to hold the selection.
+        ModuleTabView(selection: $selection, sections: ExploreTrackerModule.sections) { _ in
+            GuideListView()
         }
         .tint(ExploreTrackerModule.accent.color)
-        .minimizesTabBarOnScroll()
-        .dismissesOnHomeTab($selection, restoringTo: "guides")
         .task {
             let pins = GuidePins(context: context, container: container)
             // Both steps only look at this device's store, so both wait until
