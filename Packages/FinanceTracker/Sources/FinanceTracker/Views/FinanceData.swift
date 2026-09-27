@@ -10,6 +10,7 @@ import SwiftUI
 @MainActor
 struct FinanceFetches: DynamicProperty {
     @Environment(\.financePersistentContainer) private var container
+    @Environment(\.financeCanCreateHousehold) private var canCreateHousehold
 
     @FetchRequest(sortDescriptors: [NSSortDescriptor(keyPath: \SharedFinanceHousehold.createdAt, ascending: true)])
     private var households: FetchedResults<SharedFinanceHousehold>
@@ -36,9 +37,13 @@ struct FinanceFetches: DynamicProperty {
             household: household,
             owners: owners.filter { $0.household == household }.sorted(by: SharedFinanceOwner.displayOrder),
             accounts: accounts.filter { $0.household == household }.sorted(by: SharedFinanceAccount.displayOrder),
-            months: months.filter { $0.household == household && $0.period != nil },
+            // One per period until `FinanceFold` has folded a duplicate.
+            months: FinanceFold.distinctMonths(months.filter { $0.household == household && $0.period != nil }),
             metals: metals.filter { $0.household == household }.sorted(by: SharedFinanceMetalItem.displayOrder),
             transactions: transactions.filter { $0.household == household },
+            // With no household yet, adding anything would create one —
+            // which waits for iCloud. See `financeCanCreateHousehold`.
+            canEdit: household.map { canEdit($0, in: container) } ?? canCreateHousehold,
             // Read so a balance or budget edit counts as a change to this
             // view; the figures themselves come through the months.
             revision: balances.count &+ budgets.count
@@ -57,7 +62,13 @@ struct FinanceSnapshot {
     let metals: [SharedFinanceMetalItem]
     /// Newest first.
     let transactions: [SharedFinanceTransaction]
+    /// Whether the reader can add to and change what's shown.
+    let canEdit: Bool
     let revision: Int
+
+    /// Nothing here yet, and nothing can be added until iCloud has had its
+    /// chance to bring an existing household in.
+    var isWaitingForICloud: Bool { household == nil && !canEdit }
 
     var cards: [SharedFinanceAccount] { accounts.filter { $0.category == .card } }
     var latestMonth: SharedFinanceMonth? { months.last }

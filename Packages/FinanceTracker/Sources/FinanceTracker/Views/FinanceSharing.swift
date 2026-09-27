@@ -28,6 +28,16 @@ func canEdit(_ object: NSManagedObject?, in container: NSPersistentCloudKitConta
     return SharingStatusResolver.canEdit(object, in: container)
 }
 
+extension EnvironmentValues {
+    /// False while `FinanceRootView` waits for this launch's first iCloud
+    /// import. Until then nothing may create a household: a device that
+    /// added something before the first sync arrived minted a second private
+    /// household, and the resolver hid it — with what was typed into it —
+    /// behind the older one. Only matters while there's no household at all;
+    /// `FinanceFold.tidy` folds one made after a timeout anyway.
+    @Entry var financeCanCreateHousehold = true
+}
+
 /// Opens the system sharing UI for this person's own household — creating
 /// (and saving) it first if nothing has been added yet, since a CKShare needs
 /// a saved record to hang off. Deliberately not the household new things go
@@ -37,6 +47,7 @@ struct ShareHouseholdButton: View {
     @Environment(\.managedObjectContext) private var context
     @Environment(\.financePersistentContainer) private var container
     @Environment(\.presentShareSheet) private var presentShareSheet
+    @Environment(\.financeCanCreateHousehold) private var canCreateHousehold
 
     var body: some View {
         Button {
@@ -47,6 +58,7 @@ struct ShareHouseholdButton: View {
         } label: {
             Label("Share with Partner", systemImage: "person.crop.circle.badge.plus")
         }
-        .disabled(container == nil)
+        // `own` may create the household, so it waits for iCloud too.
+        .disabled(container == nil || !canCreateHousehold)
     }
 }

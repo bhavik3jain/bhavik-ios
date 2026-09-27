@@ -27,7 +27,7 @@ struct HoldingsView: View {
 
     var body: some View {
         let snapshot = data.snapshot
-        let isEditable = canEdit(snapshot.household, in: container)
+        let isEditable = snapshot.canEdit
         NavigationStack {
             List {
                 Section {

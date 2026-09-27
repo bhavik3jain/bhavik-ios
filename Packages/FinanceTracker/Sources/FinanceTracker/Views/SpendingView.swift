@@ -27,7 +27,7 @@ struct SpendingView: View {
 
     var body: some View {
         let snapshot = data.snapshot
-        let isEditable = canEdit(snapshot.household, in: container)
+        let isEditable = snapshot.canEdit
         let period = chosenPeriod ?? snapshot.latestMonth?.period ?? YearMonth(containing: .now)
         NavigationStack {
             List {

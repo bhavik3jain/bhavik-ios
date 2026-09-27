@@ -36,8 +36,14 @@ public extension SharedFinanceHousehold {
 
     var latestMonth: SharedFinanceMonth? { sortedMonths.last }
 
+    /// The month for `period` — the one `FinanceFold` keeps if sync left two.
+    /// Picking any from the unordered set let Spending's budgets, rollover
+    /// and the JSON import work on the duplicate the fold then deleted, and
+    /// show different budgets from the month the Months list shows.
     func month(for period: YearMonth) -> SharedFinanceMonth? {
-        (months ?? []).first { $0.yearMonth == period.rawValue }
+        (months ?? [])
+            .filter { !$0.isDeleted && $0.yearMonth == period.rawValue }
+            .min(by: FinanceFold.Tiebreak.local.months)
     }
 
     var sortedMetals: [SharedFinanceMetalItem] {
@@ -145,10 +151,12 @@ public extension SharedFinanceMonth {
     }
 
     /// The household's month before this one, if there is one.
+    /// Among duplicates of that period, the one `FinanceFold` keeps — as
+    /// `SharedFinanceHousehold.month(for:)` picks.
     var previousMonth: SharedFinanceMonth? {
-        (household?.months ?? [])
-            .filter { $0.yearMonth < yearMonth && $0.period != nil }
-            .max { $0.yearMonth < $1.yearMonth }
+        FinanceFold.distinctMonths(
+            (household?.months ?? []).filter { !$0.isDeleted && $0.yearMonth < yearMonth && $0.period != nil }
+        ).last
     }
 
     func balance(for account: SharedFinanceAccount) -> SharedFinanceBalance? {

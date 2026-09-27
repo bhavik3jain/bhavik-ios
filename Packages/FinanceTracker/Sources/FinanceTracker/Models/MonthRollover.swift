@@ -24,7 +24,8 @@ public enum MonthRollover {
     /// Makes the month after `previous`, copying every open non-card
     /// account's balance (marked not yet edited), both metal prices and every
     /// budget. Returns the existing month instead if it's already there — a
-    /// second tap, or the partner got there first.
+    /// second tap, or the partner got there first. Two devices doing this
+    /// offline still make one each; `FinanceFold` folds them once they meet.
     @discardableResult
     public static func startMonth(after previous: SharedFinanceMonth) -> SharedFinanceMonth? {
         guard let household = previous.household, let period = previous.period else { return nil }

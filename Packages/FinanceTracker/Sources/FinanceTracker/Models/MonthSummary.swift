@@ -126,8 +126,12 @@ public struct FinanceHistory {
     /// Oldest first.
     public let points: [Point]
 
+    /// A month duplicated by two devices counts once — the one
+    /// `FinanceFold` keeps. Two rows of one period gave the Months list
+    /// duplicate IDs until the fold caught up (and in a view-only share, it
+    /// never can).
     public init(months: [SharedFinanceMonth], filter: OwnerFilter = .all) {
-        points = months
+        points = FinanceFold.distinctMonths(months)
             .compactMap { month in month.period.map { (period: $0, month: month) } }
             .sorted { $0.period < $1.period }
             .map { Point(period: $0.period, month: $0.month, summary: MonthSummary(month: $0.month, filter: filter)) }
@@ -158,16 +162,22 @@ public struct FinanceHistory {
 /// The home screen's line and peek for Finance.
 public enum FinanceHome {
     /// "Net worth $557,506" for the latest month, or "No months yet".
-    public static func homeDetail(for months: [SharedFinanceMonth]) -> String {
-        guard let latest = latestMonth(months) else { return "No months yet" }
+    @MainActor
+    public static func homeDetail(for months: [SharedFinanceMonth], container: NSPersistentCloudKitContainer?) -> String {
+        guard let latest = latestMonth(months, container: container) else { return "No months yet" }
         return "Net worth \(FinanceFormat.money(MonthSummary(month: latest).netWorth))"
     }
 
-    /// The latest month across whatever was fetched. The app shell fetches
-    /// every household's months; the newest one is the one worth showing.
-    public static func latestMonth(_ months: [SharedFinanceMonth]) -> SharedFinanceMonth? {
-        months
-            .filter { $0.period != nil }
-            .max { $0.yearMonth < $1.yearMonth }
+    /// The latest month of the household the module itself shows
+    /// (`FinanceHouseholdResolver.forDisplay`). The app shell fetches every
+    /// household's months, and taking the newest across all of them put this
+    /// person's own household on the home screen while the module showed the
+    /// partner's share — or a duplicate household the module had hidden.
+    @MainActor
+    public static func latestMonth(_ months: [SharedFinanceMonth], container: NSPersistentCloudKitContainer?) -> SharedFinanceMonth? {
+        guard let context = months.first?.managedObjectContext else { return nil }
+        let households = (try? context.fetch(SharedFinanceHousehold.fetchRequest())) ?? []
+        let shown = FinanceHouseholdResolver.forDisplay(among: households, container: container)
+        return FinanceFold.distinctMonths(months.filter { $0.household == shown && $0.period != nil }).last
     }
 }

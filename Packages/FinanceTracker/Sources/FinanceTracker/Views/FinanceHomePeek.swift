@@ -1,18 +1,21 @@
 import Core
+import CoreData
 import SwiftUI
 
 public extension FinanceTrackerModule {
     /// What long-pressing Finance on the home screen shows: the latest net
     /// worth, how far through typing in its month we are, and what's gone on
-    /// the cards.
+    /// the cards. `container` picks the household the module shows — see
+    /// `FinanceHome.latestMonth`.
     @MainActor
-    static func homePeek(months: [SharedFinanceMonth]) -> some View {
-        FinanceHomePeek(latest: FinanceHome.latestMonth(months))
+    static func homePeek(months: [SharedFinanceMonth], container: NSPersistentCloudKitContainer?) -> some View {
+        FinanceHomePeek(latest: FinanceHome.latestMonth(months, container: container))
     }
 
     /// The home screen's one-line summary: "Net worth $557,506".
-    static func homeDetail(months: [SharedFinanceMonth]) -> String {
-        FinanceHome.homeDetail(for: months)
+    @MainActor
+    static func homeDetail(months: [SharedFinanceMonth], container: NSPersistentCloudKitContainer?) -> String {
+        FinanceHome.homeDetail(for: months, container: container)
     }
 }
 
