@@ -120,3 +120,12 @@ private let rome = TripDates(start: date(6, 6), end: date(6, 14), calendar: cale
     #expect(rome.moment(day: 2, time: typed) == date(6, 8, 20, 0))
     #expect(rome.minuteOfDay(typed) == 20 * 60)
 }
+
+@Test func movingTheFirstDayKeepsTheTripsLength() {
+    let rome = TripDates(start: day(6, 6), end: day(6, 14))
+    let later = rome.movingStart(to: day(6, 9, 15))
+    #expect(later.start == day(6, 9, 0))
+    #expect(later.end == day(6, 17, 0))
+    #expect(later.dayCount == 9)
+    #expect(rome.movingStart(to: day(5, 30)).end == day(6, 7, 0))
+}

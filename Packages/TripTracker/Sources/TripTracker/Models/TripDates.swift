@@ -54,6 +54,15 @@ public struct TripDates: Sendable, Equatable {
         calendar.dateComponents([.day], from: start, to: calendar.startOfDay(for: date)).day ?? 0
     }
 
+    /// The same number of days starting on `newStart` — what moving a trip's
+    /// first day does to its last. Only clamping the last day forward made
+    /// moving a nine-day trip three days later quietly cut it to six, and
+    /// strand the end of its plan.
+    public func movingStart(to newStart: Date) -> TripDates {
+        let newEnd = calendar.date(byAdding: .day, value: dayCount - 1, to: calendar.startOfDay(for: newStart)) ?? newStart
+        return TripDates(start: newStart, end: newEnd, calendar: calendar)
+    }
+
     /// The day `date` falls on, or nil outside the trip.
     public func dayIndex(of date: Date) -> Int? {
         let offset = offset(of: date)

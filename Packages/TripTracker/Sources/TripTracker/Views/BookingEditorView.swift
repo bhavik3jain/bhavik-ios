@@ -80,7 +80,7 @@ struct BookingEditorView: View {
                         .font(.body.monospaced())
                 }
 
-                Section("When") {
+                Section {
                     Toggle(words.start, isOn: $hasStart.animation())
                     if hasStart {
                         DatePicker(words.start, selection: $startsAt)
@@ -88,8 +88,20 @@ struct BookingEditorView: View {
                     }
                     Toggle(words.end, isOn: $hasEnd.animation())
                     if hasEnd {
-                        DatePicker(words.end, selection: $endsAt)
+                        DatePicker(words.end, selection: $endsAt, in: (hasStart ? startsAt : .distantPast)...)
                             .labelsHidden()
+                    }
+                } header: {
+                    Text("When")
+                } footer: {
+                    // A booking has real dates and no day of its own; this says
+                    // which day of the trip they fall on, the way the item and
+                    // flight editors' Day rows do.
+                    if hasStart || hasEnd {
+                        VStack(alignment: .leading) {
+                            if hasStart { Text("\(words.start): \(DayChoice.label(for: startsAt, in: trip.dates))") }
+                            if hasEnd { Text("\(words.end): \(DayChoice.label(for: endsAt, in: trip.dates))") }
+                        }
                     }
                 }
 
@@ -126,6 +138,14 @@ struct BookingEditorView: View {
                         .fontWeight(.semibold)
                         .disabled(!canSave)
                 }
+            }
+            .onChange(of: startsAt) { old, new in
+                // Keep the stay's length when check-in moves, as the flight
+                // editor does for a departure: the usual edit is moving the
+                // whole booking, and a check-out left behind could end up
+                // before its own check-in.
+                guard hasEnd else { return }
+                endsAt = endsAt.addingTimeInterval(new.timeIntervalSince(old))
             }
             .confirmationDialog("Delete \(title)?", isPresented: $confirmingDelete, titleVisibility: .visible) {
                 Button("Delete", role: .destructive) {
