@@ -48,11 +48,16 @@ struct TripOverviewCard: View {
             open: { open(current?.objectID ?? groups.upcoming.first?.objectID, .plan) }
         ) {
             if let current {
-                HStack(alignment: .top, spacing: 18) {
-                    today(current)
-                        .frame(maxWidth: .infinity, alignment: .topLeading)
-                    NearbyTile(trip: current, now: now) { open(current.objectID, .nearby) }
-                        .frame(width: 230)
+                // A share of the card rather than a fixed 230pt: near the
+                // window's minimum width the fixed tile left today's plan
+                // about 100pt, and its stop titles truncated to nothing.
+                GeometryReader { proxy in
+                    HStack(alignment: .top, spacing: 18) {
+                        today(current)
+                            .frame(maxWidth: .infinity, alignment: .topLeading)
+                        NearbyTile(trip: current, now: now) { open(current.objectID, .nearby) }
+                            .frame(width: proxy.size.width * 0.38)
+                    }
                 }
             } else if !groups.upcoming.isEmpty {
                 upcoming
@@ -68,7 +73,11 @@ struct TripOverviewCard: View {
         let plan = DayPlan(trip: trip, dayIndex: trip.dates.offset(of: now))
         let next = plan.upNext(asOf: now)
         return VStack(alignment: .leading, spacing: 7) {
-            caption("Today · \(now.formatted(.dateTime.weekday(.abbreviated).day().month(.wide)))")
+            HStack(alignment: .top) {
+                caption("Today · \(now.formatted(.dateTime.weekday(.abbreviated).day().month(.wide)))")
+                Spacer(minLength: 8)
+                TodayWeather(trip: trip, now: now)
+            }
             if plan.isEmpty {
                 Text("Nothing planned for today.")
                     .font(.system(size: 13))
@@ -135,6 +144,42 @@ struct TripOverviewCard: View {
             .font(.system(size: 11, weight: .semibold))
             .tracking(0.3)
             .foregroundStyle(.secondary)
+    }
+}
+
+/// "83° / 64° · Rome" beside today's caption, with Apple's attribution under
+/// it as WeatherKit requires. Nothing at all when there's no forecast:
+/// the live provider throws until the capability is on for the app ID, and
+/// the card has to be complete without it — see `TripWeatherLoader`.
+private struct TodayWeather: View {
+    let trip: SharedTrip
+    let now: Date
+
+    @State private var weather: [DayWeather] = []
+
+    var body: some View {
+        let dates = trip.dates
+        let today = TripForecast.byDay(weather, dates: dates, asOf: now)[safe: dates.offset(of: now)] ?? nil
+        Group {
+            if let today {
+                VStack(alignment: .trailing, spacing: 2) {
+                    HStack(spacing: 5) {
+                        Image(systemName: today.symbolName)
+                            .symbolRenderingMode(.multicolor)
+                        Text([
+                            "\(WeatherFormat.temperature(today.highCelsius)) / \(WeatherFormat.temperature(today.lowCelsius))",
+                            trip.destination,
+                        ].filter { !$0.isEmpty }.joined(separator: " · "))
+                        .monospacedDigit()
+                        .lineLimit(1)
+                    }
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    WeatherAttributionView()
+                }
+            }
+        }
+        .loadsWeather(for: trip, into: $weather)
     }
 }
 

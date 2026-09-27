@@ -212,17 +212,22 @@ struct HomeView: View {
     /// the module's first tab.
     private var macBody: some View {
         NavigationSplitView {
-            List(selection: sidebarSelection) {
-                Label("Overview", systemImage: "square.grid.2x2")
-                    .tag(MacSidebarItem.overview)
+            // Re-read once a minute, as the sync footer is: "Day 3" and "in 12
+            // days" were read from `.now` only when a query changed, so a
+            // window left open overnight still said yesterday's.
+            TimelineView(.everyMinute) { context in
+                List(selection: sidebarSelection) {
+                    Label("Overview", systemImage: "square.grid.2x2")
+                        .tag(MacSidebarItem.overview)
 
-                Section("Trackers") {
-                    ForEach(layoutStore.visibleModules) { module in
-                        MacSidebarRow(accent: module.accent, icon: module.icon, detail: sidebarDetail(for: module))
-                            .tag(MacSidebarItem.tracker(module))
-                            .contextMenu { contextMenuItems(for: module) }
-                        if module == selectedModule {
-                            nestedRows(for: module)
+                    Section("Trackers") {
+                        ForEach(layoutStore.visibleModules) { module in
+                            MacSidebarRow(accent: module.accent, icon: module.icon, detail: sidebarDetail(for: module, asOf: context.date))
+                                .tag(MacSidebarItem.tracker(module))
+                                .contextMenu { contextMenuItems(for: module) }
+                            if module == selectedModule {
+                                nestedRows(for: module, asOf: context.date)
+                            }
                         }
                     }
                 }
@@ -238,7 +243,7 @@ struct HomeView: View {
                 moduleContent(
                     for: selectedModule,
                     section: sectionBinding(for: selectedModule),
-                    trip: $openTripID,
+                    trip: openTripBinding,
                     tripSection: $tripSection
                 )
                 .environment(\.moduleLayout, .sidebar)
@@ -251,8 +256,12 @@ struct HomeView: View {
                 // across its sections, as it does across its tabs.
                 .id(selectedModule)
             } else {
-                MacOverview(modules: layoutStore.visibleModules) { module in
-                    overviewCard(for: module)
+                MacOverview(
+                    modules: layoutStore.visibleModules,
+                    syncMonitor: syncMonitor,
+                    open: { selectedModule = $0 }
+                ) { module, now in
+                    overviewCard(for: module, asOf: now)
                 }
             }
         }
@@ -273,6 +282,32 @@ struct HomeView: View {
         // and no way back to it. Overview is always there to fall back to.
         .onChange(of: layoutStore.visibleModules) { _, visible in
             if let selectedModule, !visible.contains(selectedModule) { self.selectedModule = nil }
+        }
+        // A trip deleted or archived on another device dropped the detail pane
+        // back to the list, but the selection still named it — so neither
+        // Trips nor any trip showed as selected.
+        .onChange(of: tripResults.map(\.objectID)) { _, ids in
+            if let openTripID, !ids.contains(openTripID) { self.openTripID = nil }
+        }
+        // A past trip opened from the list, or open when "Past trips" was
+        // folded, was selected inside a collapsed disclosure: nothing in the
+        // sidebar looked selected.
+        .onChange(of: openTripID, initial: true) { _, id in
+            guard let id, TripTrackerModule.sidebarTrips(trips).past.contains(where: { $0.objectID == id }) else { return }
+            showsPastTrips = true
+        }
+    }
+
+    /// The open trip, as the trip list inside Trips writes it. A different
+    /// trip opens on Plan, as it does from the sidebar — the list used to
+    /// write `openTripID` directly, so trip B opened on whatever face trip A
+    /// was left on.
+    private var openTripBinding: Binding<NSManagedObjectID?> {
+        Binding {
+            openTripID
+        } set: { id in
+            if id != openTripID { tripSection = .plan }
+            openTripID = id
         }
     }
 
@@ -320,26 +355,29 @@ struct HomeView: View {
     /// Under the open tracker: its sections when it has more than one, or —
     /// for Trips, whose one section is the list — the trips themselves.
     @ViewBuilder
-    private func nestedRows(for module: SelectedModule) -> some View {
+    private func nestedRows(for module: SelectedModule, asOf now: Date) -> some View {
         if module == .trips {
-            let groups = TripTrackerModule.sidebarTrips(trips)
+            let groups = TripTrackerModule.sidebarTrips(trips, asOf: now)
             ForEach(groups.current) { trip in
-                MacNestedRow(title: trip.title, systemImage: "suitcase")
-                    .tag(MacSidebarItem.trip(trip.objectID))
+                MacNestedRow(
+                    title: trip.title,
+                    dot: groups.underWay.contains(trip.objectID) ? module.accent.color : nil
+                )
+                .tag(MacSidebarItem.trip(trip.objectID))
             }
             if !groups.past.isEmpty {
                 DisclosureGroup(isExpanded: $showsPastTrips) {
                     ForEach(groups.past) { trip in
-                        MacNestedRow(title: trip.title, systemImage: "clock.arrow.circlepath")
+                        MacNestedRow(title: trip.title)
                             .tag(MacSidebarItem.trip(trip.objectID))
                     }
                 } label: {
-                    MacNestedRow(title: "Past trips", systemImage: "archivebox")
+                    MacNestedRow(title: "Past trips")
                 }
             }
         } else if module.sections.count > 1 {
             ForEach(module.sections) { section in
-                MacNestedRow(title: section.title, systemImage: section.systemImage)
+                MacNestedRow(title: section.title)
                     .tag(MacSidebarItem.section(module, section.id))
             }
         }
@@ -348,16 +386,16 @@ struct HomeView: View {
     /// The short figure at the trailing edge of a sidebar row — "Day 3", "36",
     /// "30.9" — or nothing when there's no single number worth showing. The
     /// Overview has the sentences.
-    private func sidebarDetail(for module: SelectedModule) -> String? {
+    private func sidebarDetail(for module: SelectedModule, asOf now: Date) -> String? {
         switch module {
-        case .trips: return TripTrackerModule.sidebarDetail(trips: trips)
+        case .trips: return TripTrackerModule.sidebarDetail(trips: trips, asOf: now)
         case .explore:
             let places = guides.reduce(0) { $0 + GuideSummary.summarize($1).placeCount }
             return places > 0 ? String(places) : nil
         case .fuel: return FuelTrackerModule.sidebarDetail(vehicles: vehicles)
         case .finance: return FinanceTrackerModule.sidebarDetail(months: financeMonths, container: financePersistentContainer)
         case .tv:
-            let ready = Schedule.readyToWatch(shows: shows).count
+            let ready = Schedule.readyToWatch(shows: shows, asOf: now).count
             return ready > 0 ? String(ready) : nil
         case .parcels:
             let onTheWay = parcels.count { !$0.status.isSettled }
@@ -369,11 +407,11 @@ struct HomeView: View {
     /// Each tracker's Overview card, fed from the queries above so no module
     /// reads another's data — the same arrangement as the phone's peeks.
     @ViewBuilder
-    private func overviewCard(for module: SelectedModule) -> some View {
+    private func overviewCard(for module: SelectedModule, asOf now: Date) -> some View {
         let open = { selectedModule = module }
         switch module {
         case .trips:
-            TripTrackerModule.overviewCard(trips: trips) { id, section in
+            TripTrackerModule.overviewCard(trips: trips, asOf: now) { id, section in
                 openTripID = id
                 tripSection = section
                 selectedModule = .trips
@@ -381,10 +419,10 @@ struct HomeView: View {
         case .explore: ExploreTrackerModule.overviewCard(guides: guides, open: open)
         case .fuel: FuelTrackerModule.overviewCard(vehicles: vehicles, open: open)
         case .finance: FinanceTrackerModule.overviewCard(months: financeMonths, container: financePersistentContainer, open: open)
-        case .gym: GymTrackerModule.overviewCard(sessions: sessions, open: open)
-        case .tv: TVTrackerModule.overviewCard(shows: shows, open: open)
+        case .gym: GymTrackerModule.overviewCard(sessions: sessions, asOf: now, open: open)
+        case .tv: TVTrackerModule.overviewCard(shows: shows, asOf: now, open: open)
         case .parcels: ParcelTrackerModule.overviewCard(parcels: parcels, open: open)
-        case .points: PointsTrackerModule.overviewCard(accounts: pointsAccounts, open: open)
+        case .points: PointsTrackerModule.overviewCard(accounts: pointsAccounts, asOf: now, open: open)
         }
     }
     #endif
@@ -670,21 +708,29 @@ private struct MacSidebarRow: View {
     }
 }
 
-/// A section or trip nested under the open tracker, indented to line up with
-/// the tracker's name rather than its tile.
+/// A section or trip nested under the open tracker: text only, indented to
+/// line up with the tracker's name rather than its tile, with a dot at the
+/// trailing edge for the trip under way.
+///
+/// It used to carry an SF Symbol per row (suitcase, clock, car), which gave
+/// the nested rows the same weight as the trackers they sit under.
 private struct MacNestedRow: View {
     let title: String
-    let systemImage: String
+    var dot: Color?
 
     var body: some View {
-        Label {
+        HStack(spacing: 6) {
             Text(title).lineLimit(1)
-        } icon: {
-            Image(systemName: systemImage)
-                .foregroundStyle(.secondary)
+            Spacer(minLength: 4)
+            if let dot {
+                Circle()
+                    .fill(dot)
+                    .frame(width: 6, height: 6)
+                    .accessibilityLabel("In progress")
+            }
         }
         .font(.system(size: 12.5))
-        .padding(.leading, 26)
+        .padding(.leading, 30)
     }
 }
 
@@ -701,13 +747,23 @@ private struct MacSyncFooter: View {
         }
     }
 
+    /// Green only for "iCloud up to date", orange for the headlines that say
+    /// it isn't — the same cases `CloudSyncStatusText.headline` reads.
+    private var tint: AnyShapeStyle {
+        if monitor.isRefreshing { return AnyShapeStyle(.secondary) }
+        switch monitor.lastOutcome {
+        case .failed?, .unavailable?, .notSyncing?: return AnyShapeStyle(.orange)
+        default: return monitor.lastSyncedAt == nil ? AnyShapeStyle(.secondary) : AnyShapeStyle(.green)
+        }
+    }
+
     var body: some View {
         // Re-read once a minute, so "5 min ago" doesn't sit frozen.
         TimelineView(.everyMinute) { context in
             HStack(spacing: 8) {
                 Image(systemName: symbol)
                     .font(.system(size: 15))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(tint)
                     .frame(width: 22)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(CloudSyncStatusText.headline(

@@ -401,6 +401,16 @@ private func makeSeptember() throws -> (household: SharedFinanceHousehold, month
     #expect(FinanceTrackerModule.homeDetail(months: [september], container: nil) == "Net worth \(FinanceFormat.money(MonthSummary(month: september).netWorth))")
 }
 
+@MainActor
+@Test func sidebarDetailNamesTheLatestMonth() throws {
+    #expect(FinanceTrackerModule.sidebarDetail(months: [], container: nil) == nil)
+
+    let (_, september) = try makeSeptember()
+    let october = try #require(MonthRollover.startMonth(after: september))
+    #expect(FinanceTrackerModule.sidebarDetail(months: [september], container: nil) == september.period?.shortName)
+    #expect(FinanceTrackerModule.sidebarDetail(months: [october, september], container: nil) == october.period?.shortName)
+}
+
 // MARK: - Households
 
 @MainActor

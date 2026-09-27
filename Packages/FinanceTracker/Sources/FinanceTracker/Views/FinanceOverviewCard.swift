@@ -36,17 +36,21 @@ struct FinanceOverviewCard: View {
         ) {
             if let latest {
                 let summary = MonthSummary(month: latest)
-                let delta = FinanceHistory(months: Array(latest.household?.months ?? []))
-                    .delta(.netWorth, at: latest.period ?? YearMonth(containing: .now))
+                let period = latest.period ?? YearMonth(containing: .now)
+                let history = FinanceHistory(months: Array(latest.household?.months ?? []))
+                let delta = history.delta(.netWorth, at: period)
+                let previous = history.point(before: period)?.period
                 VStack(alignment: .leading, spacing: 4) {
                     OverviewValue(FinanceFormat.money(summary.netWorth))
-                    Text("Net worth · \(FinanceFormat.money(summary.cardSpend)) on the cards")
+                    Text(Self.holdings(in: latest))
                         .font(.system(size: 13))
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                     Spacer(minLength: 6)
-                    if let delta {
-                        Text("\(FinanceFormat.signedMoney(delta)) on last month")
+                    if let delta, let previous {
+                        // "since August", not "on last month": the month
+                        // before in the list may not be the calendar's.
+                        Text("\(FinanceFormat.signedMoney(delta)) since \(previous.monthName)")
                             .font(.system(size: 12, weight: .semibold))
                             .foregroundStyle(delta < 0 ? AnyShapeStyle(.red) : AnyShapeStyle(FinanceTrackerModule.accent.color))
                     }
@@ -55,5 +59,13 @@ struct FinanceOverviewCard: View {
                 OverviewValue("No months yet")
             }
         }
+    }
+
+    /// "6 accounts · 4 cards": the accounts with a balance that month, and
+    /// the household's cards still in use.
+    private static func holdings(in month: SharedFinanceMonth) -> String {
+        let accounts = Set((month.balances ?? []).compactMap(\.account).filter { $0.category != .card })
+        let cards = (month.household?.accounts ?? []).filter { $0.category == .card && !$0.isArchived }
+        return "\(counted(accounts.count, "account")) · \(counted(cards.count, "card"))"
     }
 }

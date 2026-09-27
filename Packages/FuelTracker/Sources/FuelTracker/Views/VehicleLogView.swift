@@ -1,3 +1,4 @@
+import Charts
 import Core
 import CoreData
 import SwiftUI
@@ -55,7 +56,9 @@ struct VehicleLogView: View {
                 }
 
                 Group {
-                    if let vehicle, let summary {
+                    if let vehicle, let summary, layout == .sidebar {
+                        VehicleDesktopLog(vehicle: vehicle, summary: summary)
+                    } else if let vehicle, let summary {
                         List {
                             Section {
                                 SummaryTiles(summary: summary)
@@ -68,7 +71,7 @@ struct VehicleLogView: View {
                                     ContentUnavailableView(
                                         "No fill-ups yet",
                                         systemImage: "fuelpump",
-                                        description: Text("Add one with the + button, or import a Fuelly export from the Garage tab.")
+                                        description: Text("Add one with the + button, or import a Fuelly export in Garage.")
                                     )
                                 } else {
                                     ForEach(fillUps) { entry in
@@ -89,7 +92,7 @@ struct VehicleLogView: View {
                         ContentUnavailableView(
                             "No vehicles",
                             systemImage: "car",
-                            description: Text("Add a vehicle in the Garage tab, or import a Fuelly export.")
+                            description: Text("Add a vehicle in Garage, or import a Fuelly export.")
                         )
                         .scrollsForRefresh()
                     }
@@ -98,9 +101,15 @@ struct VehicleLogView: View {
             .refreshesFromCloud()
             .navigationTitle(summary?.name ?? "Fuel")
             // The Mac says who it's shared with under the toolbar's title
-            // rather than in a line of its own above the list.
+            // rather than in a line of its own above the list — or, with
+            // several cars, beside the switcher that stands in for the title.
             .moduleSubtitle(sharingStatus.vehicleBadgeLabel)
-            .vehicleSwitcherToolbar(summaries: summaries, selectedID: summary?.id, perform: perform)
+            .vehicleSwitcherToolbar(
+                summaries: summaries,
+                selectedID: summary?.id,
+                badge: sharingStatus.vehicleBadgeLabel,
+                perform: perform
+            )
             .toolbar {
                 if let vehicle {
                     ToolbarItem(placement: .primaryAction) {
@@ -135,6 +144,148 @@ struct VehicleLogView: View {
                 }
             }
         }
+    }
+}
+
+/// The Mac's vehicle page: four figures across the top, the last sixteen
+/// tanks' economy as a line, and every fill-up and service in one table.
+///
+/// It used to be the phone's List stretched across a desktop window — three
+/// tiles, then a column of two-line rows with half the window empty beside
+/// them, and the services in a section of their own below every fill-up.
+private struct VehicleDesktopLog: View {
+    let vehicle: SharedVehicle
+    let summary: VehicleSummary
+
+    var body: some View {
+        let rows = VehicleLogRow.rows(fillUps: vehicle.orderedFillUps, services: vehicle.orderedServices)
+        let points = Array(FuelStatistics.mpgPoints(for: vehicle.orderedFillUps).suffix(16))
+
+        VStack(alignment: .leading, spacing: 16) {
+            Grid(horizontalSpacing: 12) {
+                GridRow {
+                    tile("Average", VehicleSummary.mpgText(summary.averageMPG), detail: "mpg, lifetime")
+                    tile(
+                        "Last fill-up",
+                        summary.lastFillUp?.formatted(.dateTime.month(.abbreviated).day()) ?? "—",
+                        detail: summary.lastOdometer.map { "\($0.formatted()) mi" } ?? ""
+                    )
+                    tile(
+                        "Fuel this year",
+                        VehicleSummary.spendText(VehicleLogRow.spend(on: .fillUp, in: rows)),
+                        detail: summary.averagePricePerGallon.map { "\(VehicleSummary.pricePerGallonText($0)) a gallon on average" } ?? ""
+                    )
+                    tile(
+                        "Service this year",
+                        VehicleSummary.spendText(VehicleLogRow.spend(on: .service, in: rows)),
+                        detail: "\(VehicleSummary.spendText(summary.serviceSpend)) all time"
+                    )
+                }
+            }
+
+            if points.count > 1 {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Miles per gallon · last \(points.count) fill-ups")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                    // By odometer, as on Trends: exported logs carry mistyped
+                    // dates, and a date axis zigzagged the line back on itself.
+                    Chart(points) { point in
+                        LineMark(x: .value("Odometer", point.odometer), y: .value("MPG", point.mpg))
+                            .interpolationMethod(.monotone)
+                        PointMark(x: .value("Odometer", point.odometer), y: .value("MPG", point.mpg))
+                            .symbolSize(18)
+                    }
+                    .chartYScale(domain: .automatic(includesZero: false))
+                    .chartXScale(domain: .automatic(includesZero: false))
+                    .foregroundStyle(FuelTrackerModule.accent.color)
+                    .frame(height: 150)
+                }
+                .padding(14)
+                .background(.fill.quaternary, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            }
+
+            if rows.isEmpty {
+                ContentUnavailableView(
+                    "No fill-ups yet",
+                    systemImage: "fuelpump",
+                    description: Text("Add one with the + button, or import a Fuelly export in Garage.")
+                )
+                .frame(maxHeight: .infinity)
+            } else {
+                table(rows)
+            }
+        }
+        .padding(20)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    private func tile(_ label: String, _ value: String, detail: String) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(label)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.system(size: 22, weight: .bold))
+                .foregroundStyle(FuelTrackerModule.accent.color)
+                .monospacedDigit()
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
+            Text(detail)
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background(.fill.quaternary, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+
+    private func table(_ rows: [VehicleLogRow]) -> some View {
+        Table(rows) {
+            TableColumn("Date") { row in
+                HStack(spacing: 6) {
+                    Text(row.date, format: .dateTime.month(.abbreviated).day().year())
+                    if row.kind == .service {
+                        Text(row.note)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    } else if row.isPartial {
+                        Text("Partial")
+                            .foregroundStyle(FuelTrackerModule.accent.color)
+                    }
+                }
+            }
+            .width(min: 140, ideal: 220)
+            TableColumn("Odometer") { row in
+                Text("\(row.odometer.formatted()) mi").monospacedDigit()
+            }
+            TableColumn("Gallons") { row in
+                figure(row.gallons.map { $0.formatted(.number.precision(.fractionLength(2))) })
+            }
+            TableColumn("Price per gal") { row in
+                figure(row.pricePerGallon.map { VehicleSummary.pricePerGallonText($0) })
+            }
+            TableColumn("Total") { row in
+                figure(row.total.formatted(.currency(code: "USD")))
+            }
+            TableColumn("MPG") { row in
+                if let mpg = row.mpg {
+                    Text(mpg.formatted(.number.precision(.fractionLength(1))))
+                        .fontWeight(.semibold)
+                        .foregroundStyle(FuelTrackerModule.accent.color)
+                        .monospacedDigit()
+                } else {
+                    figure(nil)
+                }
+            }
+        }
+    }
+
+    private func figure(_ text: String?) -> some View {
+        Text(text ?? "—")
+            .monospacedDigit()
+            .foregroundStyle(text == nil ? .secondary : .primary)
     }
 }
 

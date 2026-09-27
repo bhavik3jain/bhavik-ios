@@ -105,9 +105,14 @@ struct VehicleChipStrip: View {
 /// A strip of capsules under a desktop toolbar read as a second toolbar. The
 /// title goes when the switcher shows, since the selected segment already
 /// names the car — otherwise "My X3" sat beside a segment reading "My X3".
+///
+/// `badge` ("Shared with Priya") goes beside the switcher. Removing the title
+/// took `.moduleSubtitle` with it, so a shared car said so nowhere on the Mac
+/// exactly when there were several to tell apart.
 private struct VehicleSwitcherToolbar: ViewModifier {
     let summaries: [VehicleSummary]
     let selectedID: NSManagedObjectID?
+    let badge: String?
     let perform: (VehicleChipAction, VehicleSummary) -> Void
 
     @Environment(\.moduleLayout) private var layout
@@ -137,6 +142,14 @@ private struct VehicleSwitcherToolbar: ViewModifier {
                         .labelsHidden()
                         .fixedSize()
                     }
+                    if let badge {
+                        ToolbarItem(placement: .navigation) {
+                            Text(badge)
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
+                                .fixedSize()
+                        }
+                    }
                 }
         } else {
             content
@@ -148,8 +161,9 @@ extension View {
     func vehicleSwitcherToolbar(
         summaries: [VehicleSummary],
         selectedID: NSManagedObjectID?,
+        badge: String? = nil,
         perform: @escaping (VehicleChipAction, VehicleSummary) -> Void
     ) -> some View {
-        modifier(VehicleSwitcherToolbar(summaries: summaries, selectedID: selectedID, perform: perform))
+        modifier(VehicleSwitcherToolbar(summaries: summaries, selectedID: selectedID, badge: badge, perform: perform))
     }
 }

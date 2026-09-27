@@ -63,10 +63,14 @@ public enum TripTrackerModule {
 
     /// The trips the Mac sidebar nests under Trips: under way and upcoming,
     /// soonest first, then the finished ones behind a "Past trips" disclosure,
-    /// most recent first.
-    public static func sidebarTrips(_ trips: [SharedTrip], asOf now: Date = .now) -> (current: [SharedTrip], past: [SharedTrip]) {
+    /// most recent first. `underWay` names the trips in progress, which the
+    /// sidebar marks with a dot.
+    public static func sidebarTrips(
+        _ trips: [SharedTrip],
+        asOf now: Date = .now
+    ) -> (current: [SharedTrip], past: [SharedTrip], underWay: Set<NSManagedObjectID>) {
         let groups = TripGroups(trips, asOf: now)
-        return (groups.inProgress + groups.upcoming, groups.finished)
+        return (groups.inProgress + groups.upcoming, groups.finished, Set(groups.inProgress.map(\.objectID)))
     }
 
     /// The short figure beside Trips in the Mac sidebar: "Day 3" while a trip
