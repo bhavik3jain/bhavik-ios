@@ -12,6 +12,7 @@ struct TripNearbyView: View {
     @Environment(\.tripPersistentContainer) private var container
     @Environment(\.locationProvider) private var locationProvider
     @Environment(\.openURL) private var openURL
+    @Environment(\.scenePhase) private var scenePhase
 
     // All of the trip's items, not just its ideas: a day's stops are what
     // "Near Day N" measures from. Fetched rather than read off `trip.items` so
@@ -44,8 +45,18 @@ struct TripNearbyView: View {
         return nil
     }
 
+    private var ideas: [SharedItineraryItem] {
+        items.filter(\.isUnassigned)
+    }
+
+    /// Whether any idea has a place to measure to — the only time a location
+    /// fix is worth asking for.
+    private var hasPlacedIdea: Bool {
+        ideas.contains(where: \.hasCoordinate)
+    }
+
     var body: some View {
-        let ideas = items.filter(\.isUnassigned)
+        let ideas = self.ideas
         Group {
             if ideas.isEmpty {
                 ContentUnavailableView {
@@ -63,7 +74,24 @@ struct TripNearbyView: View {
                 }
             }
         }
-        .task { await locate() }
+        // Only asks for location once there's an idea with a place to rank.
+        // A plain `.task` fired on "No ideas to rank" too, so the one-time
+        // When-In-Use prompt could appear with nothing on screen to justify it
+        // — and the permission is app-wide, so refusing it there also cost
+        // Explore's map its blue dot and distances. Keyed on the flag so the
+        // first placed idea (added here or synced in) starts the lookup.
+        .task(id: hasPlacedIdea) {
+            if hasPlacedIdea { await locate() }
+        }
+        // `.task` runs once per appearance, and going to Settings and back
+        // isn't one: someone who followed the "allow it in Settings" footer
+        // came back to "Location is off" until they left the section. Coming
+        // back to the foreground retries a denied lookup instead.
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active, lookup == .denied, hasPlacedIdea {
+                Task { await locate() }
+            }
+        }
     }
 
     // MARK: - List
@@ -191,7 +219,10 @@ struct TripNearbyView: View {
                 } label: {
                     Label(location == nil ? "Try My Location Again" : "Update My Location", systemImage: "location")
                 }
-                .disabled(lookup == .denied)
+                // Never disabled, even after `.denied`: the provider re-reads
+                // the authorization on every call, so this is how a lookup
+                // recovers once location is allowed in Settings. Disabling it
+                // left no way back short of leaving the section.
             }
         }
         .font(.subheadline)

@@ -115,6 +115,12 @@ Finance works the same way: its household (`SharedFinanceHousehold`) is the shar
 shares every owner, account, month, metal item and transaction in it.
 The schema ritual below covers these models too.
 
+**Trip ideas need every sharer on a current build.** An idea is an itinerary item whose `dayIndex`
+is `-1` — no new attribute, so no schema change — but builds from before ideas existed clamp any
+negative `dayIndex` to Day 1 whenever they save a trip (any edit to its title, notes or dates), and
+CloudKit then syncs that to everyone on the trip. They also show ideas as ordinary stops. Before
+anyone adds ideas to a shared trip, make sure every device on it has updated its TestFlight build.
+
 **Adding or changing a `@Model` needs one extra step.** CloudKit only creates a record type when a
 record of that type first syncs, and it never creates schema in Production — so a new model silently
 fails to sync until the schema is deployed. The ritual:
