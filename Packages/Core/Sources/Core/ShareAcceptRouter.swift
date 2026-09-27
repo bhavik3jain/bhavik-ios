@@ -82,6 +82,7 @@ public final class ShareAcceptRouter: ObservableObject {
                     // The moment notifications about the other person's
                     // changes start to matter — see SharedChangeNotifications.
                     await SharedChangeNotifications.requestAuthorizationIfUndetermined()
+                    SharedChangeServerAlerts.shared.sync(force: true)
                 }
             }
         }

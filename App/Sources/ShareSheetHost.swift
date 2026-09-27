@@ -160,7 +160,16 @@ enum CloudSharingPresenter {
         // Sharing has started: the moment notifications about the other
         // person's changes start to matter. See SharedChangeNotifications.
         func cloudSharingControllerDidSaveShare(_ csc: UICloudSharingController) {
-            Task { await SharedChangeNotifications.requestAuthorizationIfUndetermined() }
+            Task {
+                await SharedChangeNotifications.requestAuthorizationIfUndetermined()
+                SharedChangeServerAlerts.shared.sync(force: true)
+            }
+        }
+
+        // The owner stopped sharing, or a participant left: that share's
+        // iCloud alert goes with it.
+        func cloudSharingControllerDidStopSharing(_ csc: UICloudSharingController) {
+            Task { @MainActor in SharedChangeServerAlerts.shared.sync(force: true) }
         }
     }
 }
@@ -248,6 +257,11 @@ struct MacShareSheet: View {
             if coordinator.share != nil {
                 await SharedChangeNotifications.requestAuthorizationIfUndetermined()
             }
+        }
+        // Participants may have been added, so this share may now want its
+        // iCloud alert.
+        .onDisappear {
+            SharedChangeServerAlerts.shared.sync(force: true)
         }
     }
 
