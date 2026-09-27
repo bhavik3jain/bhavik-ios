@@ -12,10 +12,13 @@ struct TripPlanView: View {
     @Environment(\.managedObjectContext) private var modelContext
     @Environment(\.tripPersistentContainer) private var container
 
-    // A read-only shared participant can't mark an item done or delete it —
-    // same gate `ItemEditorView`'s own "Mark as Done"/"Delete" section already
-    // applies, so tapping or swiping this row can't do the same mutation from
-    // a side door.
+    /// What the swipe action's "Move to…" dialog is choosing a day for.
+    @State private var moving: DayPlan.Entry?
+
+    // A read-only shared participant can't mark an item done, delete it or
+    // move it — same gate `ItemEditorView`'s own "Mark as Done"/"Delete"
+    // section already applies, so tapping, swiping or long-pressing this row
+    // can't do the same mutation from a side door.
     private var canEdit: Bool {
         guard let container else { return true }
         return SharingStatusResolver.canEdit(trip, in: container)
@@ -93,6 +96,14 @@ struct TripPlanView: View {
                 }
             }
         }
+        .confirmationDialog(
+            "Move \(moving?.title ?? "") to…",
+            isPresented: Binding { moving != nil } set: { if !$0 { moving = nil } },
+            titleVisibility: .visible,
+            presenting: moving
+        ) { entry in
+            moveButtons(for: entry, from: day, dates: dates, now: now)
+        }
     }
 
     @ViewBuilder
@@ -124,13 +135,65 @@ struct TripPlanView: View {
                     } label: {
                         Label("Delete", systemImage: "trash")
                     }
+                    moveSwipeButton(for: entry)
                 }
             }
+            .contextMenu { moveMenu(for: entry, in: plan) }
         case .flight(let flight):
             TimelineRow(entry: entry, plan: plan, isUpNext: isUpNext, toggle: nil) {
                 present(.flight(flight))
             }
+            .swipeActions(edge: .trailing) {
+                if canEdit {
+                    moveSwipeButton(for: entry)
+                }
+            }
+            .contextMenu { moveMenu(for: entry, in: plan) }
         }
+    }
+
+    // MARK: Moving to another day
+
+    // Moving something to another day used to mean opening it, or deleting it
+    // and adding it again. A swipe can't hold a menu, so it asks in a dialog;
+    // the context menu — the natural path on the Mac — lists the days inline.
+    private func moveSwipeButton(for entry: DayPlan.Entry) -> some View {
+        Button {
+            moving = entry
+        } label: {
+            Label("Move", systemImage: "calendar")
+        }
+        .tint(.indigo)
+    }
+
+    @ViewBuilder
+    private func moveMenu(for entry: DayPlan.Entry, in plan: DayPlan) -> some View {
+        if canEdit {
+            Menu {
+                moveButtons(for: entry, from: plan.dayIndex, dates: plan.dates, now: .now)
+            } label: {
+                Label("Move to…", systemImage: "calendar")
+            }
+        }
+    }
+
+    /// One per other day — see `MoveToDayButtons`. A flight is always on a day,
+    /// so it never gets Unassigned.
+    private func moveButtons(for entry: DayPlan.Entry, from day: Int, dates: TripDates, now: Date) -> some View {
+        let isItem = if case .item = entry { true } else { false }
+        return MoveToDayButtons(dates: dates, current: .day(day), includesUnassigned: isItem && DayChoice.offersUnassigned, now: now) { choice in
+            move(entry, to: choice)
+        }
+    }
+
+    private func move(_ entry: DayPlan.Entry, to choice: DayChoice) {
+        withAnimation {
+            switch entry {
+            case .item(let item): item.move(toDay: choice.dayIndex)
+            case .flight(let flight): flight.move(toDay: choice.dayIndex, in: trip.dates)
+            }
+        }
+        try? modelContext.saveIfNeeded()
     }
 }
 

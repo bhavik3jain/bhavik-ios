@@ -109,10 +109,14 @@ public extension SharedTrip {
     /// Pulls anything planned past the last day back onto it. Shortening a trip
     /// otherwise left those items on days that no longer exist — on no chip, in
     /// no timeline, still counted as places — with no way to reach them.
+    ///
+    /// Ideas are left where they are. This used to clamp negative days up to
+    /// day 0 as well, which would have dumped every idea onto the first day the
+    /// next time the trip's dates were saved.
     func clampPlanToDates() {
         let last = dates.dayCount - 1
-        for item in items ?? [] where item.dayIndex > last || item.dayIndex < 0 {
-            item.dayIndex = min(max(item.dayIndex, 0), last)
+        for item in items ?? [] where !item.isUnassigned && item.dayIndex > last {
+            item.dayIndex = last
         }
         for flight in flights ?? [] where flight.dayIndex > last || flight.dayIndex < 0 {
             flight.dayIndex = min(max(flight.dayIndex, 0), last)

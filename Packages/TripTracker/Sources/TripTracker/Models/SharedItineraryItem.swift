@@ -16,6 +16,7 @@ public final class SharedItineraryItem: NSManagedObject, Identifiable {
     @NSManaged public var kindRaw: String
     /// Days from the trip's first day, not a date — so moving a trip's dates
     /// carries its whole plan along instead of stranding it on the old days.
+    /// `unassignedDayIndex` (-1) marks an idea that isn't on any day yet.
     @NSManaged public var dayIndex: Int
     /// Settles order among items that share a time, or have none.
     @NSManaged public var sortOrder: Int
@@ -66,6 +67,20 @@ public final class SharedItineraryItem: NSManagedObject, Identifiable {
 }
 
 public extension SharedItineraryItem {
+    /// The `dayIndex` of an idea — somewhere the trip might go, a "game time
+    /// decision" not yet put on a day. A sentinel in the existing attribute
+    /// rather than a new optional one: a new attribute is a CloudKit schema
+    /// change that has to be deployed to Production before any TestFlight build
+    /// can sync it, and this needed none. Only itinerary items can be ideas;
+    /// flights and bookings always keep their day.
+    static let unassignedDayIndex = -1
+
+    /// Any negative day, not just -1. Before ideas existed nothing could
+    /// legitimately sit below day 0 (`clampPlanToDates` pulled strays back up),
+    /// so a stray reads as an idea — reachable in Ideas — rather than as a
+    /// day that isn't on the strip.
+    var isUnassigned: Bool { dayIndex < 0 }
+
     var id: NSManagedObjectID { objectID }
 
     var kind: ItemKind {
@@ -88,5 +103,18 @@ public extension SharedItineraryItem {
     func toggleDone(asOf now: Date = .now) {
         isDone.toggle()
         doneAt = isDone ? now : nil
+    }
+
+    /// Puts the item on `day` — or back among the ideas, for
+    /// `unassignedDayIndex` — after everything already there, so an idea moved
+    /// onto a day joins the end of Anytime instead of taking whatever place its
+    /// old `sortOrder` happened to give it among strangers. A move to the day
+    /// it is already on changes nothing.
+    func move(toDay day: Int) {
+        let target = day < 0 ? Self.unassignedDayIndex : day
+        guard target != dayIndex || isInserted else { return }
+        let neighbours = (trip?.items ?? []).filter { $0 != self && $0.dayIndex == target }
+        dayIndex = target
+        sortOrder = (neighbours.map(\.sortOrder).max() ?? -1) + 1
     }
 }
