@@ -21,7 +21,13 @@ struct SharedChangeNotificationsSection: View {
 
     var body: some View {
         Section {
-            Toggle(isOn: Binding(get: { enabled && authorized }, set: setEnabled)) {
+            // The setter is a closure literal, not the bare `setEnabled`
+            // method reference: Xcode 26.6 (Swift 6.3.3) crashed in IRGen
+            // emitting the reabstraction thunk from that main-actor method to
+            // Binding's `@isolated(any) @Sendable (Value) -> Void` setter, and
+            // CI's "Build the app" step died with exit 65. A closure is emitted
+            // straight at the setter's type, so no thunk is needed.
+            Toggle(isOn: Binding(get: { enabled && authorized }, set: { setEnabled($0) })) {
                 Label("Changes to shared items", systemImage: "bell.badge")
             }
             if enabled && authorized {
