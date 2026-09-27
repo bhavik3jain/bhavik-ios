@@ -53,8 +53,14 @@ jobs:
           sudo xcode-select -s "$xcode"
           xcodebuild -version
 
-      - name: Install XcodeGen
-        run: brew install xcodegen
+      - name: Install XcodeGen and xcbeautify
+        # xcbeautify turns xcodebuild's output into readable GitHub annotations.
+        # Without it the logs were either thousands of lines or, with -quiet, a
+        # red "error: the following command failed with exit code 0" after every
+        # compile step that merely had warnings, which read as failures when the
+        # build had passed. Every xcodebuild below pipes into it under
+        # `set -o pipefail`, so a real failure still fails the step.
+        run: brew install xcodegen xcbeautify
 
       - name: Import the Apple Development certificate
         # Distribution signing is cloud-managed (Apple holds that key), but the
@@ -126,7 +132,7 @@ jobs:
             -authenticationKeyPath "$ASC_KEY_PATH" \
             -authenticationKeyID "$ASC_KEY_ID" \
             -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
-            CURRENT_PROJECT_VERSION="$build_number"
+            CURRENT_PROJECT_VERSION="$build_number" | xcbeautify --renderer github-actions
 
       - name: Upload to TestFlight
         env:
@@ -160,7 +166,7 @@ jobs:
             -allowProvisioningUpdates \
             -authenticationKeyPath "$ASC_KEY_PATH" \
             -authenticationKeyID "$ASC_KEY_ID" \
-            -authenticationKeyIssuerID "$ASC_ISSUER_ID"
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID" | xcbeautify --renderer github-actions
 
           echo "Uploaded build $BUILD_NUMBER — it will appear in TestFlight once processing finishes."
 

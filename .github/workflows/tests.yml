@@ -37,8 +37,14 @@ jobs:
           sudo xcode-select -s "$xcode"
           xcodebuild -version
 
-      - name: Install XcodeGen
-        run: brew install xcodegen
+      - name: Install XcodeGen and xcbeautify
+        # xcbeautify turns xcodebuild's output into readable GitHub annotations.
+        # Without it the logs were either thousands of lines or, with -quiet, a
+        # red "error: the following command failed with exit code 0" after every
+        # compile step that merely had warnings, which read as failures when the
+        # build had passed. Every xcodebuild below pipes into it under
+        # `set -o pipefail`, so a real failure still fails the step.
+        run: brew install xcodegen xcbeautify
 
       - name: Pick an iPhone simulator
         id: simulator
@@ -73,7 +79,7 @@ jobs:
           xcodegen generate
           xcodebuild test -project bhavik-ios.xcodeproj -scheme AllPackageTests \
             -destination "platform=iOS Simulator,id=${{ steps.simulator.outputs.udid }},arch=${{ steps.simulator.outputs.arch }}" \
-            -parallel-testing-enabled YES -quiet
+            -parallel-testing-enabled YES | xcbeautify --renderer github-actions
 
   mac:
     name: Build the Mac app
@@ -99,11 +105,12 @@ jobs:
           sudo xcode-select -s "$xcode"
           xcodebuild -version
 
-      - name: Install XcodeGen
-        run: brew install xcodegen
+      - name: Install XcodeGen and xcbeautify
+        # See the first job.
+        run: brew install xcodegen xcbeautify
 
       - name: Build the Mac app
         run: |
           set -euo pipefail
           xcodegen generate
-          xcodebuild build -project bhavik-ios.xcodeproj -scheme bhavik-macOS -destination "platform=macOS" CODE_SIGNING_ALLOWED=NO -quiet
+          xcodebuild build -project bhavik-ios.xcodeproj -scheme bhavik-macOS -destination "platform=macOS" CODE_SIGNING_ALLOWED=NO | xcbeautify --renderer github-actions

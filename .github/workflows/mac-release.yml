@@ -51,8 +51,14 @@ jobs:
           sudo xcode-select -s "$xcode"
           xcodebuild -version
 
-      - name: Install XcodeGen
-        run: brew install xcodegen
+      - name: Install XcodeGen and xcbeautify
+        # xcbeautify turns xcodebuild's output into readable GitHub annotations.
+        # Without it the logs were either thousands of lines or, with -quiet, a
+        # red "error: the following command failed with exit code 0" after every
+        # compile step that merely had warnings, which read as failures when the
+        # build had passed. Every xcodebuild below pipes into it under
+        # `set -o pipefail`, so a real failure still fails the step.
+        run: brew install xcodegen xcbeautify
 
       - name: Write the App Store Connect API key
         # Profile management (matching the imported certificate below to a
@@ -105,26 +111,37 @@ jobs:
           echo "SIGNING_KEYCHAIN=$keychain" >> "$GITHUB_ENV"
           echo "SIGNING_KEYCHAIN_PASSWORD=$keychain_password" >> "$GITHUB_ENV"
 
-      - name: Install the Developer ID provisioning profile
-        # The app's entitlements (iCloud, WeatherKit) mean Apple requires an
-        # explicit profile even for Developer ID — cloud-managed signing can't
-        # create one (same categorical restriction as the certificate), so
-        # this is downloaded from the portal by hand, once, like the
-        # certificate. Xcode finds profiles here by filename; the name itself
-        # doesn't matter, only its UUID and its contents.
-        #
-        # Its entitlements are frozen at generation: a capability added to
-        # App-macOS.entitlements later (CloudKit pushes'
-        # com.apple.developer.aps-environment was the first) fails signing
-        # here until the profile is regenerated in the portal and this secret
-        # replaced — README → macOS → Installing it has the steps.
+      - name: Create the Developer ID provisioning profile
+        # The app's entitlements (iCloud, WeatherKit, CloudKit pushes) mean
+        # Apple requires an explicit profile even for Developer ID, and
+        # cloud-managed signing can't make one (the same categorical refusal as
+        # the certificate). This used to be a profile downloaded from the portal
+        # by hand and kept in the MAC_DEVELOPER_ID_PROFILE secret, but a
+        # profile's entitlements are frozen when it's made: adding CloudKit
+        # pushes' com.apple.developer.aps-environment broke it, and every new
+        # capability would have meant another trip to the portal. The App Store
+        # Connect API can make Developer ID profiles, so this creates a fresh
+        # one for the imported certificate on every run — see
+        # .github/scripts/developer_id_profile.py. Xcode looks in both folders
+        # depending on its version; the file name doesn't matter.
         env:
-          MAC_DEVELOPER_ID_PROFILE: ${{ secrets.MAC_DEVELOPER_ID_PROFILE }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
         run: |
           set -euo pipefail
-          mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
-          echo "$MAC_DEVELOPER_ID_PROFILE" | base64 --decode \
-            > "$HOME/Library/MobileDevice/Provisioning Profiles/mac-release.provisionprofile"
+          serial=$(security find-certificate -c "Developer ID Application" -p "$SIGNING_KEYCHAIN" \
+                   | openssl x509 -noout -serial | cut -d= -f2)
+          echo "Developer ID certificate serial: $serial"
+
+          python3 -m venv "$RUNNER_TEMP/profile-venv"
+          "$RUNNER_TEMP/profile-venv/bin/pip" install --quiet "pyjwt[crypto]"
+
+          legacy="$HOME/Library/MobileDevice/Provisioning Profiles"
+          current="$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles"
+          mkdir -p "$legacy" "$current"
+          "$RUNNER_TEMP/profile-venv/bin/python" .github/scripts/developer_id_profile.py \
+            "$ASC_KEY_ID" "$ASC_ISSUER_ID" "$ASC_KEY_PATH" "$serial" \
+            "$legacy/mac-release.provisionprofile" "$current/mac-release.provisionprofile"
 
       - name: Generate the project
         run: xcodegen generate
@@ -154,7 +171,7 @@ jobs:
             CODE_SIGN_IDENTITY="Developer ID Application" \
             PROVISIONING_PROFILE_SPECIFIER="Multitrack Developer ID" \
             DEVELOPMENT_TEAM=Y4M3S6H4NK \
-            CURRENT_PROJECT_VERSION="$build_number"
+            CURRENT_PROJECT_VERSION="$build_number" | xcbeautify --renderer github-actions
 
       - name: Export, signed for Developer ID
         # No -allowProvisioningUpdates and no -authenticationKey* here, on
@@ -193,7 +210,7 @@ jobs:
           xcodebuild -exportArchive \
             -archivePath "$RUNNER_TEMP/Multitrack.xcarchive" \
             -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist" \
-            -exportPath "$RUNNER_TEMP/export"
+            -exportPath "$RUNNER_TEMP/export" | xcbeautify --renderer github-actions
 
       - name: Notarize
         # A Developer ID export is signed but not notarized — Gatekeeper will
