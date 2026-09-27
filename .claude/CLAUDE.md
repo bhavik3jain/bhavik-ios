@@ -204,15 +204,16 @@ not notarized** on its own; Gatekeeper refuses to launch it on any Mac but the o
 the notary step staples a ticket to it, which is why that step exists and can't be skipped for "just
 testing."
 
-The Developer ID provisioning profile itself comes from a third secret, `MAC_DEVELOPER_ID_PROFILE`
-(base64 of a profile downloaded from the portal by hand). **A profile's entitlements are frozen when
-it's generated**, so any new capability in `App-macOS.entitlements` breaks the next Mac Release until
-that profile is regenerated and the secret replaced; the only clue is a codesign/export error about an
-entitlement the profile doesn't allow. `com.apple.developer.aps-environment` (CloudKit pushes) is the
-first such addition: Push Notifications is already on for the App ID (a signed local build with
-`-allowProvisioningUpdates` turned it on, and the team profile it made carries it), but the Developer
-ID profile in the secret predates it. TestFlight should need nothing: its `-allowProvisioningUpdates`
-archive fetches a fresh App Store profile each run.
+The Developer ID provisioning profile is **made fresh on every Mac Release run** by
+`.github/scripts/developer_id_profile.py`, through the App Store Connect API (which, unlike cloud-managed
+signing, can create Developer ID profiles). It deletes the profile named `Multitrack Developer ID` and
+creates a new one for `com.bhavikjain.trackers` and the imported certificate, so it always carries the
+App ID's current capabilities. It used to be a hand-downloaded profile in a `MAC_DEVELOPER_ID_PROFILE`
+secret, and **a profile's entitlements are frozen when it's generated**: adding
+`com.apple.developer.aps-environment` (CloudKit pushes) broke it. A new capability now only has to be on
+the App ID. If that step fails with HTTP 401/403, the API key's role can't manage profiles: give it
+Admin in App Store Connect › Users and Access › Integrations. The name `Multitrack Developer ID` is
+load-bearing: the archive's `PROVISIONING_PROFILE_SPECIFIER` and the export options look it up by name.
 
 ## Conventions
 
