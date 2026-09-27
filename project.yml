@@ -29,6 +29,11 @@ targets:
   bhavik-ios:
     type: application
     platform: iOS
+    # A scheme of its own, generated rather than left to Xcode: once
+    # project.yml declared the AllPackageTests scheme, Xcode stopped creating
+    # a default one for this target, and the TestFlight archive failed with
+    # "does not contain a scheme named bhavik-ios".
+    scheme: {}
     sources: &appSources
       # XcodeGen has no separate "resources" key: everything goes in sources and
       # Xcode sorts it into the right build phase by file type. Listing the asset
@@ -100,6 +105,9 @@ targets:
   bhavik-macOS:
     type: application
     platform: macOS
+    # See bhavik-ios: generated so CI and Mac Release never depend on Xcode
+    # making a default scheme.
+    scheme: {}
     # Lives on the target, not in options.deploymentTarget, so that adding the
     # Mac build writes nothing into the settings the shipping iOS app inherits.
     deploymentTarget: "15.0"
