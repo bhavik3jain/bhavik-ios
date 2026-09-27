@@ -28,5 +28,18 @@
 	<string>$(MACOSX_DEPLOYMENT_TARGET)</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Shows how far you are from the places in a guide and the ideas saved for a trip.</string>
+	<key>UTExportedTypeDeclarations</key>
+	<array>
+		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>Trip Stop</string>
+			<key>UTTypeIdentifier</key>
+			<string>com.bhavikjain.trackers.itinerary-item</string>
+		</dict>
+	</array>
 </dict>
 </plist>

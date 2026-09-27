@@ -36,5 +36,18 @@
 	<true/>
 	<key>UILaunchScreen</key>
 	<dict/>
+	<key>UTExportedTypeDeclarations</key>
+	<array>
+		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>Trip Stop</string>
+			<key>UTTypeIdentifier</key>
+			<string>com.bhavikjain.trackers.itinerary-item</string>
+		</dict>
+	</array>
 </dict>
 </plist>

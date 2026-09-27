@@ -83,6 +83,16 @@ targets:
         # never routes into the app at all — the system silently drops it before
         # userDidAcceptCloudKitShareWith is ever called.
         CKSharingSupported: true
+        # What a trip's stop or idea is while it's dragged between the Mac's
+        # plan and its Ideas inspector (`UTType.tripItineraryItem`). Undeclared,
+        # an exported identifier is treated as a dynamic type and the drop
+        # destination waiting for it never matches. Declared on both targets so
+        # the type means the same thing wherever a trip is open.
+        UTExportedTypeDeclarations: &itineraryItemType
+          - UTTypeIdentifier: com.bhavikjain.trackers.itinerary-item
+            UTTypeDescription: Trip Stop
+            UTTypeConformsTo:
+              - public.data
 
   # Same code, same packages, same bundle id — only the platform chrome differs.
   # Sources and dependencies are aliased from the iOS target rather than copied
@@ -140,3 +150,5 @@ targets:
         # Same as the iOS target: required for a tapped CloudKit share link to
         # route into the app instead of being silently dropped.
         CKSharingSupported: true
+        # See the iOS target.
+        UTExportedTypeDeclarations: *itineraryItemType

@@ -1,0 +1,236 @@
+import Core
+import CoreData
+import SwiftUI
+
+/// The Mac's inspector beside a trip's Plan: every idea not yet on a day, the
+/// ones closest to the selected day's stops first, each one click (or one
+/// drag) from going on it.
+///
+/// On the phone Ideas is its own face of the trip, because there's no room
+/// for two; on a desktop the plan and what could still go on it are the two
+/// halves of one decision and belong side by side.
+struct TripIdeasInspector: View {
+    @ObservedObject var trip: SharedTrip
+    let day: Int
+    let canEdit: Bool
+    let present: (TripSheet) -> Void
+
+    @Environment(\.managedObjectContext) private var modelContext
+
+    // Fetched rather than read off `trip.items` alone, so an idea added or
+    // moved on another device — or dropped here — re-ranks straight away: the
+    // trip never hears about a change to one of its items' `dayIndex`.
+    @FetchRequest private var items: FetchedResults<SharedItineraryItem>
+    @State private var isDropTargeted = false
+
+    init(trip: SharedTrip, day: Int, canEdit: Bool, present: @escaping (TripSheet) -> Void) {
+        self.trip = trip
+        self.day = day
+        self.canEdit = canEdit
+        self.present = present
+        _items = FetchRequest(fetchRequest: SharedItineraryItem.fetchRequest(
+            predicate: NSPredicate(format: "trip == %@", trip),
+            sortDescriptors: [NSSortDescriptor(keyPath: \SharedItineraryItem.sortOrder, ascending: true)]
+        ))
+    }
+
+    private var dayName: String {
+        trip.dates.dayIndex(of: .now) == day ? "today" : "Day \(day + 1)"
+    }
+
+    var body: some View {
+        let ideas = PlanIdeas(ideas: Array(items), stops: items.filter { $0.dayIndex == day })
+        ScrollView {
+            VStack(alignment: .leading, spacing: 12) {
+                header(count: ideas.count)
+
+                if ideas.count == 0 {
+                    Text("No ideas yet. Save somewhere you might go, and decide on the day.")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                }
+
+                if !ideas.closest.isEmpty {
+                    caption(day == trip.dates.dayIndex(of: .now) ? "Closest to today's plan" : "Closest to Day \(day + 1)'s plan")
+                    VStack(spacing: 8) {
+                        ForEach(ideas.closest) { match in
+                            card(match)
+                        }
+                    }
+                }
+
+                if !ideas.elsewhere.isEmpty || !ideas.unplaced.isEmpty {
+                    caption(ideas.isMeasured ? "Elsewhere" : "Ideas")
+                        .padding(.top, ideas.closest.isEmpty ? 0 : 6)
+                    if !ideas.isMeasured, !ideas.elsewhere.isEmpty {
+                        Text("Nothing on \(dayName) has a place yet, so there's nothing to measure from.")
+                            .font(.system(size: 11.5))
+                            .foregroundStyle(.secondary)
+                    }
+                    VStack(spacing: 2) {
+                        ForEach(ideas.elsewhere) { match in
+                            compactRow(match.item, trailing: match.estimate?.distanceText())
+                        }
+                        ForEach(ideas.unplaced) { item in
+                            compactRow(item, trailing: "No address", isWarning: true)
+                        }
+                    }
+                }
+
+                if canEdit {
+                    Text("Drag an idea onto the plan to schedule it, or drag a planned stop here to take it off its day.")
+                        .font(.system(size: 11.5))
+                        .foregroundStyle(.secondary)
+                        .padding(.top, 8)
+                }
+            }
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .background(isDropTargeted ? AnyShapeStyle(TripTrackerModule.accent.color.opacity(0.08)) : AnyShapeStyle(.clear))
+        .dropDestination(for: ItineraryItemDrag.self) { drags, _ in
+            guard canEdit else { return false }
+            return drop(drags)
+        } isTargeted: {
+            isDropTargeted = canEdit && $0
+        }
+    }
+
+    // MARK: - Pieces
+
+    private func header(count: Int) -> some View {
+        HStack(spacing: 8) {
+            Text("Ideas")
+                .font(.system(size: 14, weight: .bold))
+            Text("\(count) not on a day")
+                .font(.system(size: 12))
+                .foregroundStyle(.secondary)
+            Spacer()
+            if canEdit {
+                Button {
+                    present(.newItem(day: SharedItineraryItem.unassignedDayIndex))
+                } label: {
+                    Image(systemName: "plus")
+                }
+                .buttonStyle(.borderless)
+                .accessibilityLabel("Add an idea")
+                .help("Add an idea")
+            }
+        }
+    }
+
+    private func caption(_ text: String) -> some View {
+        Text(text.uppercased())
+            .font(.system(size: 11, weight: .semibold))
+            .tracking(0.3)
+            .foregroundStyle(.secondary)
+    }
+
+    private func card(_ match: PlanIdeas.Match) -> some View {
+        let accent = TripTrackerModule.accent.color
+        return HStack(spacing: 10) {
+            Button {
+                present(.item(match.item))
+            } label: {
+                HStack(spacing: 10) {
+                    Image(systemName: match.item.kind.symbolName)
+                        .font(.system(size: 13))
+                        .foregroundStyle(accent)
+                        .frame(width: 18)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(match.item.title)
+                            .font(.system(size: 13, weight: .semibold))
+                            .lineLimit(1)
+                        if let detail = match.detail() {
+                            Text(detail)
+                                .font(.system(size: 11.5))
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
+                    }
+                    Spacer(minLength: 4)
+                }
+                .contentShape(.rect)
+            }
+            .buttonStyle(.plain)
+            if canEdit {
+                Button("Add to Day \(day + 1)") {
+                    withAnimation { match.item.move(toDay: day) }
+                    try? modelContext.saveIfNeeded()
+                    trip.objectWillChange.send()
+                }
+                .buttonStyle(.plain)
+                .font(.system(size: 11.5, weight: .semibold))
+                .foregroundStyle(accent)
+                .padding(.horizontal, 9)
+                .frame(height: 24)
+                .background(accent.opacity(0.12), in: RoundedRectangle(cornerRadius: 6))
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(.background, in: RoundedRectangle(cornerRadius: 10))
+        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(.separator.opacity(0.7)))
+        .draggableItinerary(match.item, enabled: canEdit)
+    }
+
+    private func compactRow(_ item: SharedItineraryItem, trailing: String?, isWarning: Bool = false) -> some View {
+        Button {
+            present(.item(item))
+        } label: {
+            HStack {
+                Text(item.title)
+                    .font(.system(size: 13))
+                    .lineLimit(1)
+                Spacer(minLength: 8)
+                if let trailing {
+                    Text(trailing)
+                        .font(.system(size: 12))
+                        .foregroundStyle(isWarning ? AnyShapeStyle(.orange) : AnyShapeStyle(.secondary))
+                }
+            }
+            .padding(.vertical, 6)
+            .padding(.horizontal, 4)
+            .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .draggableItinerary(item, enabled: canEdit)
+    }
+
+    private func drop(_ drags: [ItineraryItemDrag]) -> Bool {
+        let moved = withAnimation {
+            ItineraryDrop.move(drags, toDay: SharedItineraryItem.unassignedDayIndex, in: trip)
+        }
+        guard moved else { return false }
+        try? modelContext.saveIfNeeded()
+        trip.objectWillChange.send()
+        return true
+    }
+}
+
+extension View {
+    /// Lets a stop or idea be dragged between the plan and the Ideas
+    /// inspector. Only on the Mac: on the phone a long press already opens the
+    /// row's menu, and there is no second pane to drag to.
+    func draggableItinerary(_ item: SharedItineraryItem, enabled: Bool = true) -> some View {
+        modifier(ItineraryDraggable(item: item, enabled: enabled))
+    }
+}
+
+private struct ItineraryDraggable: ViewModifier {
+    let item: SharedItineraryItem
+    let enabled: Bool
+    @Environment(\.moduleLayout) private var layout
+
+    func body(content: Content) -> some View {
+        if enabled, layout == .sidebar {
+            content.draggable(ItineraryItemDrag(item)) {
+                Label(item.title, systemImage: item.kind.symbolName)
+                    .padding(8)
+                    .background(.background, in: RoundedRectangle(cornerRadius: 8))
+            }
+        } else {
+            content
+        }
+    }
+}
