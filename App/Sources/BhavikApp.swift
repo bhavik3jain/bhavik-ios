@@ -176,8 +176,46 @@ struct BhavikApp: App {
             // owner, account and month under it shares with it — see
             // FinanceModel.swift).
             ShareAcceptRouter.shared.register(recordTypePrefix: "CD_SharedFinanceHousehold", container: financeContainer)
+
+            Self.startSharedChangeNotifications(
+                trips: tripContainer,
+                fuel: fuelContainer,
+                explore: exploreContainer,
+                points: pointsContainer,
+                finance: financeContainer
+            )
         } catch {
             fatalError("Failed to create ModelContainer: \(error)")
+        }
+    }
+
+    /// Local notifications when someone this user shares with changes
+    /// something — see Core's `SharedChangeNotifier`. One notifier per
+    /// sharing container, each with its module's own wording and the
+    /// `SelectedModule` a tap opens. Only on the real stores: the
+    /// schema-initialising launch returns before reaching this.
+    private static func startSharedChangeNotifications(
+        trips: NSPersistentCloudKitContainer,
+        fuel: NSPersistentCloudKitContainer,
+        explore: NSPersistentCloudKitContainer,
+        points: NSPersistentCloudKitContainer,
+        finance: NSPersistentCloudKitContainer
+    ) {
+        SharedChangeNotifications.install()
+        let notifiers: [(NSPersistentCloudKitContainer, SelectedModule, SharedChangeDescriber)] = [
+            (trips, .trips, TripTrackerModule.describeSharedChange),
+            (fuel, .fuel, FuelTrackerModule.describeSharedChange),
+            (explore, .explore, ExploreTrackerModule.describeSharedChange),
+            (points, .points, PointsTrackerModule.describeSharedChange),
+            (finance, .finance, FinanceTrackerModule.describeSharedChange),
+        ]
+        for (container, module, describe) in notifiers {
+            SharedChangeNotifier.start(
+                container: container,
+                moduleID: module.rawValue,
+                moduleName: module.accent.name,
+                describe: describe
+            )
         }
     }
 

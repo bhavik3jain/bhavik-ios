@@ -96,6 +96,9 @@ public enum CloudSharedStore {
             fatalError("Failed to load \(name) store: \(loadError)")
         }
         container.viewContext.automaticallyMergesChangesFromParent = true
+        // Names this device's own saves in persistent history, so
+        // SharedChangeNotifier can never mistake one for a partner's edit.
+        container.viewContext.transactionAuthor = SharedChangeFilter.appAuthor
         return container
     }
 }

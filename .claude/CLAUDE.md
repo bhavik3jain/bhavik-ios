@@ -88,7 +88,13 @@ or the schema-init / in-memory launch crashes on a missing env value; a
 `ShareAcceptRouter.shared.register(recordTypePrefix: "CD_Shared…")` for its share root, or accepted
 shares land nowhere; env keys in Core's `ModuleManagedObjectContexts.swift` **and**
 `ModulePersistentContainers.swift`; and an entry in `CloudKitSchemaInitializer.coreDataModels()`,
-or Production never gets its record types. `/add-tracker` (`.claude/skills/add-tracker`) scaffolds a
+or Production never gets its record types. It also needs a `describeSharedChange` on its
+`<Module>TrackerModule` and a row in `BhavikApp.startSharedChangeNotifications` (plus
+`SharedChangeNotificationsSection.modules`), or a partner's edits to it are never notified. Its
+container must come from `CloudSharedStore.makeContainer`, which stamps the `app` transaction author
+that keeps this device's own saves out of those notifications. `SharedChangeNotifier` also **purges
+persistent history** once an export has succeeded — anything new that reads history must be added to
+its cutoff, or it loses the transactions it hasn't read yet. `/add-tracker` (`.claude/skills/add-tracker`) scaffolds a
 new module and walks this whole list.
 
 ## Module chrome — a new root view can ship with no way back

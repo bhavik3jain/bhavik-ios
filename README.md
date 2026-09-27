@@ -115,6 +115,25 @@ Finance works the same way: its household (`SharedFinanceHousehold`) is the shar
 shares every owner, account, month, metal item and transaction in it.
 The schema ritual below covers these models too.
 
+**Notifications about shared changes.** When someone you share a trip, vehicle, guide or household
+with changes it, the app posts a local notification ("Saloni added Gelato at Giolitti to Day 3"),
+one per shared item per burst of edits; tapping it opens that tracker. Core's `SharedChangeNotifier`
+reads each Core Data container's persistent history after every remote change, keeps only what the
+CloudKit mirroring delegate imported (this device's own saves carry the `app` transaction author),
+keeps only objects that are actually shared, and asks each module's `describeSharedChange` for the
+wording. Settings → Notifications has the switch and one per tracker; permission is asked when you
+share or accept a share, or from that switch — never at launch. The honest limits:
+
+- Nothing comes from a server. A notification exists only once *this* device has imported the change,
+  which means while the app is running or the next time it opens. Waking a suspended app for it needs
+  a CloudKit silent push, which needs the `aps-environment` entitlement; force-quit apps never get one.
+- The first download after installing (or after this feature first ships) is never announced, nor is
+  the download that follows accepting a share. Deletions are never announced — a deleted record can't
+  be read to say what it was.
+- The name comes from the share's participant list, cached locally. When the record doesn't say who
+  last changed it, the notification says "Someone". Edits from your own other devices are skipped.
+- A notification about the tracker you're looking at is held back while the app is in front.
+
 **Adding or changing a `@Model` needs one extra step.** CloudKit only creates a record type when a
 record of that type first syncs, and it never creates schema in Production — so a new model silently
 fails to sync until the schema is deployed. The ritual:
