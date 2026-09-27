@@ -221,6 +221,10 @@ public struct SharedChangeEvent: Sendable, Equatable {
     public let kind: SharedChangeKind
     public let action: String
     public let author: SharedChangeAuthor
+    /// The iCloud alert subscription that covers this root, if one could —
+    /// see `SharedChangeServerAlertID`. Lets a posted notification take the
+    /// place of iCloud's vaguer alert about the same change.
+    public let serverAlertID: String?
 
     public init(
         moduleID: String,
@@ -229,7 +233,8 @@ public struct SharedChangeEvent: Sendable, Equatable {
         objectKey: String,
         kind: SharedChangeKind,
         action: String,
-        author: SharedChangeAuthor
+        author: SharedChangeAuthor,
+        serverAlertID: String? = nil
     ) {
         self.moduleID = moduleID
         self.rootKey = rootKey
@@ -238,6 +243,7 @@ public struct SharedChangeEvent: Sendable, Equatable {
         self.kind = kind
         self.action = action
         self.author = author
+        self.serverAlertID = serverAlertID
     }
 
     /// The root itself arriving: a share this device just accepted, whose
@@ -277,12 +283,15 @@ public struct SharedChangeNotice: Sendable, Equatable {
     public let rootKey: String
     public let title: String
     public let body: String
+    /// See `SharedChangeEvent.serverAlertID`.
+    public let serverAlertID: String?
 
-    public init(moduleID: String, rootKey: String, title: String, body: String) {
+    public init(moduleID: String, rootKey: String, title: String, body: String, serverAlertID: String? = nil) {
         self.moduleID = moduleID
         self.rootKey = rootKey
         self.title = title
         self.body = body
+        self.serverAlertID = serverAlertID
     }
 
     /// One per root, so a later burst replaces an older unread notification
@@ -311,6 +320,7 @@ public struct SharedChangeCoalescer: Sendable {
         var objectOrder: [String] = []
         var actions: [String: (action: String, isInsert: Bool)] = [:]
         var authors: [SharedChangeAuthor] = []
+        var serverAlertID: String?
     }
 
     private var bursts: [String: Burst] = [:]
@@ -331,6 +341,7 @@ public struct SharedChangeCoalescer: Sendable {
         burst.lastChange = now
         // A rename mid-burst should title the notification by the new name.
         burst.rootTitle = event.rootTitle
+        burst.serverAlertID = event.serverAlertID ?? burst.serverAlertID
         if !burst.authors.contains(event.author) { burst.authors.append(event.author) }
         let isInsert = event.kind == .inserted
         if let existing = burst.actions[event.objectKey] {
@@ -372,7 +383,13 @@ public struct SharedChangeCoalescer: Sendable {
         } else {
             body = "\(who) made \(counted(burst.objectOrder.count, "change")) to \(burst.rootTitle)"
         }
-        return SharedChangeNotice(moduleID: burst.moduleID, rootKey: rootKey, title: burst.rootTitle, body: body)
+        return SharedChangeNotice(
+            moduleID: burst.moduleID,
+            rootKey: rootKey,
+            title: burst.rootTitle,
+            body: body,
+            serverAlertID: burst.serverAlertID
+        )
     }
 
     /// "Saloni", "Saloni and Alex", or "Someone" when nobody could be named.

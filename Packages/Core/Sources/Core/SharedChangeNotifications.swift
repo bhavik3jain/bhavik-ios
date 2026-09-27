@@ -7,13 +7,16 @@ import UserNotifications
 /// tapped. `SharedChangeNotifier` decides *what* to say; this decides whether
 /// and how it reaches the screen.
 ///
-/// Everything here is local — `UNUserNotificationCenter` on this device.
-/// Nothing is sent from a server, so a notification only exists once this
-/// device has imported the change: while the app is running, or the next
-/// time it's opened. A CloudKit silent push can wake a suspended app to
-/// import sooner only if the app carries the `aps-environment` entitlement,
-/// and iOS never delivers one to an app the user force-quit — so a
-/// notification can lag the partner's edit by as long as the app stays shut.
+/// Two paths reach the screen. The rich one is local —
+/// `UNUserNotificationCenter` on this device — and only exists once this
+/// device has imported the change: while the app is running, when a CloudKit
+/// silent push wakes it, or the next time it's opened. iOS never delivers a
+/// silent push to an app the user force-quit, so that one can lag the
+/// partner's edit by as long as the app stays shut. The other comes straight
+/// from iCloud (`SharedChangeServerAlerts`): a fixed "Rome & Amalfi was
+/// updated" that arrives with the app not running at all. When the local one
+/// posts it takes the iCloud alert's place, and while the app is in front
+/// the iCloud alert isn't shown at all.
 public enum SharedChangeNotifications {
     /// The Settings toggle "Changes to shared items". On by default, but
     /// nothing is shown until the system permission has been granted, which
@@ -99,7 +102,13 @@ public enum SharedChangeNotifications {
         content.threadIdentifier = notice.identifier
         content.userInfo = [moduleUserInfoKey: notice.moduleID, rootUserInfoKey: notice.rootKey]
         let request = UNNotificationRequest(identifier: notice.identifier, content: content, trigger: nil)
-        UNUserNotificationCenter.current().add(request) { _ in }
+        let serverAlert = notice.serverAlertID
+        UNUserNotificationCenter.current().add(request) { error in
+            // Says who and what, so iCloud's "… was updated" about the same
+            // share has nothing left to add.
+            guard error == nil, let serverAlert else { return }
+            SharedChangeServerAlertInbox.removeDelivered(subscriptionIDs: [serverAlert])
+        }
     }
 }
 
@@ -130,6 +139,10 @@ final class SharedChangeNotificationDelegate: NSObject, UNUserNotificationCenter
         _ center: UNUserNotificationCenter,
         willPresent notification: UNNotification
     ) async -> UNNotificationPresentationOptions {
+        // iCloud's alert, while the app is open and importing the same change
+        // itself: the local notification says it better, or the change was on
+        // screen already.
+        if notification.request.content.categoryIdentifier == SharedChangeServerAlertText.category { return [] }
         let module = notification.request.content.userInfo[SharedChangeNotifications.moduleUserInfoKey] as? String
         let onScreen = await MainActor.run { SharedChangeNotificationRouter.shared.foregroundModuleID }
         if let module, module == onScreen { return [] }
@@ -140,9 +153,18 @@ final class SharedChangeNotificationDelegate: NSObject, UNUserNotificationCenter
         _ center: UNUserNotificationCenter,
         didReceive response: UNNotificationResponse
     ) async {
-        guard response.actionIdentifier == UNNotificationDefaultActionIdentifier,
-              let module = response.notification.request.content.userInfo[SharedChangeNotifications.moduleUserInfoKey] as? String
-        else { return }
+        guard response.actionIdentifier == UNNotificationDefaultActionIdentifier else { return }
+        let content = response.notification.request.content
+        let module: String?
+        if content.categoryIdentifier == SharedChangeServerAlertText.category {
+            module = SharedChangeServerAlertID.moduleToOpen(
+                subscriptionID: SharedChangeServerAlertInbox.subscriptionID(of: content),
+                participatingModuleIDs: SharedChangeServerAlerts.participatingModuleIDs
+            )
+        } else {
+            module = content.userInfo[SharedChangeNotifications.moduleUserInfoKey] as? String
+        }
+        guard let module else { return }
         await MainActor.run { SharedChangeNotificationRouter.shared.moduleToOpen = module }
     }
 }
