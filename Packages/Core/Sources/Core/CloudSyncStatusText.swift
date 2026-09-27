@@ -68,4 +68,52 @@ public enum CloudSyncStatusText {
             "This copy of the app isn't syncing with iCloud."
         }
     }
+
+    /// The Mac sidebar footer's short form: "Synced just now", "Synced 5 min
+    /// ago", "Synced at 3:12 PM", "Synced yesterday", "Synced Sep 3". The
+    /// footer is 240pt wide beside a bold status line, so it drops the
+    /// "Last"/"today at" that `lastSynced` spells out for Settings.
+    public static func synced(
+        _ lastSyncedAt: Date?,
+        isRefreshing: Bool = false,
+        asOf now: Date = .now,
+        calendar: Calendar = .current,
+        locale: Locale = .current
+    ) -> String {
+        if isRefreshing { return "Checking iCloud…" }
+        guard let lastSyncedAt else { return "Not synced yet" }
+        let elapsed = max(0, now.timeIntervalSince(lastSyncedAt))
+        if elapsed < 60 { return "Synced just now" }
+        if elapsed < 60 * 60 { return "Synced \(Int(elapsed / 60)) min ago" }
+        if calendar.isDate(lastSyncedAt, inSameDayAs: now) {
+            var time = Date.FormatStyle(date: .omitted, time: .shortened, locale: locale, calendar: calendar)
+            time.timeZone = calendar.timeZone
+            return "Synced at \(lastSyncedAt.formatted(time))"
+        }
+        if let yesterday = calendar.date(byAdding: .day, value: -1, to: now),
+           calendar.isDate(lastSyncedAt, inSameDayAs: yesterday) {
+            return "Synced yesterday"
+        }
+        var day = Date.FormatStyle(locale: locale, calendar: calendar).month(.abbreviated).day()
+        day.timeZone = calendar.timeZone
+        return "Synced \(lastSyncedAt.formatted(day))"
+    }
+
+    /// The footer's bold line. Only says "up to date" once something has
+    /// actually synced, and owns up to a failed refresh rather than leaving
+    /// the last good time on screen as if all were well.
+    public static func headline(
+        lastSyncedAt: Date?,
+        isRefreshing: Bool,
+        lastOutcome: CloudRefreshOutcome?
+    ) -> String {
+        if isRefreshing { return "Syncing with iCloud" }
+        switch lastOutcome {
+        case .failed?: return "iCloud couldn't sync"
+        case .unavailable?: return "iCloud unavailable"
+        case .notSyncing?: return "Not syncing"
+        case .updated?, .timedOut?, nil: break
+        }
+        return lastSyncedAt == nil ? "iCloud" : "iCloud up to date"
+    }
 }

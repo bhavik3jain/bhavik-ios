@@ -123,6 +123,9 @@ struct AppSettingsView: View {
                 }
             }
 
+            // The Mac's Settings window has Customize Trackers as a tab of its
+            // own — see MacSettingsView.
+            #if os(iOS)
             Section {
                 NavigationLink {
                     CustomizeTrackersView()
@@ -132,6 +135,7 @@ struct AppSettingsView: View {
             } footer: {
                 Text("Choose which trackers appear, and in what order.")
             }
+            #endif
 
             SharedChangeNotificationsSection()
 

@@ -140,6 +140,7 @@ struct TrendsView: View {
             // flat "Trends" title, with no picker and nothing saying whose data
             // it was.
             .navigationTitle(summary?.name ?? "Trends")
+            .vehicleSwitcherToolbar(summaries: summaries, selectedID: summary?.id, perform: perform)
         }
     }
 }

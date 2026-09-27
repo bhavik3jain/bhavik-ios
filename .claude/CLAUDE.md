@@ -9,7 +9,8 @@ file is only the things that will cost you an hour if you don't know them.
 Repo slug `bhavik3jain/bhavik-ios`. Needs the iOS 26 SDK to compile at all (Xcode 26 or newer; CI selects the
 newest installed Xcode at run time). Core depends on nothing, the eight trackers depend only on Core,
 no feature package imports another, zero remote dependencies — keep it that way. Each module's
-namespace is a `<Module>TrackerModule` caseless enum (`models`, `accent`, `rootView()`).
+namespace is a `<Module>TrackerModule` caseless enum (`models`, `accent`, `symbolName`, `sections`,
+`rootView()`).
 
 When grepping, exclude `Packages/*/.build/` and `.swiftpm/`: they hold generated test runners, and an
 unfiltered `grep -rn '#if os(' Packages` returns 16 artefact hits when the true answer is zero.
@@ -86,8 +87,9 @@ one test share for it. Before it did, every Share button on TestFlight failed wh
 **Adding a whole module** needs these further edits, none optional: `packages:` **and** the
 `&appDependencies` anchor in `project.yml` (the anchor covers both targets, so the Mac build follows
 for free); the `AppSchema.models` sum in `BhavikApp.swift`; a `ModuleRow` (with its `.contextMenu` peek) in
-`HomeView.swift`; a case in its private `SelectedModule` enum **and** the `fullScreenCover` switch
-arm; a `TrackerRow` in `AppSettingsView.swift`;
+`HomeView.swift`; a case in its `SelectedModule` enum (with its `icon` and `sections`) **and** the
+`moduleContent` switch arm, plus its arms in the Mac's `sidebarDetail` and `overviewCard`; a
+`TrackerRow` in `AppSettingsView.swift`;
 the package loop in `tests.yml` — leave it out and CI never runs that suite, silently.
 
 A **Core Data module** (like Points or Finance) has no `models` array and is **not** added to
@@ -108,14 +110,19 @@ new module and walks this whole list.
 
 ## Module chrome — a new root view can ship with no way back
 
-Modules are presented as `fullScreenCover`, which carries **no dismiss control**. Every module root
-view must therefore be a `TabView(selection:)` over `String` tab values that opens with
-`Tab("Home", systemImage: "house", value: ModuleTab.home) { Color.clear }` — the empty content is
-deliberate, selecting it dismisses rather than showing a screen — and ends with
-`.tint(<Module>TrackerModule.accent.color)`, `.minimizesTabBarOnScroll()` and
-`.dismissesOnHomeTab($selection, restoringTo: "<this module's own first tab>")`. `restoringTo:` must
-name a real tab, never `ModuleTab.home`, or the module reopens blank. All eight root views do this
-identically, and nothing can catch a violation: views are untested by policy.
+On the phone modules are presented as `fullScreenCover`, which carries **no dismiss control**; the
+way out is a "Home" tab whose selection dismisses. Every module root view therefore goes through
+Core's `ModuleTabView(selection:sections:)` (`ModuleChrome.swift`), which builds that chrome in one
+place: a Home tab with empty content first, then one tab per `ModuleSection`,
+`.minimizesTabBarOnScroll()` and `.dismissesOnHomeTab` restoring to the **first section**, never
+Home, or the module reopens blank. The root view adds only `.tint(<Module>TrackerModule.accent.color)`.
+A hand-rolled `TabView` gets none of this and nothing catches it: views are untested by policy.
+
+Each module declares `sections` (the tabs, in order — the first is where it opens) and `symbolName`
+on its `<Module>TrackerModule`, and its `rootView` takes an optional `section: Binding<String>?`
+that is nil on the phone. The Mac passes the sidebar's selection there and sets
+`\.moduleLayout = .sidebar`, under which `ModuleTabView` shows just the selected section with no
+tab bar. Trips has one section; its `rootView` takes `trip:`/`tripSection:` bindings instead.
 
 ## macOS: one file holds every platform conditional *inside a module*
 
@@ -125,17 +132,23 @@ for `keyboardType`, `textInputAutocapitalization`, `navigationBarTitleDisplayMod
 tap-to-copy), `SafariView.swift`, `GlassEffects.swift`. An iOS-only SwiftUI modifier
 needed in a feature package means **adding a shim to MacCompat.swift**, not a `#if` at the call site.
 
-This rule is scoped to `Packages/<Module>` — a module's own screens genuinely are identical on both
-platforms. `App/Sources/HomeView.swift` and `BhavikApp.swift` are the composition root, not a feature
-package, and **do** carry `#if os(macOS)` directly: the hub itself is platform-specific by design —
-iOS gets the hub list + `fullScreenCover`, macOS gets a `NavigationSplitView` sidebar with each
-module's `rootView()` embedded straight into the detail pane (no sheet), plus a `⌘1`–`⌘8` Trackers
-menu that reaches `HomeView`'s selection via a `Notification.Name` (a Scene's `.commands` sits outside
-the `WindowGroup` and has no other way in). Don't move this into Core — it isn't a shim for
-iOS-only API, it's the two platforms genuinely wanting different navigation, and it belongs where the
-hub itself lives. A module's internal "Home" tab still exists on macOS, unmodified — embedded in a
-split view's detail pane it has nothing to dismiss, so tapping it just bounces back to that module's
-own first tab. That's a known, accepted quirk, not a bug to "fix" by touching the module.
+This rule is scoped to `Packages/<Module>` — a module asks **how it is shown**
+(`@Environment(\.moduleLayout)`: `.tabs` on the phone, `.sidebar` on the Mac), never where it runs.
+That flag is how a module drops its phone-only header, moves its section picker into the toolbar
+(Trips' Plan/Ideas/Nearby/Map/Codes as `.principal`), shows the Mac-only Ideas inspector (⌥⌘I) and
+drag-and-drop, or turns Fuel's vehicle chips into a toolbar segmented control. `moduleSubtitle(_:)`
+puts a line under the toolbar title in the sidebar layout only.
+
+`App/Sources/HomeView.swift`, `MacOverview.swift`, `MacSettingsView.swift` and `BhavikApp.swift` are
+the composition root, not a feature package, and **do** carry `#if os(macOS)` directly: iOS gets the
+hub list + `fullScreenCover`; macOS gets a `NavigationSplitView` whose sidebar is Overview, then the
+visible trackers, with the selected one's sections (only when it has more than one) or Trips' trips
++ "Past trips" nested under it, and an iCloud footer with Refresh. It lands on the Overview — one
+`overviewCard(…)` per module, fed from `HomeView`'s queries like the peeks. Settings is its own
+scene (⌘,). A `⌘0`–`⌘9` Trackers menu reaches `HomeView`'s selection via a `Notification.Name` (a
+Scene's `.commands` sits outside the `WindowGroup` and has no other way in). The Mac never shows a
+module's Home tab. Don't move this into Core — it's the two platforms genuinely wanting different
+navigation, and it belongs where the hub itself lives.
 
 - Eighteen view files carry `import Core // Only reached on macOS, …`. The import looks unused on iOS;
   **deleting it breaks only the Mac build**, the last CI step. Keep the marker comment on new ones.

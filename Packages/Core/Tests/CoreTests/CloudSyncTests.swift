@@ -281,3 +281,30 @@ private func label(_ date: Date?, refreshing: Bool = false) -> String {
     #expect(CloudSyncStatusText.message(for: .unavailable(.signedOut)) == CloudSyncState.signedOut.explanation)
     #expect(CloudSyncStatusText.message(for: .notSyncing) != nil)
 }
+
+private func footer(_ date: Date?, refreshing: Bool = false) -> String {
+    CloudSyncStatusText.synced(date, isRefreshing: refreshing, asOf: now, calendar: utc, locale: enUS)
+}
+
+@Test func sidebarFooterUsesTheShortForm() {
+    #expect(footer(nil) == "Not synced yet")
+    #expect(footer(now, refreshing: true) == "Checking iCloud…")
+    #expect(footer(now - 30) == "Synced just now")
+    #expect(footer(now + 2) == "Synced just now")
+    #expect(footer(now - 5 * 60) == "Synced 5 min ago")
+    let earlierToday = footer(now - 3 * 60 * 60)
+    #expect(earlierToday.hasPrefix("Synced at "))
+    #expect(earlierToday.contains("12:12"))
+    #expect(footer(now - 20 * 60 * 60) == "Synced yesterday")
+    #expect(footer(utc.date(from: DateComponents(year: 2026, month: 9, day: 3, hour: 9))!) == "Synced Sep 3")
+}
+
+@Test func sidebarHeadlineOwnsUpToAFailure() {
+    #expect(CloudSyncStatusText.headline(lastSyncedAt: nil, isRefreshing: false, lastOutcome: nil) == "iCloud")
+    #expect(CloudSyncStatusText.headline(lastSyncedAt: now, isRefreshing: false, lastOutcome: nil) == "iCloud up to date")
+    #expect(CloudSyncStatusText.headline(lastSyncedAt: now, isRefreshing: true, lastOutcome: nil) == "Syncing with iCloud")
+    // A timed-out wait isn't a failure: the last good sync still stands.
+    #expect(CloudSyncStatusText.headline(lastSyncedAt: now, isRefreshing: false, lastOutcome: .timedOut(lastSyncedAt: now)) == "iCloud up to date")
+    #expect(CloudSyncStatusText.headline(lastSyncedAt: now, isRefreshing: false, lastOutcome: .failed("offline")) == "iCloud couldn't sync")
+    #expect(CloudSyncStatusText.headline(lastSyncedAt: now, isRefreshing: false, lastOutcome: .unavailable(.signedOut)) == "iCloud unavailable")
+}

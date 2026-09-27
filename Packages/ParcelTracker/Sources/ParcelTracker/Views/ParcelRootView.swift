@@ -5,23 +5,19 @@ import SwiftUI
 struct ParcelRootView: View {
     @Environment(\.modelContext) private var modelContext
 
-    @State private var selection = "parcels"
+    /// The Mac sidebar's own selection when it picks the section; nil on the
+    /// phone, where the tab bar's selection below does.
+    var section: Binding<String>?
+    @State private var ownSection = ParcelTrackerModule.sections[0].id
 
     var body: some View {
-        TabView(selection: $selection) {
-            Tab("Home", systemImage: "house", value: ModuleTab.home) {
-                Color.clear
-            }
-            Tab("Orders", systemImage: "shippingbox", value: "parcels") {
-                ParcelListView()
-            }
-            Tab("Settings", systemImage: "gear", value: "settings") {
-                ParcelSettingsView()
+        ModuleTabView(selection: section ?? $ownSection, sections: ParcelTrackerModule.sections) { section in
+            switch section.id {
+            case "settings": ParcelSettingsView()
+            default: ParcelListView()
             }
         }
         .tint(ParcelTrackerModule.accent.color)
-        .minimizesTabBarOnScroll()
-        .dismissesOnHomeTab($selection, restoringTo: "parcels")
         #if DEBUG
         .task {
             guard ParcelDebugSeed.isRequested else { return }

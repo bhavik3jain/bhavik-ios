@@ -7,7 +7,10 @@ struct FinanceRootView: View {
     @Environment(\.managedObjectContext) private var context
     @Environment(\.financePersistentContainer) private var container
 
-    @State private var selection = "summary"
+    /// The Mac sidebar's own selection when it picks the section; nil on the
+    /// phone, where the tab bar's selection below does.
+    var section: Binding<String>?
+    @State private var ownSection = FinanceTrackerModule.sections[0].id
 
     /// Every household, and every month so a synced-in duplicate month
     /// re-renders this view: what `FinanceFold.needsTidying` looks at.
@@ -24,21 +27,12 @@ struct FinanceRootView: View {
     @AppStorage("finance.declinedMergeInto") private var declinedMergeInto = ""
 
     var body: some View {
-        TabView(selection: $selection) {
-            Tab("Home", systemImage: "house", value: ModuleTab.home) {
-                Color.clear
-            }
-            Tab("Summary", systemImage: "chart.line.uptrend.xyaxis", value: "summary") {
-                SummaryView()
-            }
-            Tab("Months", systemImage: "calendar", value: "months") {
-                MonthsView()
-            }
-            Tab("Spending", systemImage: "creditcard", value: "spending") {
-                SpendingView()
-            }
-            Tab("Holdings", systemImage: "building.columns", value: "holdings") {
-                HoldingsView()
+        ModuleTabView(selection: section ?? $ownSection, sections: FinanceTrackerModule.sections) { section in
+            switch section.id {
+            case "months": MonthsView()
+            case "spending": SpendingView()
+            case "holdings": HoldingsView()
+            default: SummaryView()
             }
         }
         .environment(\.financeCanCreateHousehold, hasCaughtUp)
@@ -85,8 +79,6 @@ struct FinanceRootView: View {
             Text(offer.message)
         }
         .tint(FinanceTrackerModule.accent.color)
-        .minimizesTabBarOnScroll()
-        .dismissesOnHomeTab($selection, restoringTo: "summary")
     }
 
     private var needsTidying: Bool {

@@ -268,13 +268,12 @@ distribution certificate through the App Store Connect API key.
 ## macOS
 
 `bhavik-macOS` builds and runs, sharing every source file with the iPhone app and the same CloudKit
-container — so the two see the same data. The hub is a `NavigationSplitView`: a sidebar lists the eight
-trackers, and the selected one's content sits in the detail pane — no sheet, no segmented strip.
-`⌘1`–`⌘8` (the Trackers menu) jump straight to a tracker. Each module's own screens are otherwise
-identical to iOS, including its internal "Home" tab, which has nothing to dismiss once embedded in
-the detail pane and just bounces back to the module's own first tab — leaving a tracker is what the
-sidebar is for now. Only `App/Sources/HomeView.swift` and `BhavikApp.swift` know about any of this;
-no feature package changed.
+container — so the two see the same data. The hub is a `NavigationSplitView`: the sidebar opens
+on an Overview of every tracker, then lists the trackers, with the open one's sections (or Trips'
+trips) nested under it — the Mac has no tab bars. iCloud status and Refresh (`⌘R`) sit at the foot
+of the sidebar, Settings is its own window (`⌘,`), and `⌘0`–`⌘9` (the Trackers menu) jump to the
+Overview or a tracker. Modules learn they are in the sidebar from Core's `moduleLayout` environment
+value, so no feature package contains a platform check.
 
 Platform differences inside a module are handled in `Packages/Core/Sources/Core/MacCompat.swift`,
 which provides `#if os(macOS)` no-op shims so the feature packages compile unchanged. Files relying on

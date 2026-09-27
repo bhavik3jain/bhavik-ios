@@ -184,3 +184,44 @@ private func trips(in context: NSManagedObjectContext) -> (rome: SharedTrip, tok
     #expect(groups.upcoming.count == 2)
     #expect(groups.finished.count == 1)
 }
+
+// MARK: - Mac sidebar
+
+@MainActor
+@Test func sidebarDetailCountsTheDayOfATripUnderWay() throws {
+    let context = try makeContext()
+    let all = trips(in: context)
+    #expect(TripTrackerModule.sidebarDetail(trips: [all.tokyo, all.rome], asOf: day(6, 8)) == "Day 3")
+}
+
+@MainActor
+@Test func sidebarDetailCountsDownWithOnlyTripsAhead() throws {
+    let context = try makeContext()
+    let all = trips(in: context)
+    let detail = TripTrackerModule.sidebarDetail(trips: [all.lisbon, all.tokyo, all.reykjavik], asOf: day(9, 20))
+    #expect(detail == TripOverview.countdown(days: all.tokyo.dates.daysUntilStart(asOf: day(9, 20))))
+    #expect(detail == "in 12 days")
+}
+
+@MainActor
+@Test func sidebarDetailIsNilWithNothingAhead() throws {
+    let context = try makeContext()
+    let all = trips(in: context)
+    #expect(TripTrackerModule.sidebarDetail(trips: [all.reykjavik, all.rome], asOf: day(12, 1)) == nil)
+    #expect(TripTrackerModule.sidebarDetail(trips: [], asOf: day(12, 1)) == nil)
+}
+
+@MainActor
+@Test func sidebarTripsPutFinishedOnesInPastNewestFirst() throws {
+    let context = try makeContext()
+    let all = trips(in: context)
+    let groups = TripTrackerModule.sidebarTrips([all.lisbon, all.reykjavik, all.tokyo, all.rome], asOf: day(6, 8))
+
+    #expect(groups.current.map(\.title) == ["Rome & Amalfi", "Tokyo", "Lisbon"], "Under way, then soonest first")
+    #expect(groups.past.map(\.title) == ["Reykjavik"])
+    #expect(groups.underWay == [all.rome.objectID])
+
+    let later = TripTrackerModule.sidebarTrips([all.lisbon, all.reykjavik, all.tokyo, all.rome], asOf: day(10, 20))
+    #expect(later.past.map(\.title) == ["Tokyo", "Rome & Amalfi", "Reykjavik"], "Most recent first")
+    #expect(later.underWay.isEmpty)
+}

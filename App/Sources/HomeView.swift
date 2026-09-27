@@ -98,6 +98,16 @@ struct HomeView: View {
     /// Written by a Fuel peek's "Open My X3" so the module opens on that car.
     @AppStorage(FuelTrackerModule.selectedVehicleDefaultsKey) private var selectedVehicleName = ""
 
+    #if os(macOS)
+    /// The section each tracker was last left on in the Mac sidebar, so coming
+    /// back to Fuel lands on Trends again — what a tab bar's own selection did.
+    @State private var macSections: [SelectedModule: String] = [:]
+    /// The trip the sidebar has open under Trips; nil shows the trip list.
+    @State private var openTripID: NSManagedObjectID?
+    @State private var tripSection: TripSection = .plan
+    @State private var showsPastTrips = false
+    #endif
+
     var body: some View {
         Group {
             #if os(macOS)
@@ -193,114 +203,284 @@ struct HomeView: View {
     #if os(macOS)
     /// Replaces the hub-and-sheet pattern with the split view a Mac app is
     /// expected to have: the sidebar IS the way in and out of a tracker, so
-    /// there is no dismiss control to build and no sheet to size. A module's
-    /// own root view is unchanged from iOS — including its internal "Home" tab,
-    /// whose whole job upstream is dismissing a sheet. Embedded here it has
-    /// nothing to dismiss, so tapping it just bounces back to the module's own
-    /// first tab; leaving a tracker is what the sidebar is for now.
+    /// there is no dismiss control to build and no sheet to size.
+    ///
+    /// The sidebar also picks the tracker's section, nested under it, so a
+    /// module shows no tab bar here (`ModuleLayout.sidebar`). It used to embed
+    /// each module's phone chrome unchanged — a row of tabs under the toolbar
+    /// and a "Home" tab that, with no sheet to dismiss, just bounced back to
+    /// the module's first tab.
     private var macBody: some View {
         NavigationSplitView {
-            List(layoutStore.visibleModules, selection: $selectedModule) { module in
-                MacSidebarRow(accent: module.accent, icon: module.icon, detail: detail(for: module))
-                    .tag(module)
-                    .contextMenu {
-                        contextMenuItems(for: module)
-                    } preview: {
-                        peek(for: module)
+            // Re-read once a minute, as the sync footer is: "Day 3" and "in 12
+            // days" were read from `.now` only when a query changed, so a
+            // window left open overnight still said yesterday's.
+            TimelineView(.everyMinute) { context in
+                List(selection: sidebarSelection) {
+                    Label("Overview", systemImage: "square.grid.2x2")
+                        .tag(MacSidebarItem.overview)
+
+                    Section("Trackers") {
+                        ForEach(layoutStore.visibleModules) { module in
+                            MacSidebarRow(accent: module.accent, icon: module.icon, detail: sidebarDetail(for: module, asOf: context.date))
+                                .tag(MacSidebarItem.tracker(module))
+                                .contextMenu { contextMenuItems(for: module) }
+                            if module == selectedModule {
+                                nestedRows(for: module, asOf: context.date)
+                            }
+                        }
                     }
+                }
             }
             // ⌘R had nothing on screen to show it working unless Settings
             // happened to be open; the sidebar is always there.
-            .safeAreaInset(edge: .bottom) {
+            .safeAreaInset(edge: .bottom, spacing: 0) {
                 if let syncMonitor { MacSyncFooter(monitor: syncMonitor) }
             }
-            .navigationTitle("Trackers")
-            .navigationSplitViewColumnWidth(min: 220, ideal: 260, max: 320)
-            .toolbar {
-                ToolbarItem {
-                    NavigationLink {
-                        AppSettingsView()
-                    } label: {
-                        Image(systemName: "gearshape")
-                    }
-                    .accessibilityLabel("Settings")
-                }
-            }
+            .navigationSplitViewColumnWidth(min: 220, ideal: 240, max: 300)
         } detail: {
             if let selectedModule {
-                moduleContent(for: selectedModule)
-                    .presentsShareSheets()
-                    // A fresh identity per tracker, so switching trackers can't
-                    // leave one module's navigation state bleeding into another's
-                    // view — the same freshness a fullScreenCover's own dismissal
-                    // and re-presentation gives it on iOS.
-                    .id(selectedModule)
+                moduleContent(
+                    for: selectedModule,
+                    section: sectionBinding(for: selectedModule),
+                    trip: openTripBinding,
+                    tripSection: $tripSection
+                )
+                .environment(\.moduleLayout, .sidebar)
+                .presentsShareSheets()
+                // A fresh identity per tracker, so switching trackers can't
+                // leave one module's navigation state bleeding into another's
+                // view — the same freshness a fullScreenCover's own dismissal
+                // and re-presentation gives it on iOS. Per tracker, not per
+                // section: a module keeps its own state (Fuel's add sheet)
+                // across its sections, as it does across its tabs.
+                .id(selectedModule)
             } else {
-                ContentUnavailableView("Select a Tracker", systemImage: "square.grid.2x2")
+                MacOverview(
+                    modules: layoutStore.visibleModules,
+                    syncMonitor: syncMonitor,
+                    open: { selectedModule = $0 }
+                ) { module, now in
+                    overviewCard(for: module, asOf: now)
+                }
             }
         }
-        .navigationSplitViewStyle(.balanced)
-        // Menu-bar shortcuts (⌘1 onward, one per visible tracker), posted from
-        // BhavikApp's commands — a Scene's .commands can't reach into a
-        // WindowGroup's view state directly, so it goes by notification
+        // Menu-bar shortcuts (⌘0 for Overview, ⌘1 onward per visible tracker),
+        // posted from BhavikApp's commands — a Scene's .commands can't reach
+        // into a WindowGroup's view state directly, so it goes by notification
         // instead of a shared observable.
         .onReceive(NotificationCenter.default.publisher(for: .selectTracker)) { note in
-            guard let raw = note.userInfo?["module"] as? String, let module = SelectedModule(rawValue: raw) else { return }
-            selectedModule = module
-        }
-        .onAppear {
-            // An empty detail pane on first launch reads as broken, not calm.
-            if selectedModule == nil { selectedModule = layoutStore.visibleModules.first }
+            guard let raw = note.userInfo?["module"] as? String else { return }
+            if raw == SelectedModule.overviewID {
+                selectedModule = nil
+            } else if let module = SelectedModule(rawValue: raw) {
+                selectedModule = module
+            }
         }
         // Hiding the open tracker (from Settings, or on another device) would
         // otherwise leave it in the detail pane with no sidebar row selected
-        // and no way back to it.
+        // and no way back to it. Overview is always there to fall back to.
         .onChange(of: layoutStore.visibleModules) { _, visible in
             if let selectedModule, !visible.contains(selectedModule) { self.selectedModule = nil }
+        }
+        // A trip deleted or archived on another device dropped the detail pane
+        // back to the list, but the selection still named it — so neither
+        // Trips nor any trip showed as selected.
+        .onChange(of: tripResults.map(\.objectID)) { _, ids in
+            if let openTripID, !ids.contains(openTripID) { self.openTripID = nil }
+        }
+        // A past trip opened from the list, or open when "Past trips" was
+        // folded, was selected inside a collapsed disclosure: nothing in the
+        // sidebar looked selected.
+        .onChange(of: openTripID, initial: true) { _, id in
+            guard let id, TripTrackerModule.sidebarTrips(trips).past.contains(where: { $0.objectID == id }) else { return }
+            showsPastTrips = true
+        }
+    }
+
+    /// The open trip, as the trip list inside Trips writes it. A different
+    /// trip opens on Plan, as it does from the sidebar — the list used to
+    /// write `openTripID` directly, so trip B opened on whatever face trip A
+    /// was left on.
+    private var openTripBinding: Binding<NSManagedObjectID?> {
+        Binding {
+            openTripID
+        } set: { id in
+            if id != openTripID { tripSection = .plan }
+            openTripID = id
+        }
+    }
+
+    /// The List's selection, read from and written to the state the detail
+    /// pane is actually built from — which tracker, which of its sections,
+    /// which trip. A tracker with sections is shown selected on its section
+    /// row, so choosing the tracker's own row lands on the section it was
+    /// last left on, as reopening a tab bar did.
+    private var sidebarSelection: Binding<MacSidebarItem?> {
+        Binding {
+            guard let module = selectedModule else { return .overview }
+            if module == .trips, let openTripID { return .trip(openTripID) }
+            if module.sections.count > 1 { return .section(module, sectionBinding(for: module).wrappedValue) }
+            return .tracker(module)
+        } set: { item in
+            switch item {
+            case .overview?:
+                selectedModule = nil
+            case .tracker(let module)?:
+                if module == .trips { openTripID = nil }
+                selectedModule = module
+            case .section(let module, let section)?:
+                macSections[module] = section
+                selectedModule = module
+            case .trip(let id)?:
+                if openTripID != id { tripSection = .plan }
+                openTripID = id
+                selectedModule = .trips
+            case nil:
+                // A click on empty sidebar space clears a List's selection;
+                // the detail pane stays as it was rather than going blank.
+                break
+            }
+        }
+    }
+
+    private func sectionBinding(for module: SelectedModule) -> Binding<String> {
+        Binding {
+            macSections[module] ?? module.sections.first?.id ?? ""
+        } set: {
+            macSections[module] = $0
+        }
+    }
+
+    /// Under the open tracker: its sections when it has more than one, or —
+    /// for Trips, whose one section is the list — the trips themselves.
+    @ViewBuilder
+    private func nestedRows(for module: SelectedModule, asOf now: Date) -> some View {
+        if module == .trips {
+            let groups = TripTrackerModule.sidebarTrips(trips, asOf: now)
+            ForEach(groups.current) { trip in
+                MacNestedRow(
+                    title: trip.title,
+                    dot: groups.underWay.contains(trip.objectID) ? module.accent.color : nil
+                )
+                .tag(MacSidebarItem.trip(trip.objectID))
+            }
+            if !groups.past.isEmpty {
+                DisclosureGroup(isExpanded: $showsPastTrips) {
+                    ForEach(groups.past) { trip in
+                        MacNestedRow(title: trip.title)
+                            .tag(MacSidebarItem.trip(trip.objectID))
+                    }
+                } label: {
+                    MacNestedRow(title: "Past trips")
+                }
+            }
+        } else if module.sections.count > 1 {
+            ForEach(module.sections) { section in
+                MacNestedRow(title: section.title)
+                    .tag(MacSidebarItem.section(module, section.id))
+            }
+        }
+    }
+
+    /// The short figure at the trailing edge of a sidebar row — "Day 3", "36",
+    /// "30.9" — or nothing when there's no single number worth showing. The
+    /// Overview has the sentences.
+    private func sidebarDetail(for module: SelectedModule, asOf now: Date) -> String? {
+        switch module {
+        case .trips: return TripTrackerModule.sidebarDetail(trips: trips, asOf: now)
+        case .explore:
+            let places = guides.reduce(0) { $0 + GuideSummary.summarize($1).placeCount }
+            return places > 0 ? String(places) : nil
+        case .fuel: return FuelTrackerModule.sidebarDetail(vehicles: vehicles)
+        case .finance: return FinanceTrackerModule.sidebarDetail(months: financeMonths, container: financePersistentContainer)
+        case .tv:
+            let ready = Schedule.readyToWatch(shows: shows, asOf: now).count
+            return ready > 0 ? String(ready) : nil
+        case .parcels:
+            let onTheWay = parcels.count { !$0.status.isSettled }
+            return onTheWay > 0 ? String(onTheWay) : nil
+        case .gym, .points: return nil
+        }
+    }
+
+    /// Each tracker's Overview card, fed from the queries above so no module
+    /// reads another's data — the same arrangement as the phone's peeks.
+    @ViewBuilder
+    private func overviewCard(for module: SelectedModule, asOf now: Date) -> some View {
+        let open = { selectedModule = module }
+        switch module {
+        case .trips:
+            TripTrackerModule.overviewCard(trips: trips, asOf: now) { id, section in
+                openTripID = id
+                tripSection = section
+                selectedModule = .trips
+            }
+        case .explore: ExploreTrackerModule.overviewCard(guides: guides, open: open)
+        case .fuel: FuelTrackerModule.overviewCard(vehicles: vehicles, open: open)
+        case .finance: FinanceTrackerModule.overviewCard(months: financeMonths, container: financePersistentContainer, open: open)
+        case .gym: GymTrackerModule.overviewCard(sessions: sessions, asOf: now, open: open)
+        case .tv: TVTrackerModule.overviewCard(shows: shows, asOf: now, open: open)
+        case .parcels: ParcelTrackerModule.overviewCard(parcels: parcels, open: open)
+        case .points: PointsTrackerModule.overviewCard(accounts: pointsAccounts, asOf: now, open: open)
         }
     }
     #endif
 
     // MARK: - Shared: which module is which
 
+    /// A tracker's root view. The bindings are the Mac sidebar's, which picks
+    /// the section (or, for Trips, the trip and its face) in place of the
+    /// module's own tab bar; the phone leaves them nil.
     @ViewBuilder
-    private func moduleContent(for module: SelectedModule) -> some View {
+    private func moduleContent(
+        for module: SelectedModule,
+        section: Binding<String>? = nil,
+        trip: Binding<NSManagedObjectID?>? = nil,
+        tripSection: Binding<TripSection>? = nil
+    ) -> some View {
         switch module {
         case .gym:
-            GymTrackerModule.rootView()
+            GymTrackerModule.rootView(section: section)
         case .fuel:
             // Always set by the time a module can be opened — BhavikApp's
             // WindowGroup sets `\.fuelManagedObjectContext` and
             // `\.fuelPersistentContainer` unconditionally in `.init()`,
             // before any view (this one included) exists.
-            FuelTrackerModule.rootView(context: fuelContext!, container: fuelPersistentContainer!)
+            FuelTrackerModule.rootView(context: fuelContext!, container: fuelPersistentContainer!, section: section)
         case .tv:
-            TVTrackerModule.rootView()
+            TVTrackerModule.rootView(section: section)
         case .parcels:
-            ParcelTrackerModule.rootView()
+            ParcelTrackerModule.rootView(section: section)
         case .trips:
             // Always set by the time a module can be opened — BhavikApp's
             // WindowGroup sets `\.tripPersistentContainer` unconditionally in
             // `.init()`, before any view (this one included) exists.
-            TripTrackerModule.rootView(context: tripContext, container: tripPersistentContainer!)
+            TripTrackerModule.rootView(
+                context: tripContext,
+                container: tripPersistentContainer!,
+                trip: trip,
+                tripSection: tripSection
+            )
         case .explore:
             // Always set by the time a module can be opened — BhavikApp's
             // WindowGroup sets `\.exploreManagedObjectContext` and
             // `\.explorePersistentContainer` unconditionally in `.init()`,
-            // before any view (this one included) exists.
+            // before any view (this one included) exists. One section, so
+            // nothing for the sidebar to pick.
             ExploreTrackerModule.rootView(context: exploreContext!, container: explorePersistentContainer!)
         case .points:
             // Always set by the time a module can be opened — BhavikApp's
             // WindowGroup sets `\.pointsManagedObjectContext` and
             // `\.pointsPersistentContainer` unconditionally in `.init()`,
             // before any view (this one included) exists.
-            PointsTrackerModule.rootView(context: pointsContext!, container: pointsPersistentContainer!)
+            PointsTrackerModule.rootView(context: pointsContext!, container: pointsPersistentContainer!, section: section)
         case .finance:
             // Always set by the time a module can be opened — BhavikApp's
             // WindowGroup sets `\.financeManagedObjectContext` and
             // `\.financePersistentContainer` unconditionally in `.init()`,
             // before any view (this one included) exists.
-            FinanceTrackerModule.rootView(context: financeContext!, container: financePersistentContainer!)
+            FinanceTrackerModule.rootView(context: financeContext!, container: financePersistentContainer!, section: section)
         }
     }
 
@@ -415,23 +595,43 @@ enum SelectedModule: String, Identifiable, Hashable, CaseIterable {
 
     var icon: String {
         switch self {
-        case .trips: "suitcase.rolling.fill"
-        case .explore: "map.fill"
-        case .gym: "dumbbell.fill"
-        case .tv: "tv.fill"
-        case .parcels: "shippingbox.fill"
-        case .fuel: "fuelpump.fill"
-        case .points: "star.circle.fill"
+        case .trips: TripTrackerModule.symbolName
+        case .explore: ExploreTrackerModule.symbolName
+        case .gym: GymTrackerModule.symbolName
+        case .tv: TVTrackerModule.symbolName
+        case .parcels: ParcelTrackerModule.symbolName
+        case .fuel: FuelTrackerModule.symbolName
+        case .points: PointsTrackerModule.symbolName
         case .finance: FinanceTrackerModule.symbolName
         }
     }
+
+    /// The module's own screens: its tabs on the phone, the rows nested under
+    /// it in the Mac sidebar.
+    var sections: [ModuleSection] {
+        switch self {
+        case .trips: TripTrackerModule.sections
+        case .explore: ExploreTrackerModule.sections
+        case .gym: GymTrackerModule.sections
+        case .tv: TVTrackerModule.sections
+        case .parcels: ParcelTrackerModule.sections
+        case .fuel: FuelTrackerModule.sections
+        case .points: PointsTrackerModule.sections
+        case .finance: FinanceTrackerModule.sections
+        }
+    }
+
+    /// What the ⌘0 command posts in place of a tracker's raw value: the Mac's
+    /// Overview, which has no case here because it isn't a tracker.
+    static let overviewID = "overview"
 }
 
 extension Notification.Name {
-    /// Posted by BhavikApp's ⌘1… menu commands; userInfo["module"] is a
-    /// `SelectedModule` raw value. A notification rather than a shared
-    /// observable because a Scene's `.commands` sits outside the WindowGroup
-    /// and has no direct line to HomeView's own state.
+    /// Posted by BhavikApp's ⌘0… menu commands; userInfo["module"] is a
+    /// `SelectedModule` raw value, or `SelectedModule.overviewID`. A
+    /// notification rather than a shared observable because a Scene's
+    /// `.commands` sits outside the WindowGroup and has no direct line to
+    /// HomeView's own state.
     static let selectTracker = Notification.Name("com.bhavikjain.trackers.selectTracker")
 }
 
@@ -475,58 +675,124 @@ private struct ModuleRow: View {
 }
 
 #if os(macOS)
-/// A sidebar row. No chevron and no button action — `List(selection:)` on the
+/// What a Mac sidebar row stands for.
+enum MacSidebarItem: Hashable {
+    case overview
+    case tracker(SelectedModule)
+    case section(SelectedModule, String)
+    case trip(NSManagedObjectID)
+}
+
+/// A tracker's sidebar row: its 22pt tile, its name, and a short figure at the
+/// trailing edge. No chevron and no button action — `List(selection:)` on the
 /// enclosing list already makes the whole row a click target and shows the
 /// selected one highlighted, the way Mail's or Notes' sidebar does.
 private struct MacSidebarRow: View {
     let accent: ModuleAccent
     let icon: String
-    let detail: String
+    let detail: String?
 
     var body: some View {
-        HStack(spacing: 12) {
-            Image(systemName: icon)
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(.white)
-                .frame(width: 28, height: 28)
-                .background(accent.color, in: RoundedRectangle(cornerRadius: 7))
-
-            VStack(alignment: .leading, spacing: 1) {
-                Text(accent.name)
-                    .fontWeight(.semibold)
+        HStack(spacing: 8) {
+            ModuleIconTile(color: accent.color, symbol: icon, size: 22)
+            Text(accent.name)
+            Spacer(minLength: 4)
+            if let detail {
                 Text(detail)
-                    .font(.caption)
+                    .font(.system(size: 11))
+                    .monospacedDigit()
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
         }
-        .padding(.vertical, 3)
     }
 }
 
-/// "Last synced …" under the sidebar, with the outcome of a refresh that
-/// didn't bring anything in — the Mac's answer to letting go of a pull.
+/// A section or trip nested under the open tracker: text only, indented to
+/// line up with the tracker's name rather than its tile, with a dot at the
+/// trailing edge for the trip under way.
+///
+/// It used to carry an SF Symbol per row (suitcase, clock, car), which gave
+/// the nested rows the same weight as the trackers they sit under.
+private struct MacNestedRow: View {
+    let title: String
+    var dot: Color?
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Text(title).lineLimit(1)
+            Spacer(minLength: 4)
+            if let dot {
+                Circle()
+                    .fill(dot)
+                    .frame(width: 6, height: 6)
+                    .accessibilityLabel("In progress")
+            }
+        }
+        .font(.system(size: 12.5))
+        .padding(.leading, 30)
+    }
+}
+
+/// The foot of the sidebar: iCloud's state, when it last synced, and Refresh
+/// — the Mac's answer to letting go of a pull.
 private struct MacSyncFooter: View {
     let monitor: CloudSyncMonitor
+
+    private var symbol: String {
+        if monitor.isRefreshing { return "arrow.triangle.2.circlepath.icloud" }
+        switch monitor.lastOutcome {
+        case .failed?, .unavailable?, .notSyncing?: return "exclamationmark.icloud"
+        default: return monitor.lastSyncedAt == nil ? "icloud" : "checkmark.icloud"
+        }
+    }
+
+    /// Green only for "iCloud up to date", orange for the headlines that say
+    /// it isn't — the same cases `CloudSyncStatusText.headline` reads.
+    private var tint: AnyShapeStyle {
+        if monitor.isRefreshing { return AnyShapeStyle(.secondary) }
+        switch monitor.lastOutcome {
+        case .failed?, .unavailable?, .notSyncing?: return AnyShapeStyle(.orange)
+        default: return monitor.lastSyncedAt == nil ? AnyShapeStyle(.secondary) : AnyShapeStyle(.green)
+        }
+    }
 
     var body: some View {
         // Re-read once a minute, so "5 min ago" doesn't sit frozen.
         TimelineView(.everyMinute) { context in
-            VStack(alignment: .leading, spacing: 2) {
-                Label(
-                    CloudSyncStatusText.lastSynced(monitor.lastSyncedAt, isRefreshing: monitor.isRefreshing, asOf: context.date),
-                    systemImage: "clock.arrow.circlepath"
-                )
-                if let message = monitor.lastOutcome.flatMap(CloudSyncStatusText.message(for:)) {
-                    Text(message)
-                        .lineLimit(3)
+            HStack(spacing: 8) {
+                Image(systemName: symbol)
+                    .font(.system(size: 15))
+                    .foregroundStyle(tint)
+                    .frame(width: 22)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(CloudSyncStatusText.headline(
+                        lastSyncedAt: monitor.lastSyncedAt,
+                        isRefreshing: monitor.isRefreshing,
+                        lastOutcome: monitor.lastOutcome
+                    ))
+                    .font(.system(size: 12, weight: .semibold))
+                    Text(CloudSyncStatusText.synced(monitor.lastSyncedAt, isRefreshing: monitor.isRefreshing, asOf: context.date))
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
                 }
+                .lineLimit(1)
+                Spacer(minLength: 4)
+                Button {
+                    Task { await monitor.refresh() }
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                }
+                .buttonStyle(.borderless)
+                .disabled(monitor.isRefreshing)
+                .accessibilityLabel("Refresh from iCloud")
+                .help("Refresh from iCloud (⌘R)")
             }
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 8)
+            // Why a refresh that brought nothing in ended as it did — the long
+            // form the footer has no room for.
+            .help(monitor.lastOutcome.flatMap(CloudSyncStatusText.message(for:)) ?? "")
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
         }
     }
 }

@@ -1,3 +1,4 @@
+import Core
 import CoreData
 import SwiftUI
 
@@ -21,10 +22,14 @@ struct VehicleChipStrip: View {
     let selectedID: NSManagedObjectID?
     let perform: (VehicleChipAction, VehicleSummary) -> Void
 
+    @Environment(\.moduleLayout) private var layout
+
     var body: some View {
         // With a single vehicle there is nothing to switch between, so the strip
         // is absent entirely rather than showing one chip that does nothing.
-        if summaries.count > 1 {
+        // On the Mac the toolbar carries the switch instead — see
+        // `vehicleSwitcherToolbar`.
+        if summaries.count > 1, layout == .tabs {
             ScrollView(.horizontal) {
                 HStack(spacing: 8) {
                     ForEach(summaries) { summary in
@@ -91,5 +96,74 @@ struct VehicleChipStrip: View {
     private func accessibilityLabel(for summary: VehicleSummary, isSelected: Bool) -> String {
         let economy = summary.averageMPG.map { "\(VehicleSummary.mpgText($0)) miles per gallon" } ?? "no fuel economy yet"
         return isSelected ? "\(summary.name), selected, \(economy)" : "\(summary.name), \(economy)"
+    }
+}
+
+/// The Mac's version of the chip strip: the cars as a segmented control at the
+/// leading edge of the toolbar, where the window's title would sit.
+///
+/// A strip of capsules under a desktop toolbar read as a second toolbar. The
+/// title goes when the switcher shows, since the selected segment already
+/// names the car — otherwise "My X3" sat beside a segment reading "My X3".
+///
+/// `badge` ("Shared with Priya") goes beside the switcher. Removing the title
+/// took `.moduleSubtitle` with it, so a shared car said so nowhere on the Mac
+/// exactly when there were several to tell apart.
+private struct VehicleSwitcherToolbar: ViewModifier {
+    let summaries: [VehicleSummary]
+    let selectedID: NSManagedObjectID?
+    let badge: String?
+    let perform: (VehicleChipAction, VehicleSummary) -> Void
+
+    @Environment(\.moduleLayout) private var layout
+
+    private var selection: Binding<NSManagedObjectID?> {
+        Binding {
+            selectedID
+        } set: { id in
+            if let summary = summaries.first(where: { $0.id == id }) {
+                perform(.select, summary)
+            }
+        }
+    }
+
+    func body(content: Content) -> some View {
+        if layout == .sidebar, summaries.count > 1 {
+            content
+                .toolbar(removing: .title)
+                .toolbar {
+                    ToolbarItem(placement: .navigation) {
+                        Picker("Vehicle", selection: selection) {
+                            ForEach(summaries) { summary in
+                                Text(summary.name).tag(Optional(summary.id))
+                            }
+                        }
+                        .pickerStyle(.segmented)
+                        .labelsHidden()
+                        .fixedSize()
+                    }
+                    if let badge {
+                        ToolbarItem(placement: .navigation) {
+                            Text(badge)
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
+                                .fixedSize()
+                        }
+                    }
+                }
+        } else {
+            content
+        }
+    }
+}
+
+extension View {
+    func vehicleSwitcherToolbar(
+        summaries: [VehicleSummary],
+        selectedID: NSManagedObjectID?,
+        badge: String? = nil,
+        perform: @escaping (VehicleChipAction, VehicleSummary) -> Void
+    ) -> some View {
+        modifier(VehicleSwitcherToolbar(summaries: summaries, selectedID: selectedID, badge: badge, perform: perform))
     }
 }

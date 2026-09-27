@@ -29,4 +29,24 @@ public enum WorkoutStats {
     public static func completedSetCount(for session: WorkoutSession) -> Int {
         (session.sets ?? []).count { $0.isCompleted }
     }
+
+    /// One entry per day of the calendar week containing `now`, first weekday
+    /// first, saying whether a finished workout started on it — the Mac
+    /// Overview's row of dots. The week follows the calendar's own first
+    /// weekday, so it reads M…S or S…S the way the person's calendar does.
+    @MainActor
+    public static func weekTrained(
+        _ sessions: [WorkoutSession],
+        asOf now: Date = .now,
+        calendar: Calendar = .current
+    ) -> [(day: Date, trained: Bool)] {
+        guard let week = calendar.dateInterval(of: .weekOfYear, for: now) else { return [] }
+        return (0..<7).compactMap { offset in
+            guard let day = calendar.date(byAdding: .day, value: offset, to: week.start) else { return nil }
+            let trained = sessions.contains {
+                $0.finishedAt != nil && calendar.isDate($0.startedAt, inSameDayAs: day)
+            }
+            return (day, trained)
+        }
+    }
 }

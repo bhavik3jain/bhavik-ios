@@ -242,68 +242,90 @@ struct BhavikApp: App {
                         .preferredColorScheme(Appearance.stored(appearanceRaw).colorScheme)
                         .modifier(WeatherStub())
                         #if os(macOS)
-                        .frame(minWidth: 860, minHeight: 560)
+                        .frame(minWidth: 900, minHeight: 600)
                         #endif
                 }
                 #else
                 HomeView()
                     .preferredColorScheme(Appearance.stored(appearanceRaw).colorScheme)
                     #if os(macOS)
-                    .frame(minWidth: 860, minHeight: 560)
+                    .frame(minWidth: 900, minHeight: 600)
                     #endif
                 #endif
             }
         }
-        .modelContainer(container)
-        // Threads Trips' Core Data context to HomeView (its own @FetchRequest,
-        // and what it passes on explicitly to TripTrackerModule.rootView(context:))
-        // and to the module itself once opened, the same way .modelContainer
-        // above threads the SwiftData context to every other module's @Query.
-        .environment(\.managedObjectContext, tripContainer.viewContext)
-        // The container itself (not just its context) — Trips' Share button
-        // and its sharing-status badges need it to call `presentShareSheet`
-        // and `SharingStatusResolver`. See Core's `ModulePersistentContainers.swift`.
-        .environment(\.tripPersistentContainer, tripContainer)
-        // Fuel's own key — see `fuelContainer`'s doc comment above for why
-        // this isn't also `\.managedObjectContext`.
-        .environment(\.fuelManagedObjectContext, fuelContainer.viewContext)
-        // The container itself (not just its context) — Fuel's Share button
-        // and its sharing-status badges need it to call `presentShareSheet`
-        // and `SharingStatusResolver`. See Core's `ModulePersistentContainers.swift`.
-        .environment(\.fuelPersistentContainer, fuelContainer)
-        // Explore's own key — same reasoning as Fuel's.
-        .environment(\.exploreManagedObjectContext, exploreContainer.viewContext)
-        // The container itself (not just its context) — Explore's Share
-        // button and its sharing-status badges need it to call
-        // `presentShareSheet` and `SharingStatusResolver`. See Core's
-        // `ModulePersistentContainers.swift`.
-        .environment(\.explorePersistentContainer, exploreContainer)
-        // Points' own key — same reasoning as Fuel's.
-        .environment(\.pointsManagedObjectContext, pointsContainer.viewContext)
-        // The container itself (not just its context) — Points' Share button
-        // and its sharing-status badges need it, same as Explore's above.
-        .environment(\.pointsPersistentContainer, pointsContainer)
-        // Finance's own key — same reasoning as Fuel's.
-        .environment(\.financeManagedObjectContext, financeContainer.viewContext)
-        // The container itself (not just its context) — Finance's Share
-        // button and its sharing-status badges need it, same as Points' above.
-        .environment(\.financePersistentContainer, financeContainer)
-        .environment(syncMonitor)
+        .providingStores(of: self)
         #if os(macOS)
         // A left-over default-sized window reads as an unfinished iPhone app
-        // squeezed onto a Mac; a sidebar layout wants the width to show it.
-        .defaultSize(width: 1100, height: 700)
+        // squeezed onto a Mac; the sidebar, a three-column Overview and a
+        // trip's Plan beside its Ideas inspector all want the width.
+        .defaultSize(width: 1280, height: 800)
         .commands {
             TrackerCommands()
             CloudSyncCommands(monitor: syncMonitor)
         }
         #endif
+
+        #if os(macOS)
+        // App ▸ Settings…, ⌘, — the Mac's own place for it. A gear in the
+        // sidebar pushed Settings into the detail pane in place of whatever
+        // tracker was open.
+        Settings {
+            MacSettingsView()
+                .preferredColorScheme(Appearance.stored(appearanceRaw).colorScheme)
+        }
+        .providingStores(of: self)
+        #endif
+    }
+}
+
+private extension Scene {
+    /// Every store and the sync monitor, for a scene's views. The main window
+    /// and the Mac's Settings window both need them: Settings counts each
+    /// tracker's records, and would read empty stores without them.
+    func providingStores(of app: BhavikApp) -> some Scene {
+        modelContainer(app.container)
+            // Threads Trips' Core Data context to HomeView (its own @FetchRequest,
+            // and what it passes on explicitly to TripTrackerModule.rootView(context:))
+            // and to the module itself once opened, the same way .modelContainer
+            // above threads the SwiftData context to every other module's @Query.
+            .environment(\.managedObjectContext, app.tripContainer.viewContext)
+            // The container itself (not just its context) — Trips' Share button
+            // and its sharing-status badges need it to call `presentShareSheet`
+            // and `SharingStatusResolver`. See Core's `ModulePersistentContainers.swift`.
+            .environment(\.tripPersistentContainer, app.tripContainer)
+            // Fuel's own key — see `fuelContainer`'s doc comment above for why
+            // this isn't also `\.managedObjectContext`.
+            .environment(\.fuelManagedObjectContext, app.fuelContainer.viewContext)
+            // The container itself (not just its context) — Fuel's Share button
+            // and its sharing-status badges need it to call `presentShareSheet`
+            // and `SharingStatusResolver`. See Core's `ModulePersistentContainers.swift`.
+            .environment(\.fuelPersistentContainer, app.fuelContainer)
+            // Explore's own key — same reasoning as Fuel's.
+            .environment(\.exploreManagedObjectContext, app.exploreContainer.viewContext)
+            // The container itself (not just its context) — Explore's Share
+            // button and its sharing-status badges need it to call
+            // `presentShareSheet` and `SharingStatusResolver`. See Core's
+            // `ModulePersistentContainers.swift`.
+            .environment(\.explorePersistentContainer, app.exploreContainer)
+            // Points' own key — same reasoning as Fuel's.
+            .environment(\.pointsManagedObjectContext, app.pointsContainer.viewContext)
+            // The container itself (not just its context) — Points' Share button
+            // and its sharing-status badges need it, same as Explore's above.
+            .environment(\.pointsPersistentContainer, app.pointsContainer)
+            // Finance's own key — same reasoning as Fuel's.
+            .environment(\.financeManagedObjectContext, app.financeContainer.viewContext)
+            // The container itself (not just its context) — Finance's Share
+            // button and its sharing-status badges need it, same as Points' above.
+            .environment(\.financePersistentContainer, app.financeContainer)
+            .environment(app.syncMonitor)
     }
 }
 
 #if os(macOS)
-/// The Trackers menu: ⌘1 onward jumps straight to a tracker, numbered in the
-/// sidebar's own order and skipping hidden ones, so ⌘1 is always the top row.
+/// The Trackers menu: ⌘0 is the Overview, and ⌘1 onward jumps straight to a
+/// tracker, numbered in the sidebar's own order and skipping hidden ones, so
+/// ⌘1 is always the top row.
 /// A Scene's `.commands` sits outside the WindowGroup's view hierarchy, so it
 /// can't reach into HomeView's own `@State` — it posts a notification instead,
 /// which `HomeView.macBody` listens for.
@@ -312,6 +334,11 @@ private struct TrackerCommands: Commands {
 
     var body: some Commands {
         CommandMenu("Trackers") {
+            Button("Overview") {
+                NotificationCenter.default.post(name: .selectTracker, object: nil, userInfo: ["module": SelectedModule.overviewID])
+            }
+            .keyboardShortcut("0", modifiers: .command)
+            Divider()
             // Nine at most: ⌘0 and beyond aren't single keystrokes.
             ForEach(Array(layoutStore.visibleModules.prefix(9).enumerated()), id: \.element) { index, module in
                 Button(module.accent.name) {

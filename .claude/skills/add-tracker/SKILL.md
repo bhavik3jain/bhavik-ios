@@ -31,7 +31,7 @@ AskUserQuestion call if you can:
     SwiftData migration.
 - **Data model.** Entities, their fields, and relationships with delete rules. Watch for "by
   person/owner/vehicle" grouping, history over time, and dates that need a warning.
-- **Screens.** The tabs after the mandatory Home tab, what the hub row's one-line detail says, and
+- **Screens.** Its sections (tabs on the phone, sidebar rows on the Mac), what the hub row's one-line detail says, and
   what the long-press peek shows.
 - **Accent color and SF Symbol.** They must differ from every existing module; grep the
   `accent` definitions in `Packages/*/Sources/*/*TrackerModule.swift`.

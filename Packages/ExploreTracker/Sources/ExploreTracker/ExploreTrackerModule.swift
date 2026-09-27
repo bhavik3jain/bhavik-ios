@@ -6,6 +6,16 @@ import SwiftUI
 public enum ExploreTrackerModule {
     public static let accent = ModuleAccent(name: "Explore", color: Color(red: 0.80, green: 0.22, blue: 0.51))
 
+    /// The white-on-accent symbol on the hub row, the Mac sidebar tile and
+    /// its Overview card.
+    public static let symbolName = "map.fill"
+
+    /// Its tabs on the phone and, in the same order, the rows nested under it
+    /// in the Mac sidebar. The first is where the module opens.
+    public static let sections = [
+        ModuleSection("guides", title: "Guides", systemImage: "map"),
+    ]
+
     /// The original SwiftData models (`Guide`/`GuidePlace`), not the new
     /// Core Data ones (`SharedGuide`/`SharedGuidePlace`) — this is what keeps
     /// them registered in `AppSchema.models` in `BhavikApp.swift`, so
