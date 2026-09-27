@@ -61,28 +61,49 @@ jobs:
           # arch keeps xcodebuild from reporting an ambiguous destination.
           echo "arch=$(uname -m)" >> "$GITHUB_OUTPUT"
 
-      - name: Test each package
-        run: |
-          set -euo pipefail
-          for package in Core GymTracker FuelTracker TVTracker ParcelTracker TripTracker ExploreTracker PointsTracker FinanceTracker; do
-            echo "::group::$package"
-            ( cd "Packages/$package" && xcodebuild test -scheme "$package" -destination "platform=iOS Simulator,id=${{ steps.simulator.outputs.udid }},arch=${{ steps.simulator.outputs.arch }}" -quiet )
-            echo "::endgroup::"
-          done
-
-      - name: Build the app
-        # Catches anything that compiles per package but breaks once the
-        # modules are wired together, which the package tests can't see.
+      - name: Test every package and build the app
+        # One scheme (AllPackageTests in project.yml) for all nine packages, so
+        # Core is compiled once and the suites run side by side. Nine separate
+        # `xcodebuild test` runs took 29 minutes on this runner, nearly all of it
+        # rebuilding the same dependencies. The scheme's build target is the app
+        # itself, so this also catches anything that compiles per package but
+        # breaks once the modules are wired together.
         run: |
           set -euo pipefail
           xcodegen generate
-          xcodebuild build -project bhavik-ios.xcodeproj -scheme bhavik-ios -destination "platform=iOS Simulator,id=${{ steps.simulator.outputs.udid }},arch=${{ steps.simulator.outputs.arch }}" -quiet
+          xcodebuild test -project bhavik-ios.xcodeproj -scheme AllPackageTests \
+            -destination "platform=iOS Simulator,id=${{ steps.simulator.outputs.udid }},arch=${{ steps.simulator.outputs.arch }}" \
+            -parallel-testing-enabled YES -quiet
+
+  mac:
+    name: Build the Mac app
+    # Its own job so it runs alongside the tests instead of after them. The Mac
+    # target compiles the same sources as the iPhone one, so an edit that builds
+    # for iOS can still break macOS — usually by reaching for UIKit-only API,
+    # which the iOS job would not notice. Unsigned, because a runner is not a
+    # registered Mac and cannot get a profile.
+    runs-on: xcode-27
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Use Xcode 27.0
+        # See the test job.
+        run: |
+          xcode=/Applications/Xcode_27.0.app
+          if [ ! -d "$xcode" ]; then
+            echo "$xcode is not on this runner. Installed:"
+            ls -d /Applications/Xcode*.app
+            exit 1
+          fi
+          sudo xcode-select -s "$xcode"
+          xcodebuild -version
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
 
       - name: Build the Mac app
-        # The Mac target compiles the same sources as the iPhone one, so an
-        # edit that builds for iOS can still break macOS — usually by reaching
-        # for UIKit-only API, which nothing above would notice. Unsigned,
-        # because a runner is not a registered Mac and cannot get a profile.
         run: |
           set -euo pipefail
+          xcodegen generate
           xcodebuild build -project bhavik-ios.xcodeproj -scheme bhavik-macOS -destination "platform=macOS" CODE_SIGNING_ALLOWED=NO -quiet

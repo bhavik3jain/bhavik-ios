@@ -91,7 +91,7 @@ for free); the `AppSchema.models` sum in `BhavikApp.swift`; a `ModuleRow` (with 
 `HomeView.swift`; a case in its `SelectedModule` enum (with its `icon` and `sections`) **and** the
 `moduleContent` switch arm, plus its arms in the Mac's `sidebarDetail` and `overviewCard`; a
 `TrackerRow` in `AppSettingsView.swift`;
-the package loop in `tests.yml` — leave it out and CI never runs that suite, silently.
+its test target in `project.yml`'s `AllPackageTests` scheme, which is what CI runs — leave it out and CI never runs that suite, silently.
 
 A **Core Data module** (like Points or Finance) has no `models` array and is **not** added to
 `AppSchema.models`. Instead it needs: its own container in `BhavikApp.init()` — **both** branches,

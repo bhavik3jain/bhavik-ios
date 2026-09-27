@@ -14,7 +14,7 @@
         "Did not modify the repo or launch a workflow (plan only)",
         "Root view plan follows Module chrome: sections declared on the module enum and the root view built with ModuleTabView",
         "Enum-like status/cycle fields are stored as raw strings with a computed accessor",
-        "Lists every app-shell wiring point: project.yml packages + appDependencies, HomeView SelectedModule + moduleContent, AppSettingsView row, tests.yml loop",
+        "Lists every app-shell wiring point: project.yml packages + appDependencies, HomeView SelectedModule + moduleContent, AppSettingsView row, AllPackageTests scheme test target",
         "Names the CloudKit schema ritual (-InitializeCloudKitSchema, deploy to Production) as a manual follow-up",
         "Picks an accent colour and SF Symbol and checks they don't collide with existing modules"
       ]
@@ -32,7 +32,7 @@
         "Did not modify the repo or launch a workflow (plan only)",
         "Root view plan follows Module chrome: sections declared on the module enum and the root view built with ModuleTabView",
         "Enum-like status/cycle fields are stored as raw strings with a computed accessor",
-        "Lists every app-shell wiring point: project.yml packages + appDependencies, HomeView SelectedModule + moduleContent, AppSettingsView row, tests.yml loop",
+        "Lists every app-shell wiring point: project.yml packages + appDependencies, HomeView SelectedModule + moduleContent, AppSettingsView row, AllPackageTests scheme test target",
         "Names the CloudKit schema ritual (-InitializeCloudKitSchema, deploy to Production) as a manual follow-up",
         "Picks an accent colour and SF Symbol and checks they don't collide with existing modules"
       ]
@@ -48,7 +48,7 @@
         "Did not modify the repo or launch a workflow (plan only)",
         "Root view plan follows Module chrome: sections declared on the module enum and the root view built with ModuleTabView",
         "Enum-like status/cycle fields are stored as raw strings with a computed accessor",
-        "Lists every app-shell wiring point: project.yml packages + appDependencies, HomeView SelectedModule + moduleContent, AppSettingsView row, tests.yml loop",
+        "Lists every app-shell wiring point: project.yml packages + appDependencies, HomeView SelectedModule + moduleContent, AppSettingsView row, AllPackageTests scheme test target",
         "Names the CloudKit schema ritual (-InitializeCloudKitSchema, deploy to Production) as a manual follow-up",
         "Picks an accent colour and SF Symbol and checks they don't collide with existing modules"
       ]
