@@ -152,10 +152,10 @@ struct TripDetailView: View {
         .navigationTitle(trip.title)
         .navigationBarTitleDisplayMode(.inline)
         .modifier(TripTitleChrome(subtitle: subtitle))
-        .inspector(isPresented: inspectorPresented) {
+        .modifier(IdeasInspectorChrome(isPresented: inspectorPresented) {
             TripIdeasInspector(trip: trip, day: selectedDay, canEdit: canEdit) { sheet = $0 }
                 .inspectorColumnWidth(min: 280, ideal: 320, max: 420)
-        }
+        })
         .toolbar {
             if layout == .sidebar {
                 ToolbarItem(placement: .principal) {
@@ -317,6 +317,23 @@ struct TripDetailView: View {
 /// The phone draws the trip's title big in its own header, so the navigation
 /// bar's copy goes; the Mac keeps the toolbar's title and puts the header's
 /// second line under it as a subtitle.
+/// The Ideas inspector exists only in the Mac's sidebar layout. Attached on the
+/// phone too, even never presented, it froze every trip: opening one re-ran
+/// TripDetailView's body in a loop at 100% CPU until the watchdog killed the
+/// app (0x8BADF00D), on TestFlight build 14.
+private struct IdeasInspectorChrome<Inspector: View>: ViewModifier {
+    let isPresented: Binding<Bool>
+    @ViewBuilder let inspector: () -> Inspector
+    @Environment(\.moduleLayout) private var layout
+
+    func body(content: Content) -> some View {
+        switch layout {
+        case .tabs: content
+        case .sidebar: content.inspector(isPresented: isPresented, content: inspector)
+        }
+    }
+}
+
 private struct TripTitleChrome: ViewModifier {
     let subtitle: String
     @Environment(\.moduleLayout) private var layout
