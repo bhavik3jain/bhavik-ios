@@ -17,7 +17,9 @@ import sys
 import finance_numbers as fn
 
 
-def read(path: str, month: str) -> dict:
+def read(path: str, month: str, warnings: list[str] | None = None) -> dict:
+    """The month in the sheet at path. What the month JSON can only approximate is appended to
+    warnings, as counts, never names or amounts."""
     _, tables = fn.open_document(path)
     missing = [
         name
@@ -88,6 +90,7 @@ def read(path: str, month: str) -> dict:
             prices[key] = fn.number(all_rows[i][1])
 
     metals = []
+    set_values = 0
     t = tables[fn.METAL_TABLE]
     all_rows = fn.rows(t)
     for i in fn.body_rows(t):
@@ -97,15 +100,27 @@ def read(path: str, month: str) -> dict:
             continue
         metal = fn.text(r[1]).strip().lower() or "gold"
         grams = fn.number(r[3])
-        current = r[6]
-        # A Current Value typed over the formula (the engagement ring) is a set value; the
-        # formula rows are weight × Metal Price and get recomputed from grams.
-        manual = None if fn.has_formula(current) else fn.number(current)
+        current = fn.number(r[6])
+        # A Current Value typed over the formula (the engagement ring) is a set value. So is a
+        # formula that isn't plain Metal Price × Weight (oz): one real row adds a fixed amount to
+        # it, and reading every formula as price × weight dropped that amount from the month, so
+        # every export after it came out short in Personal Items, Total Assets and Total Net Worth.
+        # Only a formula whose value is its own metal's price × weight, to the cent, is recomputed
+        # from grams; anything else keeps the value the sheet shows.
+        formula = fn.has_formula(r[6])
+        recomputable = formula and abs(prices.get(metal, 0.0) * fn.number(r[2]) - current) < 0.01
+        manual = None if recomputable else current
+        if formula and not recomputable:
+            set_values += 1
         metals.append({
             "name": name, "metal": metal, "grams": grams,
             "pricePaidPerOz": fn.number(r[4]), "purchaseValue": fn.number(r[5]),
             "manualValue": manual, "location": fn.text(r[7]), "owner": note_owner(fn.JOINT),
         })
+
+    if set_values and warnings is not None:
+        warnings.append(f"{set_values} metal(s) have a value that isn't price × weight; imported as set "
+                        "values, so they won't follow the metal price")
 
     transactions = []
     t = tables[fn.TRANSACTION_TABLE]
@@ -147,11 +162,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("month", help="yyyy-MM the balances belong to, e.g. 2026-09")
     parser.add_argument("-o", "--output", help="JSON path (default: stdout)")
     args = parser.parse_args(argv)
+    warnings: list[str] = []
     try:
-        doc = read(args.numbers_file, args.month)
+        doc = read(args.numbers_file, args.month, warnings)
     except fn.TemplateError as error:
         print(f"error: {error}", file=sys.stderr)
         return 1
+    for warning in warnings:
+        print(f"warning: {warning}", file=sys.stderr)
     text = json.dumps(doc, indent=2, ensure_ascii=False)
     if args.output:
         with open(args.output, "w", encoding="utf-8") as f:

@@ -1,26 +1,26 @@
-"""Shared layout of the Finance Numbers template and helpers for reading and writing it.
+"""Shared layout of the Finance Numbers template and helpers for reading it.
 
-The template is the user's own spreadsheet. The app never builds a Numbers file itself: it writes a
-FinanceMonthDocument JSON (schema in README.md), and export_numbers.py fills a copy of the template
-from it, so every table, chart, colour, formula and pivot stays exactly as the user made it.
+The template is the user's own spreadsheet, seeded with fake "Seed Data" rows. The app never builds
+a Numbers file itself: it writes a FinanceMonthDocument JSON (schema in README.md), and
+export_numbers.py has Numbers fill a copy of the template from it, so every table, chart, colour,
+formula and pivot stays exactly as the user made it.
 
-Two numbers-parser behaviours shape everything here:
+Reading goes through numbers-parser, and two of its behaviours shape it:
 - Table.cell() and categorized_data() raise KeyError on this file's tables that are grouped by owner
-  (Cash, Retirement, Credit Card Details, Gold + Silver…). Table.rows() and Table.write() work, and
-  both address rows in storage order, which is not the order Numbers shows them in. So this module
-  only ever reads through rows() and writes through write().
-- numbers-parser writes values, never formulas. Formula cells are left alone wherever possible, and
-  rows are never inserted into a table whose Total row another table references by cell address
-  (Total Assets reads Cash::C9), because the inserted row would move that Total and the reference
-  would silently point at the wrong cell. Only Transactions, which nothing references by row, grows.
+  (Cash, Retirement, Credit Card Details, Gold + Silver…). Table.rows() works, and addresses rows in
+  storage order, which is not the order Numbers shows them in. So this module only reads through
+  rows().
+- Writing is not done with it at all any more. Its add_row on a grouped table stores rows Numbers
+  never shows, and it doesn't move the references other tables hold by position: after four rows
+  went into Cash, Total Assets still read Cash::C5, by then a data row. Numbers' own scripting does
+  both right, so export_numbers.py drives Numbers (numbers_fill.js). make_template.py still writes
+  with numbers-parser, but only blanks cells and never adds a row.
 """
 
 from __future__ import annotations
 
 import datetime as dt
 import warnings
-
-from numbers_parser import Document
 
 # numbers-parser warns on every save that it won't modify the two pivot tables; that's intended.
 warnings.filterwarnings("ignore", message="Not modifying pivot table")
@@ -43,10 +43,13 @@ JOINT = "Joint"
 
 
 class TemplateError(Exception):
-    """The template can't hold the data without the user changing it in Numbers first."""
+    """The file isn't the Finance sheet this toolkit expects."""
 
 
-def open_document(path: str) -> tuple[Document, dict]:
+def open_document(path: str):
+    # Imported here so export_numbers.py, which only drives Numbers, runs without numbers-parser.
+    from numbers_parser import Document
+
     doc = Document(path)
     tables = {t.name: t for sheet in doc.sheets for t in sheet.tables}
     return doc, tables
