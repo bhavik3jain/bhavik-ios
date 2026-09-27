@@ -31,6 +31,7 @@ struct MonthsView: View {
                                 .primaryActionStyle(tint: FinanceTrackerModule.accent.color)
                         }
                     }
+                    .scrollsForRefresh()
                 } else {
                     list(snapshot, isEditable: isEditable)
                 }

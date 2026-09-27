@@ -24,7 +24,9 @@
 	     activated or relaunched, minutes later. "development" is right for a
 	     local build; the Developer ID profile supplies "production" at export,
 	     which is why that profile has to be regenerated once push is enabled
-	     for the app ID, or the export fails on the mismatch. -->
+	     for the app ID, or the export fails on the mismatch — and the
+	     MAC_DEVELOPER_ID_PROFILE secret mac-release.yml installs it from
+	     replaced (README → macOS → Installing it). -->
 	<key>com.apple.developer.aps-environment</key>
 	<string>development</string>
 	<!-- CloudKit refuses to hand a Mac app its private database unless the app

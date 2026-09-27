@@ -183,12 +183,53 @@ private func makeMonitor(
 }
 
 @MainActor
-@Test func aSecondRefreshInsideTheCooldownWaitsWithoutNudgingAgain() async {
+@Test func aSecondRefreshInsideTheCooldownCountsTheFirstNudgesImport() async {
+    let (monitor, box) = makeMonitor(timeout: .seconds(5)) { monitor in
+        monitor.ingest(ended(UUID(), "A", .import, from: .now, to: .now))
+    }
+    monitor.ingest(ended(UUID(), "A", .import, from: t0, to: t0 + 1))
+    guard case .updated = await monitor.refresh() else {
+        Issue.record("first refresh should have landed")
+        return
+    }
+
+    // No second nudge, and no waiting out the 5 s timeout for an import
+    // nothing asked for: the one the first nudge caused already counts.
+    let clock = ContinuousClock()
+    let start = clock.now
+    let second = await monitor.refresh()
+    guard case .updated = second else {
+        Issue.record("expected .updated, got \(second)")
+        return
+    }
+    #expect(clock.now - start < .seconds(1))
+    #expect(box.nudges == 1)
+}
+
+@MainActor
+@Test func aSecondRefreshInsideTheCooldownStillWaitsForAnImportNotYetLanded() async {
     let (monitor, box) = makeMonitor(timeout: .milliseconds(200))
     monitor.ingest(ended(UUID(), "A", .import, from: t0, to: t0 + 1))
     await monitor.refresh()
-    await monitor.refresh()
+    #expect(await monitor.refresh() == .timedOut(lastSyncedAt: t0 + 1))
     #expect(box.nudges == 1)
+}
+
+@MainActor
+@Test func aLaterSuccessfulImportClearsAStaleRefreshMessage() async {
+    let (monitor, _) = makeMonitor(timeout: .milliseconds(200))
+    monitor.ingest(ended(UUID(), "A", .import, from: t0, to: t0 + 1))
+    await monitor.refresh()
+    #expect(monitor.lastOutcome == .timedOut(lastSyncedAt: t0 + 1))
+
+    // A failure, or an import that finished before the outcome, is no news.
+    monitor.ingest(ended(UUID(), "A", .import, from: .now, to: .now + 1, succeeded: false, error: "offline"))
+    monitor.ingest(ended(UUID(), "A", .import, from: t0, to: t0 + 2))
+    monitor.ingest(ended(UUID(), "A", .export, from: .now, to: .now + 1))
+    #expect(monitor.lastOutcome != nil)
+
+    monitor.ingest(ended(UUID(), "A", .import, from: .now, to: .now + 1))
+    #expect(monitor.lastOutcome == nil)
 }
 
 @Test func nudgesAreSpacedByTheCooldown() {

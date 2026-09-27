@@ -30,6 +30,7 @@ struct SummaryView: View {
                                 .primaryActionStyle(tint: FinanceTrackerModule.accent.color)
                         }
                     }
+                    .scrollsForRefresh()
                 }
             }
             .refreshesFromCloud()

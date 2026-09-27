@@ -263,10 +263,26 @@ artifact. Download it, open it, drag Multitrack into Applications. It's signed f
 CloudKit — the same real data as your phone — unlike a debug build run from Xcode, which always
 talks to Development regardless of what account is signed in.
 
-The workflow reuses the `testflight` environment, plus two secrets of its own — `MAC_DEVELOPER_ID_P12`
-and `MAC_DEVELOPER_ID_P12_PASSWORD` — imported into a disposable keychain for the run. Cloud-managed
+The workflow reuses the `testflight` environment, plus three secrets of its own — `MAC_DEVELOPER_ID_P12`
+and `MAC_DEVELOPER_ID_P12_PASSWORD`, imported into a disposable keychain for the run, and
+`MAC_DEVELOPER_ID_PROFILE`, the base64 of the Developer ID provisioning profile. Cloud-managed
 signing (what the App Store Connect key does for iOS) only covers App Store distribution; Apple never
 holds a Developer ID private key for you, by design, so this genuinely needed a real certificate
 exported from Xcode once and stored as a secret, not something the API key alone could mint. The same
-key still handles matching that certificate to a Developer ID provisioning profile and authorizing
-notarization.
+key still authorizes notarization.
+
+**After adding a capability to `App-macOS.entitlements`, regenerate that profile.** A provisioning
+profile's entitlements are fixed when it's generated, so the old one rejects the new entitlement and
+the next Mac Release fails at signing. CloudKit pushes (`com.apple.developer.aps-environment`) need
+this once:
+
+1. [Certificates, Identifiers & Profiles](https://developer.apple.com/account/resources/profiles/list)
+   → Identifiers → `com.bhavikjain.trackers`: check **Push Notifications** is ticked (a signed debug
+   build with automatic signing has already turned it on).
+2. Profiles → the Developer ID profile for `com.bhavikjain.trackers` → **Edit** → **Save** (or make a
+   new one), then **Download** it.
+3. `base64 -i <downloaded>.provisionprofile | pbcopy`, and paste it over the `MAC_DEVELOPER_ID_PROFILE`
+   secret in the `testflight` environment.
+
+TestFlight should need none of this: its archive runs with `-allowProvisioningUpdates` and fetches a current
+App Store profile every time.

@@ -78,6 +78,7 @@ struct TripListView: View {
                 Button("Add Trip") { showingAdd = true }
                     .primaryActionStyle(tint: TripTrackerModule.accent.color)
             }
+            .scrollsForRefresh()
         } else {
             List {
                 if !groups.inProgress.isEmpty {

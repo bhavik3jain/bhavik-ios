@@ -27,7 +27,8 @@ import AppKit
 ///   the automatic imports and exports nobody asked for).
 /// - `lastOutcome: CloudRefreshOutcome?` — how the latest `refresh()` ended;
 ///   `CloudSyncStatusText.message(for:)` turns it into a sentence, or `nil`
-///   when the freshness label already says it all.
+///   when the freshness label already says it all. Cleared again once a
+///   successful import lands after it, so it never outlives the news.
 /// - `refresh(storesOf:) async -> CloudRefreshOutcome` — nudge mirroring to
 ///   import, then wait (at most `refreshTimeout`) for every store in scope to
 ///   finish one. Pass a module's `NSPersistentStoreCoordinator` to wait on
@@ -83,6 +84,7 @@ public final class CloudSyncMonitor {
     @ObservationIgnored private let nudge: @MainActor () -> Void
     @ObservationIgnored private var containers: [NSPersistentCloudKitContainer] = []
     @ObservationIgnored private var lastNudgeAt: Date?
+    @ObservationIgnored private var lastOutcomeAt: Date?
     @ObservationIgnored private var running: Task<CloudRefreshOutcome, Never>?
 
     private static let log = Logger(subsystem: "com.bhavikjain.trackers", category: "CloudSync")
@@ -127,6 +129,13 @@ public final class CloudSyncMonitor {
 
     func ingest(_ event: CloudSyncEvent) {
         ledger.record(event)
+        // Without this, one pull that timed out or failed left "iCloud hasn't
+        // sent anything new yet" under Settings' "Updated just now" for the
+        // rest of the session, after later automatic imports had succeeded.
+        if lastOutcome != nil, Self.supersedes(event, outcomeAt: lastOutcomeAt) {
+            lastOutcome = nil
+            lastOutcomeAt = nil
+        }
         Self.log.debug("""
             \(String(describing: event.kind), privacy: .public) \
             \(event.endDate == nil ? "started" : (event.succeeded ? "succeeded" : "failed"), privacy: .public) \
@@ -146,6 +155,7 @@ public final class CloudSyncMonitor {
         running = nil
         isRefreshing = false
         lastOutcome = outcome
+        lastOutcomeAt = .now
         Self.log.debug("refresh ended: \(String(describing: outcome), privacy: .public)")
         return outcome
     }
@@ -160,15 +170,25 @@ public final class CloudSyncMonitor {
             if state != .syncing { return .unavailable(state) }
         }
 
+        // Inside the cooldown there is no new nudge, so waiting for an import
+        // that ends after *this* request waited on one nothing had asked for:
+        // pulling again seconds after a refresh that had just said "updated"
+        // spun for the whole timeout and then claimed nothing new had come.
+        // Measure from the nudge that is still in effect instead, so the
+        // import it caused counts — or is still awaited if it hasn't landed.
+        let since: Date
         if Self.shouldNudge(lastNudgeAt: lastNudgeAt, asOf: requestedAt) {
             lastNudgeAt = requestedAt
+            since = requestedAt
             nudge()
+        } else {
+            since = lastNudgeAt ?? requestedAt
         }
 
         let clock = ContinuousClock()
         let deadline = clock.now.advanced(by: refreshTimeout)
         while clock.now < deadline {
-            switch ledger.progress(since: requestedAt, in: scope) {
+            switch ledger.progress(since: since, in: scope) {
             case .finished:
                 refreshViewContexts(in: scope)
                 return .updated(at: .now)
@@ -208,6 +228,14 @@ public final class CloudSyncMonitor {
         where container.persistentStoreCoordinator.persistentStores.contains(where: { scope.contains($0.identifier) }) {
             container.viewContext.refreshAllObjects()
         }
+    }
+
+    /// Whether `event` makes a refresh outcome reached at `outcomeAt` old
+    /// news: a successful import that finished after it.
+    nonisolated static func supersedes(_ event: CloudSyncEvent, outcomeAt: Date?) -> Bool {
+        guard event.kind == .import, event.succeeded, let end = event.endDate else { return false }
+        guard let outcomeAt else { return true }
+        return end > outcomeAt
     }
 
     nonisolated static func shouldNudge(lastNudgeAt: Date?, asOf now: Date) -> Bool {

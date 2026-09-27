@@ -171,6 +171,16 @@ not notarized** on its own; Gatekeeper refuses to launch it on any Mac but the o
 the notary step staples a ticket to it, which is why that step exists and can't be skipped for "just
 testing."
 
+The Developer ID provisioning profile itself comes from a third secret, `MAC_DEVELOPER_ID_PROFILE`
+(base64 of a profile downloaded from the portal by hand). **A profile's entitlements are frozen when
+it's generated**, so any new capability in `App-macOS.entitlements` breaks the next Mac Release until
+that profile is regenerated and the secret replaced; the only clue is a codesign/export error about an
+entitlement the profile doesn't allow. `com.apple.developer.aps-environment` (CloudKit pushes) is the
+first such addition: Push Notifications is already on for the App ID (a signed local build with
+`-allowProvisioningUpdates` turned it on, and the team profile it made carries it), but the Developer
+ID profile in the secret predates it. TestFlight should need nothing: its `-allowProvisioningUpdates`
+archive fetches a fresh App Store profile each run.
+
 ## Conventions
 
 - Comments record the defect that motivated the code, with its symptom. **Carry them across when
