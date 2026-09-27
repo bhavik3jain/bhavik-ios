@@ -58,9 +58,10 @@ public enum FinanceFold {
         }
 
         /// Oldest first — the order every fold keeps the first of. `createdAt`
-        /// ties would need two devices to create a row in the same millisecond.
+        /// ties would need two devices to create a row in the same millisecond
+        /// — or a merge to have copied one row twice (see `sameInstant`).
         func survivorOrder(_ lhs: NSManagedObject, _ lhsCreated: Date, _ rhs: NSManagedObject, _ rhsCreated: Date) -> Bool {
-            if lhsCreated != rhsCreated { return lhsCreated < rhsCreated }
+            if !FinanceFold.sameInstant(lhsCreated, rhsCreated) { return lhsCreated < rhsCreated }
             return key(lhs) < key(rhs)
         }
 
@@ -102,40 +103,62 @@ public enum FinanceFold {
             .sorted { $0.yearMonth < $1.yearMonth }
     }
 
+    /// Whether two `createdAt` stamps are one moment. CloudKit keeps dates to
+    /// the millisecond, so a row made on this device and its copy synced in
+    /// from another differ by up to a millisecond here and not at all there.
+    /// Compared exactly, the two devices ordered such a pair differently —
+    /// each keeping the one the other deleted.
+    static func sameInstant(_ lhs: Date, _ rhs: Date) -> Bool {
+        abs(lhs.timeIntervalSince(rhs)) < 0.001
+    }
+
     // MARK: - Whole store
 
     /// Whether `tidy` has anything to do: more than one household in the
-    /// private store, or an editable household with two months of one
-    /// `yearMonth` or a month with colliding balances or budgets. Cheap
-    /// enough to work out on every change, so the root view can fold as soon
-    /// as a sync brings a duplicate in.
+    /// private store (unless more than one of them is shared, which `tidy`
+    /// leaves alone), or an editable household with duplicate people,
+    /// accounts or copied items, two months of one `yearMonth`, or a month
+    /// with colliding balances or budgets. Cheap enough to work out on every
+    /// change, so the root view can fold as soon as a sync brings a
+    /// duplicate in.
     @MainActor
     public static func needsTidying(
         households: [SharedFinanceHousehold],
         privateStore: NSPersistentStore?,
-        canEdit: (SharedFinanceHousehold) -> Bool = { _ in true }
+        canEdit: (SharedFinanceHousehold) -> Bool = { _ in true },
+        isShared: (SharedFinanceHousehold) -> Bool = { _ in false }
     ) -> Bool {
         let present = households.filter { !$0.isDeleted }
         let own = present.filter { privateStore == nil || $0.objectID.persistentStore == privateStore }
-        if own.count > 1 { return true }
+        if own.count > 1, own.filter(isShared).count <= 1 { return true }
         return present.contains { household in
             guard canEdit(household) else { return false }
+            if hasDuplicateEntities(household) { return true }
             let months = live(household.months)
             return Set(months.map(\.yearMonth)).count != months.count || months.contains(where: hasCollidingChildren)
         }
     }
 
     /// Folds every newer private household into the oldest, then every
-    /// household's duplicate months. Households shared with this device are
-    /// never folded into each other — they're different people's — and a
-    /// view-only one is left alone, since this device can't write to it.
-    /// Doesn't save. Returns whether anything changed.
+    /// household's duplicate people, accounts, copied items and months.
+    /// Households shared with this device are never folded into each other —
+    /// they're different people's — and a view-only one is left alone, since
+    /// this device can't write to it. Doesn't save. Returns whether anything
+    /// changed.
+    ///
+    /// A private household this person has shared (`isShared`) is always the
+    /// one kept, whatever its age: folding it into another deletes the share
+    /// root, which ends the share — the partner's copy vanishes, with
+    /// anything they hadn't synced yet. That happened when an offline Mac made
+    /// a household first and the iPhone then made and shared its own. With
+    /// two shared, neither can go, so the households aren't folded at all.
     @MainActor
     @discardableResult
     public static func tidy(
         in context: NSManagedObjectContext,
         privateStore: NSPersistentStore?,
         canEdit: (SharedFinanceHousehold) -> Bool = { _ in true },
+        isShared: (SharedFinanceHousehold) -> Bool = { _ in false },
         tiebreak: Tiebreak = .local
     ) -> Bool {
         var changed = false
@@ -143,16 +166,138 @@ public enum FinanceFold {
             .filter { !$0.isDeleted }
             .sorted(by: tiebreak.households)
         let own = households.filter { privateStore == nil || $0.objectID.persistentStore == privateStore }
-        if let kept = own.first {
-            for newer in own.dropFirst() {
-                merge(newer, into: kept, tiebreak: tiebreak)
+        let sharedOwn = Set(own.filter(isShared).map(\.objectID))
+        if own.count > 1, sharedOwn.count <= 1 {
+            let ordered = own.sorted { lhs, rhs in
+                let left = sharedOwn.contains(lhs.objectID), right = sharedOwn.contains(rhs.objectID)
+                return left != right ? left : tiebreak.households(lhs, rhs)
+            }
+            for newer in ordered.dropFirst() {
+                merge(newer, into: ordered[0], tiebreak: tiebreak)
                 changed = true
             }
         }
         for household in households where !household.isDeleted && canEdit(household) {
+            if foldDuplicateEntities(in: household, tiebreak: tiebreak) { changed = true }
             if foldDuplicateMonths(in: household, tiebreak: tiebreak) { changed = true }
         }
         return changed
+    }
+
+    // MARK: - People, accounts, items
+
+    /// Folds duplicates within one household: people of one name, accounts
+    /// of one display name, category and owner, and gold, silver and charges
+    /// that are copies of one another. Returns whether anything changed.
+    ///
+    /// Merging into a share copies records across stores, and nothing made
+    /// that converge: a second device of the same person could merge before
+    /// the first one's copies arrived, copying everything again under new
+    /// record names; and a merge offered while the share was still importing
+    /// copied the default people and same-named accounts beside the
+    /// partner's, which then landed too — two "Chase Checking" for one
+    /// person, each with a balance, counted twice in net worth.
+    ///
+    /// People and accounts fold on the merge's own keys (and the importer
+    /// already treats same-named ones as one). Gold and silver and charges
+    /// fold only when they're also the same moment, which a copy keeps from
+    /// its original: two identical coins, or two identical coffees on one
+    /// card on one day, typed in by hand are real, and folding those would
+    /// silently delete one.
+    ///
+    /// Each keeps the first in `survivorOrder`, the same on every device.
+    /// Balances moved onto a kept account can collide with its own;
+    /// `foldDuplicateMonths` resolves those after this.
+    @discardableResult
+    public static func foldDuplicateEntities(in household: SharedFinanceHousehold, tiebreak: Tiebreak = .local) -> Bool {
+        var changed = false
+
+        var ownersByKey: [String: SharedFinanceOwner] = [:]
+        for owner in live(household.owners).sorted(by: { tiebreak.survivorOrder($0, $0.createdAt, $1, $1.createdAt) }) {
+            let key = FinanceMonthExchange.nameKey(owner.name)
+            guard let kept = ownersByKey[key] else {
+                ownersByKey[key] = owner
+                continue
+            }
+            // Owner → accounts and metals nullify, so re-point before deleting.
+            for account in live(owner.accounts) { account.owner = kept }
+            for item in live(owner.metalItems) { item.owner = kept }
+            owner.managedObjectContext?.delete(owner)
+            changed = true
+        }
+
+        var accountsByKey: [String: SharedFinanceAccount] = [:]
+        for account in live(household.accounts).sorted(by: { tiebreak.survivorOrder($0, $0.createdAt, $1, $1.createdAt) }) {
+            let key = accountKey(account)
+            guard let kept = accountsByKey[key] else {
+                accountsByKey[key] = account
+                continue
+            }
+            if kept.limit == 0 { kept.limit = account.limit }
+            if kept.annualFee == 0 { kept.annualFee = account.annualFee }
+            // Account → balances and charges cascade: re-point them first.
+            for balance in live(account.balances) { balance.account = kept }
+            for transaction in live(account.transactions) { transaction.card = kept }
+            account.managedObjectContext?.delete(account)
+            changed = true
+        }
+
+        let copies = copiedTwice(live(household.metalItems), createdAt: \.createdAt, tiebreak: tiebreak) {
+            metalKey($0.name, owner: $0.owner)
+        } + copiedTwice(live(household.transactions), createdAt: \.createdAt, tiebreak: tiebreak, key: transactionKey)
+        for copy in copies {
+            copy.managedObjectContext?.delete(copy)
+            changed = true
+        }
+        return changed
+    }
+
+    /// People or accounts that share a key, or items copied twice.
+    static func hasDuplicateEntities(_ household: SharedFinanceHousehold) -> Bool {
+        let owners = live(household.owners).map { FinanceMonthExchange.nameKey($0.name) }
+        if Set(owners).count != owners.count { return true }
+        let accounts = live(household.accounts).map(accountKey)
+        if Set(accounts).count != accounts.count { return true }
+        return !copiedTwice(live(household.metalItems), createdAt: \.createdAt, tiebreak: .local) {
+            metalKey($0.name, owner: $0.owner)
+        }.isEmpty || !copiedTwice(live(household.transactions), createdAt: \.createdAt, tiebreak: .local, key: transactionKey).isEmpty
+    }
+
+    /// The objects to delete so each set sharing `key` and one `createdAt`
+    /// moment keeps only its first in `survivorOrder`.
+    ///
+    /// Scans by time rather than grouping by key, so the key — a date
+    /// formatted per charge — is only worked out for objects made within a
+    /// millisecond of another, which `needsTidying` can afford on every
+    /// render with thousands of charges.
+    static func copiedTwice<T: NSManagedObject>(
+        _ objects: [T],
+        createdAt: (T) -> Date,
+        tiebreak: Tiebreak,
+        key: (T) -> String
+    ) -> [T] {
+        let ordered = objects.sorted { createdAt($0) < createdAt($1) }
+        var keys: [Int: String] = [:]
+        func keyAt(_ index: Int) -> String {
+            if let known = keys[index] { return known }
+            let made = key(ordered[index])
+            keys[index] = made
+            return made
+        }
+        var losers: [T] = []
+        var lost = Set<Int>()
+        for index in ordered.indices {
+            var next = index + 1
+            while next < ordered.count, sameInstant(createdAt(ordered[index]), createdAt(ordered[next])) {
+                if keyAt(index) == keyAt(next) {
+                    let (left, right) = (ordered[index], ordered[next])
+                    let loser = tiebreak.survivorOrder(left, createdAt(left), right, createdAt(right)) ? next : index
+                    if lost.insert(loser).inserted { losers.append(ordered[loser]) }
+                }
+                next += 1
+            }
+        }
+        return losers
     }
 
     // MARK: - Months

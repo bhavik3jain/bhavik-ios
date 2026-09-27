@@ -182,6 +182,7 @@ public struct FinanceMergeOffer: Equatable {
     @MainActor
     public func merge(tiebreak: FinanceFold.Tiebreak = .local) {
         FinanceFold.merge(own, into: shared, tiebreak: tiebreak)
+        FinanceFold.foldDuplicateEntities(in: shared, tiebreak: tiebreak)
         FinanceFold.foldDuplicateMonths(in: shared, tiebreak: tiebreak)
     }
 }

@@ -63,6 +63,7 @@ struct FinanceRootView: View {
                 in: context,
                 privateStore: container?.privatePersistentStore,
                 canEdit: { canEdit($0, in: container) },
+                isShared: isOwnedShare,
                 tiebreak: .cloudKit(container)
             )
             if changed {
@@ -93,8 +94,18 @@ struct FinanceRootView: View {
         return FinanceFold.needsTidying(
             households: Array(households),
             privateStore: container?.privatePersistentStore,
-            canEdit: { canEdit($0, in: container) }
+            canEdit: { canEdit($0, in: container) },
+            isShared: isOwnedShare
         )
+    }
+
+    /// Whether this person has shared `household` with their partner — the
+    /// one `FinanceFold.tidy` must never fold away, or the share goes with it.
+    /// Only asked when there are two private households, which is rare.
+    private func isOwnedShare(_ household: SharedFinanceHousehold) -> Bool {
+        guard let container else { return false }
+        if case .owned = SharingStatusResolver.status(for: household, in: container) { return true }
+        return false
     }
 
     /// The share a merge could be offered for, once iCloud has caught up

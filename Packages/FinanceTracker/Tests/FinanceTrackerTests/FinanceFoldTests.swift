@@ -356,3 +356,126 @@ private func count<T: NSManagedObject>(_ type: T.Type, in context: NSManagedObje
     #expect(FinanceHome.latestMonth([theirSeptember, myOctober], container: container) == theirSeptember)
     #expect(FinanceHome.homeDetail(for: [theirSeptember, myOctober], container: container) == "Net worth \(FinanceFormat.money(2_500))")
 }
+
+// MARK: - Review fixes
+
+@MainActor
+@Test func aSharedPrivateHouseholdIsKeptEvenWhenNewer() throws {
+    let container = makeContainer()
+    let context = container.viewContext
+    let privateStore = try #require(container.privatePersistentStore)
+    let base = Date(timeIntervalSince1970: 1_780_000_000)
+
+    // An offline Mac made one first; the iPhone then made its own and
+    // shared it. Folding the shared one away would end the share.
+    let macs = household("Household", in: context, store: privateStore, createdAt: base)
+    let checking = SharedFinanceAccount(institution: "Bank", name: "Checking", category: .cash, household: macs, owner: try owner("Bhavik", in: macs))
+    SharedFinanceMonth(period: september, household: macs).setBalance(100, for: checking)
+    let phones = household("Household", in: context, store: privateStore, createdAt: base.addingTimeInterval(60))
+    try context.save()
+
+    let households = try context.fetch(SharedFinanceHousehold.fetchRequest())
+    let isShared: (SharedFinanceHousehold) -> Bool = { $0 == phones }
+    #expect(FinanceFold.needsTidying(households: households, privateStore: privateStore, isShared: isShared))
+    #expect(FinanceFold.tidy(in: context, privateStore: privateStore, isShared: isShared))
+    try context.save()
+
+    #expect(try context.fetch(SharedFinanceHousehold.fetchRequest()) == [phones], "The shared one survives")
+    #expect(phones.sortedAccounts.map(\.displayName) == ["Bank - Checking"])
+    #expect(phones.month(for: september)?.balance(for: checking)?.amount == 100)
+    #expect(!FinanceFold.tidy(in: context, privateStore: privateStore, isShared: isShared))
+}
+
+@MainActor
+@Test func twoSharedPrivateHouseholdsAreNeitherFolded() throws {
+    let container = makeContainer()
+    let context = container.viewContext
+    let privateStore = try #require(container.privatePersistentStore)
+    let base = Date(timeIntervalSince1970: 1_780_000_000)
+    let first = household("Household", in: context, store: privateStore, createdAt: base)
+    let second = household("Household", in: context, store: privateStore, createdAt: base.addingTimeInterval(60))
+    try context.save()
+
+    let households = try context.fetch(SharedFinanceHousehold.fetchRequest())
+    #expect(!FinanceFold.needsTidying(households: households, privateStore: privateStore, isShared: { _ in true }))
+    #expect(!FinanceFold.tidy(in: context, privateStore: privateStore, isShared: { _ in true }))
+    #expect(!first.isDeleted && !second.isDeleted)
+}
+
+@MainActor
+@Test func copiesFromASecondMergeFoldButHandTypedTwinsStay() throws {
+    let container = makeContainer()
+    let context = container.viewContext
+    let shared = try sharedStore(of: container)
+    let base = Date(timeIntervalSince1970: 1_780_000_000)
+    let partners = household("Household", in: context, store: shared, createdAt: base)
+    let bhavik = try owner("Bhavik", in: partners)
+
+    // What two merges of one household leave, each device's copies made
+    // before the other's arrived: the same stamps, a CloudKit millisecond
+    // apart at most.
+    let copied = base.addingTimeInterval(3_600)
+    let secondBhavik = SharedFinanceOwner(name: "Bhavik", household: partners)
+    secondBhavik.createdAt = bhavik.createdAt.addingTimeInterval(60)
+    let checking = SharedFinanceAccount(institution: "Chase", name: "Checking", category: .cash, household: partners, owner: bhavik)
+    checking.createdAt = copied
+    let checkingCopy = SharedFinanceAccount(institution: "Chase", name: "Checking", category: .cash, household: partners, owner: secondBhavik)
+    checkingCopy.createdAt = copied.addingTimeInterval(0.0004)
+    let card = SharedFinanceAccount(institution: "Amex", name: "Gold", category: .card, household: partners)
+    card.createdAt = copied
+    let month = SharedFinanceMonth(period: september, household: partners)
+    month.setBalance(1_000, for: checking)
+    month.setBalance(1_000, for: checkingCopy)
+    for offset in [0, 0.0004] {
+        let coin = SharedFinanceMetalItem(name: "Coin", metal: .gold, grams: 31.1, household: partners, owner: bhavik)
+        coin.createdAt = copied.addingTimeInterval(offset)
+        let charge = SharedFinanceTransaction(date: day(2026, 9, 3), cost: 12, merchant: "Cafe", household: partners, card: card)
+        charge.createdAt = copied.addingTimeInterval(offset)
+    }
+    // Two identical coins and two identical coffees typed in by hand.
+    for seconds in [10.0, 20.0] {
+        let coin = SharedFinanceMetalItem(name: "Bar", metal: .silver, grams: 50, household: partners, owner: bhavik)
+        coin.createdAt = base.addingTimeInterval(seconds)
+        let coffee = SharedFinanceTransaction(date: day(2026, 9, 4), cost: 5, merchant: "Kiosk", household: partners, card: card)
+        coffee.createdAt = base.addingTimeInterval(seconds)
+    }
+    try context.save()
+
+    #expect(MonthSummary(month: month).cash == 2_000, "Net worth counted the account twice")
+    let households = try context.fetch(SharedFinanceHousehold.fetchRequest())
+    #expect(FinanceFold.needsTidying(households: households, privateStore: container.privatePersistentStore))
+
+    #expect(FinanceFold.tidy(in: context, privateStore: container.privatePersistentStore))
+    try context.save()
+
+    #expect(partners.sortedOwners.map(\.name) == ["Bhavik", "Saloni", "Joint"])
+    // Which copy is kept is the record-name tiebreak's call; one is.
+    let cash = partners.sortedAccounts.filter { $0.category == .cash }
+    #expect(cash.count == 1 && cash.first?.owner == bhavik)
+    #expect(partners.sortedAccounts.count == 2)
+    #expect(MonthSummary(month: month).cash == 1_000)
+    #expect(partners.sortedMetals.map(\.name).sorted() == ["Bar", "Bar", "Coin"], "Hand-typed twins stay")
+    #expect(card.transactionCount == 3)
+    let after = try context.fetch(SharedFinanceHousehold.fetchRequest())
+    #expect(!FinanceFold.needsTidying(households: after, privateStore: container.privatePersistentStore))
+    #expect(!FinanceFold.tidy(in: context, privateStore: container.privatePersistentStore))
+}
+
+@MainActor
+@Test func screensUseTheDuplicateMonthTheFoldKeeps() throws {
+    let container = makeContainer()
+    let context = container.viewContext
+    let household = FinanceHouseholdResolver.forWriting(in: context, container: container)
+    let base = Date(timeIntervalSince1970: 1_780_000_000)
+    // Inserted newest first, so the set's order can't be what decides.
+    let newer = SharedFinanceMonth(period: september, household: household)
+    newer.createdAt = base.addingTimeInterval(60)
+    let older = SharedFinanceMonth(period: september, household: household)
+    older.createdAt = base
+    let next = SharedFinanceMonth(period: october, household: household)
+    try context.save()
+
+    #expect(household.month(for: september) == older)
+    #expect(next.previousMonth == older)
+    #expect(FinanceFold.distinctMonths(Array(household.months ?? [])).first == older)
+}
