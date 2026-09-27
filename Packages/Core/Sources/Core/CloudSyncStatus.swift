@@ -3,9 +3,10 @@ import SwiftUI
 
 /// Whether iCloud is in a state where syncing can happen.
 ///
-/// SwiftData does not report progress or a last-synced time, so this reports
-/// what can actually be known — the account's standing — rather than implying a
-/// freshness the framework never tells us about.
+/// Only the account's standing. Freshness ("last synced 5 min ago") comes from
+/// `CloudSyncMonitor`, which hears each store's own import and export events;
+/// this never implies one, because an account that's signed in says nothing
+/// about whether anything has actually synced.
 public enum CloudSyncState: Equatable, Sendable {
     case checking
     case syncing

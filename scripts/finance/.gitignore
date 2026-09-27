@@ -1,0 +1,6 @@
+# Real finance data never goes in git: filled spreadsheets, exported months, scratch output.
+# The one exception is the blank template, and only after `make_template.py --check` says clean.
+*.numbers
+*.json
+!Finance Template.numbers
+__pycache__/

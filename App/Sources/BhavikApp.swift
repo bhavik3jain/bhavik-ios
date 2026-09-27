@@ -1,6 +1,7 @@
 import Core
 import CoreData
 import ExploreTracker
+import FinanceTracker
 import FuelTracker
 import GymTracker
 import ParcelTracker
@@ -54,10 +55,22 @@ struct BhavikApp: App {
     /// `\.pointsManagedObjectContext` key, the same reason `fuelContainer`
     /// and `exploreContainer` needed one.
     let pointsContainer: NSPersistentCloudKitContainer
+    /// Finance's own Core Data store — built on `CloudSharedStore` from the
+    /// start, like Points, so a household's balance sheet can be shared via
+    /// CKShare. Threaded to `HomeView` via its own
+    /// `\.financeManagedObjectContext` key, the same reason `pointsContainer`
+    /// needed one.
+    let financeContainer: NSPersistentCloudKitContainer
+    /// Every store's CloudKit mirroring, and the "refresh from iCloud" that
+    /// pull-to-refresh, Settings and the Mac's ⌘R all go through. Built before
+    /// any container so it hears each store's launch import. See
+    /// `CloudSyncMonitor`'s doc comment.
+    let syncMonitor = CloudSyncMonitor(containerID: BhavikApp.cloudContainerID)
     @AppStorage(Appearance.defaultsKey) private var appearanceRaw = Appearance.system.rawValue
     // Only reason for an app/scene delegate in an otherwise pure SwiftUI App:
     // CKShare-accept has no SwiftUI-native entry point on either platform.
-    // See ShareAcceptDelegate.swift.
+    // See ShareAcceptDelegate.swift. (It also registers for CloudKit's
+    // pushes, for the same lack of a SwiftUI entry point.)
     #if os(iOS)
     @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     #elseif os(macOS)
@@ -98,6 +111,12 @@ struct BhavikApp: App {
                 pointsContainer = CloudSharedStore.makeContainer(
                     name: "PointsStore",
                     model: PointsModel.make(),
+                    containerID: Self.cloudContainerID,
+                    inMemory: true
+                )
+                financeContainer = CloudSharedStore.makeContainer(
+                    name: "FinanceStore",
+                    model: FinanceModel.make(),
                     containerID: Self.cloudContainerID,
                     inMemory: true
                 )
@@ -152,8 +171,63 @@ struct BhavikApp: App {
             // owner, account and entry under it shares with it — see
             // PointsModel.swift).
             ShareAcceptRouter.shared.register(recordTypePrefix: "CD_SharedPointsHousehold", container: pointsContainer)
+
+            financeContainer = CloudSharedStore.makeContainer(
+                name: "FinanceStore",
+                model: FinanceModel.make(),
+                containerID: Self.cloudContainerID
+            )
+            // "CD_SharedFinanceHousehold" — same "CD_" + entity name
+            // convention, for Finance's CKShare root (a household, so every
+            // owner, account and month under it shares with it — see
+            // FinanceModel.swift).
+            ShareAcceptRouter.shared.register(recordTypePrefix: "CD_SharedFinanceHousehold", container: financeContainer)
+
+            for container in [tripContainer, fuelContainer, exploreContainer, pointsContainer, financeContainer] {
+                syncMonitor.track(container)
+            }
+            #if DEBUG
+            CloudSyncRefreshProbe.scheduleIfRequested(syncMonitor)
+            #endif
+            Self.startSharedChangeNotifications(
+                trips: tripContainer,
+                fuel: fuelContainer,
+                explore: exploreContainer,
+                points: pointsContainer,
+                finance: financeContainer
+            )
         } catch {
             fatalError("Failed to create ModelContainer: \(error)")
+        }
+    }
+
+    /// Local notifications when someone this user shares with changes
+    /// something — see Core's `SharedChangeNotifier`. One notifier per
+    /// sharing container, each with its module's own wording and the
+    /// `SelectedModule` a tap opens. Only on the real stores: the
+    /// schema-initialising launch returns before reaching this.
+    private static func startSharedChangeNotifications(
+        trips: NSPersistentCloudKitContainer,
+        fuel: NSPersistentCloudKitContainer,
+        explore: NSPersistentCloudKitContainer,
+        points: NSPersistentCloudKitContainer,
+        finance: NSPersistentCloudKitContainer
+    ) {
+        SharedChangeNotifications.install()
+        let notifiers: [(NSPersistentCloudKitContainer, SelectedModule, SharedChangeDescriber)] = [
+            (trips, .trips, TripTrackerModule.describeSharedChange),
+            (fuel, .fuel, FuelTrackerModule.describeSharedChange),
+            (explore, .explore, ExploreTrackerModule.describeSharedChange),
+            (points, .points, PointsTrackerModule.describeSharedChange),
+            (finance, .finance, FinanceTrackerModule.describeSharedChange),
+        ]
+        for (container, module, describe) in notifiers {
+            SharedChangeNotifier.start(
+                container: container,
+                moduleID: module.rawValue,
+                moduleName: module.accent.name,
+                describe: describe
+            )
         }
     }
 
@@ -168,59 +242,90 @@ struct BhavikApp: App {
                         .preferredColorScheme(Appearance.stored(appearanceRaw).colorScheme)
                         .modifier(WeatherStub())
                         #if os(macOS)
-                        .frame(minWidth: 860, minHeight: 560)
+                        .frame(minWidth: 900, minHeight: 600)
                         #endif
                 }
                 #else
                 HomeView()
                     .preferredColorScheme(Appearance.stored(appearanceRaw).colorScheme)
                     #if os(macOS)
-                    .frame(minWidth: 860, minHeight: 560)
+                    .frame(minWidth: 900, minHeight: 600)
                     #endif
                 #endif
             }
         }
-        .modelContainer(container)
-        // Threads Trips' Core Data context to HomeView (its own @FetchRequest,
-        // and what it passes on explicitly to TripTrackerModule.rootView(context:))
-        // and to the module itself once opened, the same way .modelContainer
-        // above threads the SwiftData context to every other module's @Query.
-        .environment(\.managedObjectContext, tripContainer.viewContext)
-        // The container itself (not just its context) — Trips' Share button
-        // and its sharing-status badges need it to call `presentShareSheet`
-        // and `SharingStatusResolver`. See Core's `ModulePersistentContainers.swift`.
-        .environment(\.tripPersistentContainer, tripContainer)
-        // Fuel's own key — see `fuelContainer`'s doc comment above for why
-        // this isn't also `\.managedObjectContext`.
-        .environment(\.fuelManagedObjectContext, fuelContainer.viewContext)
-        // The container itself (not just its context) — Fuel's Share button
-        // and its sharing-status badges need it to call `presentShareSheet`
-        // and `SharingStatusResolver`. See Core's `ModulePersistentContainers.swift`.
-        .environment(\.fuelPersistentContainer, fuelContainer)
-        // Explore's own key — same reasoning as Fuel's.
-        .environment(\.exploreManagedObjectContext, exploreContainer.viewContext)
-        // The container itself (not just its context) — Explore's Share
-        // button and its sharing-status badges need it to call
-        // `presentShareSheet` and `SharingStatusResolver`. See Core's
-        // `ModulePersistentContainers.swift`.
-        .environment(\.explorePersistentContainer, exploreContainer)
-        // Points' own key — same reasoning as Fuel's.
-        .environment(\.pointsManagedObjectContext, pointsContainer.viewContext)
-        // The container itself (not just its context) — Points' Share button
-        // and its sharing-status badges need it, same as Explore's above.
-        .environment(\.pointsPersistentContainer, pointsContainer)
+        .providingStores(of: self)
         #if os(macOS)
         // A left-over default-sized window reads as an unfinished iPhone app
-        // squeezed onto a Mac; a sidebar layout wants the width to show it.
-        .defaultSize(width: 1100, height: 700)
-        .commands { TrackerCommands() }
+        // squeezed onto a Mac; the sidebar, a three-column Overview and a
+        // trip's Plan beside its Ideas inspector all want the width.
+        .defaultSize(width: 1280, height: 800)
+        .commands {
+            TrackerCommands()
+            CloudSyncCommands(monitor: syncMonitor)
+        }
+        #endif
+
+        #if os(macOS)
+        // App ▸ Settings…, ⌘, — the Mac's own place for it. A gear in the
+        // sidebar pushed Settings into the detail pane in place of whatever
+        // tracker was open.
+        Settings {
+            MacSettingsView()
+                .preferredColorScheme(Appearance.stored(appearanceRaw).colorScheme)
+        }
+        .providingStores(of: self)
         #endif
     }
 }
 
+private extension Scene {
+    /// Every store and the sync monitor, for a scene's views. The main window
+    /// and the Mac's Settings window both need them: Settings counts each
+    /// tracker's records, and would read empty stores without them.
+    func providingStores(of app: BhavikApp) -> some Scene {
+        modelContainer(app.container)
+            // Threads Trips' Core Data context to HomeView (its own @FetchRequest,
+            // and what it passes on explicitly to TripTrackerModule.rootView(context:))
+            // and to the module itself once opened, the same way .modelContainer
+            // above threads the SwiftData context to every other module's @Query.
+            .environment(\.managedObjectContext, app.tripContainer.viewContext)
+            // The container itself (not just its context) — Trips' Share button
+            // and its sharing-status badges need it to call `presentShareSheet`
+            // and `SharingStatusResolver`. See Core's `ModulePersistentContainers.swift`.
+            .environment(\.tripPersistentContainer, app.tripContainer)
+            // Fuel's own key — see `fuelContainer`'s doc comment above for why
+            // this isn't also `\.managedObjectContext`.
+            .environment(\.fuelManagedObjectContext, app.fuelContainer.viewContext)
+            // The container itself (not just its context) — Fuel's Share button
+            // and its sharing-status badges need it to call `presentShareSheet`
+            // and `SharingStatusResolver`. See Core's `ModulePersistentContainers.swift`.
+            .environment(\.fuelPersistentContainer, app.fuelContainer)
+            // Explore's own key — same reasoning as Fuel's.
+            .environment(\.exploreManagedObjectContext, app.exploreContainer.viewContext)
+            // The container itself (not just its context) — Explore's Share
+            // button and its sharing-status badges need it to call
+            // `presentShareSheet` and `SharingStatusResolver`. See Core's
+            // `ModulePersistentContainers.swift`.
+            .environment(\.explorePersistentContainer, app.exploreContainer)
+            // Points' own key — same reasoning as Fuel's.
+            .environment(\.pointsManagedObjectContext, app.pointsContainer.viewContext)
+            // The container itself (not just its context) — Points' Share button
+            // and its sharing-status badges need it, same as Explore's above.
+            .environment(\.pointsPersistentContainer, app.pointsContainer)
+            // Finance's own key — same reasoning as Fuel's.
+            .environment(\.financeManagedObjectContext, app.financeContainer.viewContext)
+            // The container itself (not just its context) — Finance's Share
+            // button and its sharing-status badges need it, same as Points' above.
+            .environment(\.financePersistentContainer, app.financeContainer)
+            .environment(app.syncMonitor)
+    }
+}
+
 #if os(macOS)
-/// The Trackers menu: ⌘1 onward jumps straight to a tracker, numbered in the
-/// sidebar's own order and skipping hidden ones, so ⌘1 is always the top row.
+/// The Trackers menu: ⌘0 is the Overview, and ⌘1 onward jumps straight to a
+/// tracker, numbered in the sidebar's own order and skipping hidden ones, so
+/// ⌘1 is always the top row.
 /// A Scene's `.commands` sits outside the WindowGroup's view hierarchy, so it
 /// can't reach into HomeView's own `@State` — it posts a notification instead,
 /// which `HomeView.macBody` listens for.
@@ -229,6 +334,11 @@ private struct TrackerCommands: Commands {
 
     var body: some Commands {
         CommandMenu("Trackers") {
+            Button("Overview") {
+                NotificationCenter.default.post(name: .selectTracker, object: nil, userInfo: ["module": SelectedModule.overviewID])
+            }
+            .keyboardShortcut("0", modifiers: .command)
+            Divider()
             // Nine at most: ⌘0 and beyond aren't single keystrokes.
             ForEach(Array(layoutStore.visibleModules.prefix(9).enumerated()), id: \.element) { index, module in
                 Button(module.accent.name) {
@@ -239,9 +349,43 @@ private struct TrackerCommands: Commands {
         }
     }
 }
+
+/// View ▸ Refresh from iCloud, ⌘R. Unlike the Trackers menu this needs no
+/// notification: the monitor is the app's own object, not HomeView state.
+private struct CloudSyncCommands: Commands {
+    let monitor: CloudSyncMonitor
+
+    var body: some Commands {
+        CommandGroup(after: .toolbar) {
+            Button("Refresh from iCloud") {
+                Task { await monitor.refresh() }
+            }
+            .keyboardShortcut("r", modifiers: .command)
+            .disabled(monitor.isRefreshing)
+        }
+    }
+}
 #endif
 
 #if DEBUG
+/// `-CloudSyncRefreshAfter <seconds>` runs an app-wide refresh that long after
+/// launch and prints how it ended — the only way to watch whether a refresh
+/// really makes mirroring import, alongside `-com.apple.CoreData.CloudKitDebug 1`
+/// and the "CloudSync" log category.
+private enum CloudSyncRefreshProbe {
+    @MainActor
+    static func scheduleIfRequested(_ monitor: CloudSyncMonitor) {
+        let delay = UserDefaults.standard.double(forKey: "CloudSyncRefreshAfter")
+        guard delay > 0 else { return }
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(delay))
+            print("CloudSyncRefreshProbe: refreshing at \(Date.now)")
+            let outcome = await monitor.refresh()
+            print("CloudSyncRefreshProbe: \(outcome) at \(Date.now)")
+        }
+    }
+}
+
 /// `-WeatherStub YES` swaps in made-up weather for the whole app.
 ///
 /// The live WeatherKit provider throws until the WeatherKit capability is

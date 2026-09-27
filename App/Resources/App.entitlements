@@ -19,5 +19,14 @@
 	     throws and both modules quietly show no weather at all. -->
 	<key>com.apple.developer.weatherkit</key>
 	<true/>
+	<!-- CloudKit's silent pushes, which are how NSPersistentCloudKitContainer
+	     learns another device changed the database. Without it the pushes never
+	     arrive (UIBackgroundModes remote-notification alone isn't enough), so a
+	     partner's new itinerary item or fuel-up only appeared at the next launch
+	     or return to the foreground, minutes later. "development" is right for
+	     every local build: Xcode rewrites it to "production" from the
+	     provisioning profile when exporting for TestFlight or the App Store. -->
+	<key>aps-environment</key>
+	<string>development</string>
 </dict>
 </plist>

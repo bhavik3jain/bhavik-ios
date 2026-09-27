@@ -22,6 +22,8 @@ packages:
     path: Packages/ExploreTracker
   PointsTracker:
     path: Packages/PointsTracker
+  FinanceTracker:
+    path: Packages/FinanceTracker
 
 targets:
   bhavik-ios:
@@ -58,6 +60,7 @@ targets:
       - package: TripTracker
       - package: ExploreTracker
       - package: PointsTracker
+      - package: FinanceTracker
     info:
       path: App/Resources/Info.plist
       properties:
@@ -72,13 +75,24 @@ targets:
         # declaring this stops App Store Connect asking the export-compliance
         # question on every single upload.
         ITSAppUsesNonExemptEncryption: false
-        # Asked for only when a guide's map opens, never at launch. Without the
-        # key the request is dropped silently and the blue dot never appears.
-        NSLocationWhenInUseUsageDescription: Shows how far you are from the places in a guide.
+        # Asked for only when a guide's map or a trip's Nearby tab opens, never
+        # at launch. Without the key the request is dropped silently: the blue
+        # dot never appears and Nearby can only measure from a day's plan.
+        NSLocationWhenInUseUsageDescription: Shows how far you are from the places in a guide and the ideas saved for a trip.
         # Without this, tapping a CloudKit share-invitation link (email, Messages)
         # never routes into the app at all — the system silently drops it before
         # userDidAcceptCloudKitShareWith is ever called.
         CKSharingSupported: true
+        # What a trip's stop or idea is while it's dragged between the Mac's
+        # plan and its Ideas inspector (`UTType.tripItineraryItem`). Undeclared,
+        # an exported identifier is treated as a dynamic type and the drop
+        # destination waiting for it never matches. Declared on both targets so
+        # the type means the same thing wherever a trip is open.
+        UTExportedTypeDeclarations: &itineraryItemType
+          - UTTypeIdentifier: com.bhavikjain.trackers.itinerary-item
+            UTTypeDescription: Trip Stop
+            UTTypeConformsTo:
+              - public.data
 
   # Same code, same packages, same bundle id — only the platform chrome differs.
   # Sources and dependencies are aliased from the iOS target rather than copied
@@ -132,7 +146,9 @@ targets:
         ITSAppUsesNonExemptEncryption: false
         # Same prompt as on iPhone; see also the location key in
         # App-macOS.entitlements, which the sandbox needs as well.
-        NSLocationWhenInUseUsageDescription: Shows how far you are from the places in a guide.
+        NSLocationWhenInUseUsageDescription: Shows how far you are from the places in a guide and the ideas saved for a trip.
         # Same as the iOS target: required for a tapped CloudKit share link to
         # route into the app instead of being silently dropped.
         CKSharingSupported: true
+        # See the iOS target.
+        UTExportedTypeDeclarations: *itineraryItemType

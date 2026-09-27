@@ -40,4 +40,10 @@ public extension EnvironmentValues {
     /// own views read `\.managedObjectContext`, re-scoped by
     /// `PointsTrackerModule.rootView(context:container:)`.
     @Entry var pointsManagedObjectContext: NSManagedObjectContext?
+
+    /// Finance's Core Data context, for the app shell's own top-level use
+    /// (`HomeView`'s net-worth line and peek, `AppSettingsView`'s counts).
+    /// Finance's own views read `\.managedObjectContext`, re-scoped by
+    /// `FinanceTrackerModule.rootView(context:container:)`.
+    @Entry var financeManagedObjectContext: NSManagedObjectContext?
 }

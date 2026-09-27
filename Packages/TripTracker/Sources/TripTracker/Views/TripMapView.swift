@@ -3,7 +3,8 @@ import CoreData
 import MapKit
 import SwiftUI
 
-/// This trip's places, and only this trip's. The chips are its days.
+/// This trip's places, and only this trip's. The chips are its days, plus
+/// Ideas when it has any with a place.
 struct TripMapView: View {
     let trip: SharedTrip
     let present: (TripSheet) -> Void
@@ -22,6 +23,10 @@ struct TripMapView: View {
         (trip.items ?? [])
             .filter(filter.shows)
             .sorted { ($0.dayIndex, $0.sortOrder) < ($1.dayIndex, $1.sortOrder) }
+    }
+
+    private var hasPlacedIdeas: Bool {
+        trip.ideas.contains(where: \.hasCoordinate)
     }
 
     private var selectedItem: SharedItineraryItem? {
@@ -44,8 +49,10 @@ struct TripMapView: View {
             Map(position: $position, selection: $selection) {
                 ForEach(visible) { item in
                     if let latitude = item.latitude, let longitude = item.longitude {
-                        Marker(item.title, systemImage: item.kind.symbolName, coordinate: CLLocationCoordinate2D(latitude: latitude, longitude: longitude))
-                            .tint(item.isDone ? Color.gray : TripTrackerModule.accent.color)
+                        // An idea is a lightbulb in orange, so under All days a
+                        // maybe never reads as one more stop on the plan.
+                        Marker(item.title, systemImage: item.isUnassigned ? "lightbulb.fill" : item.kind.symbolName, coordinate: CLLocationCoordinate2D(latitude: latitude, longitude: longitude))
+                            .tint(item.isUnassigned ? Color.orange : (item.isDone ? Color.gray : TripTrackerModule.accent.color))
                             .tag(item.objectID)
                     }
                 }
@@ -78,6 +85,9 @@ struct TripMapView: View {
         return ScrollView(.horizontal) {
             HStack(spacing: 6) {
                 chip("All days", value: .allDays)
+                if hasPlacedIdeas || filter == .ideas {
+                    chip("Ideas", value: .ideas)
+                }
                 ForEach(0..<dates.dayCount, id: \.self) { index in
                     chip(index == today ? "Today · Day \(index + 1)" : "Day \(index + 1)", value: .day(index))
                 }
@@ -114,6 +124,8 @@ struct PlaceCard: View {
     let item: SharedItineraryItem
     let dates: TripDates
     let details: () -> Void
+
+    @Environment(\.openURL) private var openURL
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -162,7 +174,12 @@ struct PlaceCard: View {
     }
 
     private var when: String {
-        var parts = [dates.dayIndex(of: .now) == item.dayIndex ? "Today" : "Day \(item.dayIndex + 1)"]
+        // An idea has no day to name or to put its time on — "Day 0" and a
+        // time on the day before the trip were what -1 produced here.
+        if item.isUnassigned {
+            return (["Idea · no day yet"] + [item.address].filter { !$0.isEmpty }).joined(separator: " · ")
+        }
+        var parts = [IdeaDays.shortName(forDay: item.dayIndex, dates: dates)]
         if let start = item.startTime {
             parts.append(ItineraryFormat.time(dates.moment(day: item.dayIndex, time: start)))
         }
@@ -171,9 +188,7 @@ struct PlaceCard: View {
     }
 
     private func openInMaps() {
-        guard let latitude = item.latitude, let longitude = item.longitude else { return }
-        let mapItem = MKMapItem(placemark: MKPlacemark(coordinate: CLLocationCoordinate2D(latitude: latitude, longitude: longitude)))
-        mapItem.name = item.title
-        mapItem.openInMaps(launchOptions: [MKLaunchOptionsDirectionsModeKey: MKLaunchOptionsDirectionsModeDefault])
+        // Only pinned items reach this card, so the URL fallback never runs.
+        TripDirections.open(item, walking: false, openURL: openURL)
     }
 }

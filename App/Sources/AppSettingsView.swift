@@ -1,6 +1,7 @@
 import Core
 import CoreData
 import ExploreTracker
+import FinanceTracker
 import FuelTracker
 import GymTracker
 import ParcelTracker
@@ -13,6 +14,9 @@ import TVTracker
 struct AppSettingsView: View {
     @AppStorage(Appearance.defaultsKey) private var appearanceRaw = Appearance.system.rawValue
     @State private var syncState: CloudSyncState = .checking
+    /// "Last synced" and the refresh button beside the account status. See
+    /// CloudSyncMonitor.swift for what a refresh can and can't promise.
+    @Environment(CloudSyncMonitor.self) private var syncMonitor: CloudSyncMonitor?
     @ObservedObject private var layoutStore = TrackerLayoutStore.shared
 
     @Query private var sessions: [WorkoutSession]
@@ -54,6 +58,12 @@ struct AppSettingsView: View {
     @StateObject private var pointsAccountFetch = ManagedObjectFetch<SharedPointsAccount>(SharedPointsAccount.fetchRequest())
     private var pointsOwners: [SharedPointsOwner] { pointsOwnerFetch.results }
     private var pointsAccounts: [SharedPointsAccount] { pointsAccountFetch.results }
+    // Finance is Core Data too — same reasoning as Points' fetches above.
+    @Environment(\.financeManagedObjectContext) private var financeContext
+    @StateObject private var financeOwnerFetch = ManagedObjectFetch<SharedFinanceOwner>(SharedFinanceOwner.fetchRequest())
+    @StateObject private var financeAccountFetch = ManagedObjectFetch<SharedFinanceAccount>(SharedFinanceAccount.fetchRequest())
+    private var financeOwners: [SharedFinanceOwner] { financeOwnerFetch.results }
+    private var financeAccounts: [SharedFinanceAccount] { financeAccountFetch.results }
 
     var body: some View {
         Form {
@@ -81,12 +91,41 @@ struct AppSettingsView: View {
                             .foregroundStyle(syncState.isHealthy ? Color.secondary : Color.orange)
                     }
                 }
+                if let syncMonitor {
+                    // Re-read once a minute, so "5 min ago" doesn't sit frozen
+                    // while the screen stays open.
+                    TimelineView(.everyMinute) { context in
+                        // The label already reads "Last synced 5 min ago", so
+                        // it stands alone rather than repeating itself as a
+                        // LabeledContent title.
+                        Label(
+                            CloudSyncStatusText.lastSynced(
+                                syncMonitor.lastSyncedAt,
+                                isRefreshing: syncMonitor.isRefreshing,
+                                asOf: context.date
+                            ),
+                            systemImage: "clock.arrow.circlepath"
+                        )
+                        .foregroundStyle(.secondary)
+                    }
+                    Button("Refresh from iCloud") {
+                        Task { await syncMonitor.refresh() }
+                    }
+                    .disabled(syncMonitor.isRefreshing || !syncState.isHealthy)
+                }
             } header: {
                 Text("Sync")
             } footer: {
-                Text(syncState.explanation)
+                if let message = syncMonitor?.lastOutcome.flatMap(CloudSyncStatusText.message(for:)) {
+                    Text("\(syncState.explanation)\n\n\(message)")
+                } else {
+                    Text(syncState.explanation)
+                }
             }
 
+            // The Mac's Settings window has Customize Trackers as a tab of its
+            // own — see MacSettingsView.
+            #if os(iOS)
             Section {
                 NavigationLink {
                     CustomizeTrackersView()
@@ -96,6 +135,9 @@ struct AppSettingsView: View {
             } footer: {
                 Text("Choose which trackers appear, and in what order.")
             }
+            #endif
+
+            SharedChangeNotificationsSection()
 
             Section {
                 // Same order as the home screen, hidden trackers included —
@@ -136,6 +178,11 @@ struct AppSettingsView: View {
             pointsOwnerFetch.start(context: pointsContext)
             pointsAccountFetch.start(context: pointsContext)
         }
+        .task(id: financeContext) {
+            guard let financeContext else { return }
+            financeOwnerFetch.start(context: financeContext)
+            financeAccountFetch.start(context: financeContext)
+        }
     }
 
     private func trackerDetail(for module: SelectedModule) -> String {
@@ -147,6 +194,7 @@ struct AppSettingsView: View {
         case .parcels: counted(parcels.count, "order")
         case .fuel: "\(counted(vehicles.count, "vehicle")), \(counted(fuelEntries.count, "entry", plural: "entries"))"
         case .points: "\(counted(pointsOwners.count, "person", plural: "people")), \(counted(pointsAccounts.count, "account"))"
+        case .finance: "\(counted(financeOwners.count, "person", plural: "people")), \(counted(financeAccounts.count, "account"))"
         }
     }
 }

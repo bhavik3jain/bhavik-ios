@@ -14,7 +14,7 @@ concurrency:
 jobs:
   release:
     name: Archive, notarize and package
-    runs-on: macos-latest
+    runs-on: xcode-27
 
     # Reuses the same environment as TestFlight, plus two secrets of its own:
     # MAC_DEVELOPER_ID_P12 (base64) and MAC_DEVELOPER_ID_P12_PASSWORD. Cloud
@@ -33,11 +33,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Use the newest installed Xcode
+      - name: Use Xcode 27.0
+        # Pinned, not "newest installed": the xcode-27 image also carries 27.1
+        # and a 27.2 beta, and App Store Connect rejects a build made with a
+        # beta Xcode. Moved off macos-latest (Xcode 26.6) after its compiler
+        # crashed in IRGen on SharedChangeNotificationsSection.swift while the
+        # app is developed on Xcode 27. The image is a GitHub preview, so jobs
+        # can queue; falling back is runs-on: macos-latest plus this step
+        # picking the newest Xcode again.
         run: |
-          latest=$(ls -d /Applications/Xcode*.app | sort -V | tail -1)
-          echo "Selecting $latest"
-          sudo xcode-select -s "$latest"
+          xcode=/Applications/Xcode_27.0.app
+          if [ ! -d "$xcode" ]; then
+            echo "$xcode is not on this runner. Installed:"
+            ls -d /Applications/Xcode*.app
+            exit 1
+          fi
+          sudo xcode-select -s "$xcode"
           xcodebuild -version
 
       - name: Install XcodeGen
@@ -101,6 +112,12 @@ jobs:
         # this is downloaded from the portal by hand, once, like the
         # certificate. Xcode finds profiles here by filename; the name itself
         # doesn't matter, only its UUID and its contents.
+        #
+        # Its entitlements are frozen at generation: a capability added to
+        # App-macOS.entitlements later (CloudKit pushes'
+        # com.apple.developer.aps-environment was the first) fails signing
+        # here until the profile is regenerated in the portal and this secret
+        # replaced — README → macOS → Installing it has the steps.
         env:
           MAC_DEVELOPER_ID_PROFILE: ${{ secrets.MAC_DEVELOPER_ID_PROFILE }}
         run: |

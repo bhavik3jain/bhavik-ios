@@ -12,10 +12,17 @@ struct TripPlanView: View {
     @Environment(\.managedObjectContext) private var modelContext
     @Environment(\.tripPersistentContainer) private var container
 
-    // A read-only shared participant can't mark an item done or delete it —
-    // same gate `ItemEditorView`'s own "Mark as Done"/"Delete" section already
-    // applies, so tapping or swiping this row can't do the same mutation from
-    // a side door.
+    /// What the swipe action's "Move to…" dialog is choosing a day for.
+    @State private var moving: DayPlan.Entry?
+    /// Whether an idea is being dragged over the plan, on the Mac — see
+    /// `ItineraryDrop`.
+    @State private var isDropTargeted = false
+    @Environment(\.moduleLayout) private var layout
+
+    // A read-only shared participant can't mark an item done, delete it or
+    // move it — same gate `ItemEditorView`'s own "Mark as Done"/"Delete"
+    // section already applies, so tapping, swiping or long-pressing this row
+    // can't do the same mutation from a side door.
     private var canEdit: Bool {
         guard let container else { return true }
         return SharingStatusResolver.canEdit(trip, in: container)
@@ -27,6 +34,9 @@ struct TripPlanView: View {
         TimelineView(.everyMinute) { context in
             content(now: context.date)
         }
+        // Mid-trip is exactly when a partner adds to today, and waiting on the
+        // next automatic import was minutes.
+        .refreshesFromCloud()
     }
 
     private func content(now: Date) -> some View {
@@ -74,6 +84,15 @@ struct TripPlanView: View {
                 }
             }
 
+            // Where a dragged idea will land: the end of the day, as "Move
+            // to…" puts it. Shown only while one is over the plan, so it can't
+            // be mistaken for a stop.
+            if isDropTargeted {
+                Section {
+                    DropHintRow(dayName: plan.isToday(asOf: now) ? "today" : "Day \(day + 1)")
+                }
+            }
+
             if let flight = TripOverview.nextFlight(in: trip, asOf: now) {
                 Section {
                     Button {
@@ -92,6 +111,21 @@ struct TripPlanView: View {
                     WeatherAttributionView()
                 }
             }
+        }
+        .modifier(PlanDropTarget(enabled: layout == .sidebar && canEdit, isTargeted: $isDropTargeted) { drags in
+            let moved = withAnimation { ItineraryDrop.move(drags, toDay: day, in: trip) }
+            guard moved else { return false }
+            try? modelContext.saveIfNeeded()
+            trip.objectWillChange.send()
+            return true
+        })
+        .confirmationDialog(
+            "Move \(moving?.title ?? "") to…",
+            isPresented: Binding { moving != nil } set: { if !$0 { moving = nil } },
+            titleVisibility: .visible,
+            presenting: moving
+        ) { entry in
+            moveButtons(for: entry, from: day, dates: dates, now: now)
         }
     }
 
@@ -124,13 +158,66 @@ struct TripPlanView: View {
                     } label: {
                         Label("Delete", systemImage: "trash")
                     }
+                    moveSwipeButton(for: entry)
                 }
             }
+            .contextMenu { moveMenu(for: entry, in: plan) }
+            .draggableItinerary(item, enabled: canEdit)
         case .flight(let flight):
             TimelineRow(entry: entry, plan: plan, isUpNext: isUpNext, toggle: nil) {
                 present(.flight(flight))
             }
+            .swipeActions(edge: .trailing) {
+                if canEdit {
+                    moveSwipeButton(for: entry)
+                }
+            }
+            .contextMenu { moveMenu(for: entry, in: plan) }
         }
+    }
+
+    // MARK: Moving to another day
+
+    // Moving something to another day used to mean opening it, or deleting it
+    // and adding it again. A swipe can't hold a menu, so it asks in a dialog;
+    // the context menu — the natural path on the Mac — lists the days inline.
+    private func moveSwipeButton(for entry: DayPlan.Entry) -> some View {
+        Button {
+            moving = entry
+        } label: {
+            Label("Move", systemImage: "calendar")
+        }
+        .tint(.indigo)
+    }
+
+    @ViewBuilder
+    private func moveMenu(for entry: DayPlan.Entry, in plan: DayPlan) -> some View {
+        if canEdit {
+            Menu {
+                moveButtons(for: entry, from: plan.dayIndex, dates: plan.dates, now: .now)
+            } label: {
+                Label("Move to…", systemImage: "calendar")
+            }
+        }
+    }
+
+    /// One per other day — see `MoveToDayButtons`. A flight is always on a day,
+    /// so it never gets Unassigned.
+    private func moveButtons(for entry: DayPlan.Entry, from day: Int, dates: TripDates, now: Date) -> some View {
+        let isItem = if case .item = entry { true } else { false }
+        return MoveToDayButtons(dates: dates, current: .day(day), includesUnassigned: isItem && DayChoice.offersUnassigned, now: now) { choice in
+            move(entry, to: choice)
+        }
+    }
+
+    private func move(_ entry: DayPlan.Entry, to choice: DayChoice) {
+        withAnimation {
+            switch entry {
+            case .item(let item): item.move(toDay: choice.dayIndex)
+            case .flight(let flight): flight.move(toDay: choice.dayIndex, in: trip.dates)
+            }
+        }
+        try? modelContext.saveIfNeeded()
     }
 }
 
@@ -466,5 +553,52 @@ struct NextFlightCard: View {
             .foregroundStyle(accent)
         }
         .contentShape(.rect)
+    }
+}
+
+// MARK: - Dropping ideas onto the plan
+
+/// Accepts stops and ideas dragged onto a day's plan, on the Mac only — on the
+/// phone there's no Ideas pane beside the plan to drag from.
+private struct PlanDropTarget: ViewModifier {
+    let enabled: Bool
+    @Binding var isTargeted: Bool
+    let perform: ([ItineraryItemDrag]) -> Bool
+
+    func body(content: Content) -> some View {
+        if enabled {
+            content.dropDestination(for: ItineraryItemDrag.self) { drags, _ in
+                perform(drags)
+            } isTargeted: { targeted in
+                withAnimation(.snappy) { isTargeted = targeted }
+            }
+        } else {
+            content
+        }
+    }
+}
+
+/// The dashed slot at the end of the plan while an idea hovers over it.
+struct DropHintRow: View {
+    let dayName: String
+
+    var body: some View {
+        let accent = TripTrackerModule.accent.color
+        HStack(spacing: 10) {
+            Text("Drop")
+                .font(.subheadline)
+                .fontWeight(.semibold)
+                .foregroundStyle(accent)
+                .frame(width: TimelineMetrics.timeColumnWidth, alignment: .trailing)
+            Circle()
+                .strokeBorder(accent.opacity(0.6), style: StrokeStyle(lineWidth: 2, dash: [3, 3]))
+                .frame(width: 18, height: 18)
+            Text("Drop an idea here to add it to \(dayName)")
+                .font(.subheadline)
+                .foregroundStyle(accent)
+            Spacer(minLength: 0)
+        }
+        .padding(.vertical, 4)
+        .listRowBackground(accent.opacity(0.06))
     }
 }

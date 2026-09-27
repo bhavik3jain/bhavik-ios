@@ -6,6 +6,18 @@ import SwiftUI
 public enum FuelTrackerModule {
     public static let accent = ModuleAccent(name: "Fuel", color: Color(red: 0.06, green: 0.62, blue: 0.56))
 
+    /// The white-on-accent symbol on the hub row, the Mac sidebar tile and
+    /// its Overview card.
+    public static let symbolName = "fuelpump.fill"
+
+    /// Its tabs on the phone and, in the same order, the rows nested under it
+    /// in the Mac sidebar. The first is where the module opens.
+    public static let sections = [
+        ModuleSection("vehicle", title: "Vehicle", systemImage: "car.fill"),
+        ModuleSection("trends", title: "Trends", systemImage: "chart.xyaxis.line"),
+        ModuleSection("garage", title: "Garage", systemImage: "building.2.fill"),
+    ]
+
     /// The vehicle the module last opened on, by name.
     ///
     /// Unlike `TVTrackerModule.apiKeyDefaultsKey` and the FedEx keys — whose
@@ -42,9 +54,16 @@ public enum FuelTrackerModule {
     /// `GarageView`, `AddFillUpView`) need it to call `presentShareSheet` and
     /// `SharingStatusResolver`, which a context alone can't get them back to.
     /// See Core's `ModulePersistentContainers.swift`.
+    ///
+    /// `section` is the Mac sidebar's selection, which picks the section in
+    /// place of a tab bar; leave it nil on the phone.
     @MainActor
-    public static func rootView(context: NSManagedObjectContext, container: NSPersistentCloudKitContainer) -> some View {
-        FuelRootView()
+    public static func rootView(
+        context: NSManagedObjectContext,
+        container: NSPersistentCloudKitContainer,
+        section: Binding<String>? = nil
+    ) -> some View {
+        FuelRootView(section: section)
             .environment(\.managedObjectContext, context)
             .environment(\.fuelPersistentContainer, container)
     }

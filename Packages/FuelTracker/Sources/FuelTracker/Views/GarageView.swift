@@ -67,6 +67,7 @@ struct GarageView: View {
                     Text("Import a CSV exported from Fuelly. Fill-ups and service records are added for every vehicle in the file, and anything already imported is skipped.")
                 }
             }
+            .refreshesFromCloud()
             .navigationTitle("Garage")
             .fileImporter(
                 isPresented: $showingImporter,

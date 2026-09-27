@@ -2,17 +2,25 @@ import Core
 import CoreData
 import SwiftUI
 
-/// The three faces of one trip.
-enum TripSection: String, CaseIterable, Identifiable {
+/// The faces of one trip. Titles are one short word each: five of them share
+/// a segmented control the width of an iPhone.
+///
+/// Public so the Mac sidebar and Overview can open a trip on a given face —
+/// the Overview's nearby-ideas tile opens straight onto Nearby.
+public enum TripSection: String, CaseIterable, Identifiable, Sendable {
     case plan
+    case ideas
+    case nearby
     case map
     case codes
 
-    var id: String { rawValue }
+    public var id: String { rawValue }
 
-    var title: String {
+    public var title: String {
         switch self {
         case .plan: "Plan"
+        case .ideas: "Ideas"
+        case .nearby: "Nearby"
         case .map: "Map"
         case .codes: "Codes"
         }
@@ -52,13 +60,24 @@ struct TripDetailView: View {
     // A segmented control rather than a nested TabView: the module's tab bar is
     // already on screen, and a second bar of tabs inside a pushed screen reads as
     // somewhere else to go rather than another view of the same trip.
-    @State private var section: TripSection = .plan
+    //
+    // Held outside when the Mac sidebar opened the trip, so the Overview can
+    // open it on a given face; here otherwise.
+    private let externalSection: Binding<TripSection>?
+    @State private var ownSection: TripSection = .plan
+    private var section: TripSection { externalSection?.wrappedValue ?? ownSection }
+    private var sectionBinding: Binding<TripSection> { externalSection ?? $ownSection }
     @State private var selectedDay: Int
     @State private var weather: [DayWeather] = []
     @State private var sheet: TripSheet?
 
     @Environment(\.tripPersistentContainer) private var container
     @Environment(\.presentShareSheet) private var presentShareSheet
+    @Environment(\.moduleLayout) private var layout
+    /// The Mac's Ideas inspector beside Plan. On by default — the plan and
+    /// what could still go on it are the two halves of deciding a day — and
+    /// remembered once hidden with ⌥⌘I.
+    @AppStorage("trips.showsIdeasInspector") private var showsIdeas = true
     // Sharing status is a cheap, synchronous CloudKit cache lookup (see
     // `SharingStatusResolver`'s own doc comment), not something worth a
     // round trip through `@State` plus a `.task` — read fresh on every body
@@ -72,9 +91,22 @@ struct TripDetailView: View {
         return SharingStatusResolver.canEdit(trip, in: container)
     }
 
-    init(trip: SharedTrip) {
+    init(trip: SharedTrip, section: Binding<TripSection>? = nil) {
         self.trip = trip
+        externalSection = section
         _selectedDay = State(initialValue: TripDates.initialDay(for: trip))
+    }
+
+    /// Only on the Mac, only beside Plan: Ideas, Nearby and the rest are
+    /// already about ideas or have no day to add them to.
+    private var inspectorPresented: Binding<Bool> {
+        Binding {
+            layout == .sidebar && section == .plan && showsIdeas
+        } set: { shown in
+            // The inspector reports itself closed when switching away from
+            // Plan hides it; that mustn't be remembered as a choice.
+            if layout == .sidebar, section == .plan { showsIdeas = shown }
+        }
     }
 
     var body: some View {
@@ -82,6 +114,22 @@ struct TripDetailView: View {
             switch section {
             case .plan:
                 TripPlanView(trip: trip, selectedDay: $selectedDay, weather: weather) { sheet = $0 }
+            case .ideas:
+                TripIdeasView(trip: trip) { sheet = $0 }
+            case .nearby:
+                if layout == .sidebar {
+                    // A desktop has the width for both: where the ideas are
+                    // beside how far each one is. On the phone Map is its own
+                    // face, a tap away.
+                    HStack(spacing: 0) {
+                        TripMapView(trip: trip) { sheet = $0 }
+                        Divider()
+                        TripNearbyView(trip: trip) { sheet = $0 }
+                            .frame(width: 380)
+                    }
+                } else {
+                    TripNearbyView(trip: trip) { sheet = $0 }
+                }
             case .map:
                 TripMapView(trip: trip) { sheet = $0 }
             case .codes:
@@ -92,14 +140,46 @@ struct TripDetailView: View {
         // Pinned above whichever face is showing, so switching never scrolls the
         // header away and the map can still run edge to edge beneath it.
         .safeAreaInset(edge: .top, spacing: 0) {
-            header
+            // The Mac has no header: the toolbar carries the title, the
+            // subtitle and the section picker, and a second title under the
+            // toolbar's own read as a double.
+            if layout == .tabs {
+                header
+            }
         }
         // The title is drawn big in the header, so the bar's copy is removed
         // rather than shown twice; it stays set for the back menu and the window.
         .navigationTitle(trip.title)
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar(removing: .title)
+        .modifier(TripTitleChrome(subtitle: subtitle))
+        .inspector(isPresented: inspectorPresented) {
+            TripIdeasInspector(trip: trip, day: selectedDay, canEdit: canEdit) { sheet = $0 }
+                .inspectorColumnWidth(min: 280, ideal: 320, max: 420)
+        }
         .toolbar {
+            if layout == .sidebar {
+                ToolbarItem(placement: .principal) {
+                    Picker("Section", selection: sectionBinding) {
+                        ForEach(TripSection.allCases) { section in
+                            Text(section.title).tag(section)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    .fixedSize()
+                }
+                if section == .plan {
+                    ToolbarItem(placement: .primaryAction) {
+                        Button {
+                            withAnimation { showsIdeas.toggle() }
+                        } label: {
+                            Label(showsIdeas ? "Hide Ideas" : "Show Ideas", systemImage: "sidebar.trailing")
+                        }
+                        .keyboardShortcut("i", modifiers: [.command, .option])
+                        .help("Show or hide this trip's ideas (⌥⌘I)")
+                    }
+                }
+            }
             ToolbarItemGroup(placement: .primaryAction) {
                 ShareLink(
                     item: ItineraryFile(document: ItineraryDocument(trip: trip)),
@@ -125,6 +205,11 @@ struct TripDetailView: View {
                             sheet = .newItem(day: selectedDay)
                         } label: {
                             Label("Add to Plan", systemImage: "mappin.and.ellipse")
+                        }
+                        Button {
+                            sheet = .newItem(day: SharedItineraryItem.unassignedDayIndex)
+                        } label: {
+                            Label("Add Idea", systemImage: "lightbulb")
                         }
                         Button {
                             sheet = .newFlight(day: selectedDay)
@@ -174,6 +259,15 @@ struct TripDetailView: View {
         }
     }
 
+    /// "Italy · 6–14 Jun · Day 3 of 9 · Shared with Saloni" — what the phone's
+    /// header says under the title, as one line for the Mac's toolbar.
+    private var subtitle: String {
+        let dates = trip.dates
+        return [trip.destination, ItineraryFormat.dateRange(dates), TripOverview.dayOfTrip(dates) ?? "", sharingStatus.tripBadgeLabel ?? ""]
+            .filter { !$0.isEmpty }
+            .joined(separator: " · ")
+    }
+
     private var header: some View {
         let dates = trip.dates
         return VStack(alignment: .leading, spacing: 12) {
@@ -204,7 +298,7 @@ struct TripDetailView: View {
                 }
             }
 
-            Picker("Section", selection: $section) {
+            Picker("Section", selection: sectionBinding) {
                 ForEach(TripSection.allCases) { section in
                     Text(section.title).tag(section)
                 }
@@ -217,5 +311,20 @@ struct TripDetailView: View {
         .padding(.bottom, 10)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(.bar)
+    }
+}
+
+/// The phone draws the trip's title big in its own header, so the navigation
+/// bar's copy goes; the Mac keeps the toolbar's title and puts the header's
+/// second line under it as a subtitle.
+private struct TripTitleChrome: ViewModifier {
+    let subtitle: String
+    @Environment(\.moduleLayout) private var layout
+
+    func body(content: Content) -> some View {
+        switch layout {
+        case .tabs: content.toolbar(removing: .title)
+        case .sidebar: content.moduleSubtitle(subtitle)
+        }
     }
 }

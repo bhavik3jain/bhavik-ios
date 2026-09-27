@@ -21,7 +21,11 @@ struct FuelRootView: View {
     /// every time the module is opened, which threw the choice away on the way
     /// back to the hub.
     @AppStorage(FuelTrackerModule.selectedVehicleDefaultsKey) private var selectedVehicleName = ""
-    @State private var selection = "vehicle"
+    /// The Mac sidebar's own selection when it picks the section; nil on the
+    /// phone, where the tab bar's selection below does.
+    var section: Binding<String>?
+    @State private var ownSection = FuelTrackerModule.sections[0].id
+    private var selection: Binding<String> { section ?? $ownSection }
     /// Held here so a chip's "Log a fill-up" can open the sheet from either tab.
     @State private var showingAddEntry = false
 
@@ -42,11 +46,18 @@ struct FuelRootView: View {
     }
 
     var body: some View {
-        TabView(selection: $selection) {
-            Tab("Home", systemImage: "house", value: ModuleTab.home) {
-                Color.clear
-            }
-            Tab("Vehicle", systemImage: "car.fill", value: "vehicle") {
+        ModuleTabView(selection: selection, sections: FuelTrackerModule.sections) { section in
+            switch section.id {
+            case "trends":
+                TrendsView(
+                    vehicle: selectedVehicle,
+                    summary: selectedSummary,
+                    summaries: summaries,
+                    perform: handle
+                )
+            case "garage":
+                GarageView()
+            default:
                 VehicleLogView(
                     vehicle: selectedVehicle,
                     summary: selectedSummary,
@@ -55,21 +66,8 @@ struct FuelRootView: View {
                     perform: handle
                 )
             }
-            Tab("Trends", systemImage: "chart.xyaxis.line", value: "trends") {
-                TrendsView(
-                    vehicle: selectedVehicle,
-                    summary: selectedSummary,
-                    summaries: summaries,
-                    perform: handle
-                )
-            }
-            Tab("Garage", systemImage: "building.2.fill", value: "garage") {
-                GarageView()
-            }
         }
         .tint(FuelTrackerModule.accent.color)
-        .minimizesTabBarOnScroll()
-        .dismissesOnHomeTab($selection, restoringTo: "vehicle")
         .task {
             // The importer de-duplicates against this device's store only, so
             // it waits until that store has caught up with iCloud — otherwise
@@ -92,10 +90,10 @@ struct FuelRootView: View {
         case .select:
             break
         case .logFillUp:
-            selection = "vehicle"
+            selection.wrappedValue = "vehicle"
             showingAddEntry = true
         case .showTrends:
-            selection = "trends"
+            selection.wrappedValue = "trends"
         }
     }
 }

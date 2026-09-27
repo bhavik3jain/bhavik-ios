@@ -25,6 +25,9 @@ struct FlightEditorView: View {
     @State private var day: Int
     @State private var notes = ""
     @State private var confirmingDelete = false
+    /// Set while the Day picker carries the times along, so the departure's
+    /// own `onChange` doesn't take that for a hand edit and move the day again.
+    @State private var movingWithDay = false
 
     init(trip: SharedTrip, flight: SharedFlight?, day: Int) {
         self.trip = trip
@@ -79,12 +82,12 @@ struct FlightEditorView: View {
                 }
 
                 Section {
-                    Picker("Day", selection: $day) {
-                        ForEach(0..<trip.dates.dayCount, id: \.self) { index in
-                            Text("Day \(index + 1) · \(trip.dates.date(forDay: index).formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated)))")
-                                .tag(index)
-                        }
-                    }
+                    // A flight is always on a day: it has no Unassigned.
+                    DayPicker(
+                        dates: trip.dates,
+                        selection: Binding { DayChoice.day(day) } set: { moveTimes(toDay: $0.dayIndex) },
+                        includesUnassigned: false
+                    )
                     Toggle("Set times", isOn: $hasTimes.animation())
                     if hasTimes {
                         DatePicker("Departs", selection: $departsAt)
@@ -127,6 +130,10 @@ struct FlightEditorView: View {
                 }
             }
             .onChange(of: departsAt) { old, new in
+                if movingWithDay {
+                    movingWithDay = false
+                    return
+                }
                 // Keep the flight's length when the departure moves, and follow
                 // it onto its day — the usual edit is fixing the date.
                 arrivesAt = arrivesAt.addingTimeInterval(new.timeIntervalSince(old))
@@ -142,6 +149,20 @@ struct FlightEditorView: View {
                 }
             }
         }
+    }
+
+    /// Picking another day moves the times by as many days. Changing only the
+    /// day used to leave `departsAt` on the old date, so the timeline and the
+    /// next-flight card, Codes and the PDF disagreed about when the flight was.
+    /// A shift rather than a snap, for the reason on `SharedFlight.move(toDay:shiftingTimesBy:calendar:)`.
+    private func moveTimes(toDay index: Int) {
+        let days = index - day
+        day = index
+        guard days != 0 else { return }
+        let calendar = trip.dates.calendar
+        movingWithDay = true
+        departsAt = calendar.date(byAdding: .day, value: days, to: departsAt) ?? departsAt
+        arrivesAt = calendar.date(byAdding: .day, value: days, to: arrivesAt) ?? arrivesAt
     }
 
     private func save() {

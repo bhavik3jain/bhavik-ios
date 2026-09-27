@@ -364,3 +364,77 @@ private func importedFleet() throws -> [VehicleSummary] {
     #expect(VehicleSummary.pricePerGallonText(5.739) == "$5.739")
     #expect(VehicleSummary.pricePerGallonText(nil) == "—")
 }
+
+// MARK: - The Mac vehicle page
+
+@MainActor
+@Test func vehicleLogRowsMergeFillUpsAndServicesNewestFirst() throws {
+    let context = try makeContext()
+    let car = SharedVehicle(context: context, name: "My X3")
+    let entries = [
+        SharedFuelEntry(context: context, date: day(2026, 1, 5), odometer: 1_000, gallons: 10, totalCost: 40),
+        SharedFuelEntry(context: context, date: day(2026, 2, 5), odometer: 1_150, gallons: 4, totalCost: 16, isFullTank: false),
+        SharedFuelEntry(context: context, kind: .service, date: day(2026, 2, 20), odometer: 1_200, totalCost: 90, services: "Oil change"),
+        SharedFuelEntry(context: context, date: day(2026, 3, 5), odometer: 1_300, gallons: 6, pricePerGallon: 4.25, totalCost: 25.5),
+    ]
+    for entry in entries { entry.vehicle = car }
+
+    let rows = VehicleLogRow.rows(fillUps: car.orderedFillUps, services: car.orderedServices)
+
+    #expect(rows.map(\.odometer) == [1_300, 1_200, 1_150, 1_000])
+    #expect(rows.map(\.kind) == [.fillUp, .service, .fillUp, .fillUp])
+    // 300 miles over the 4 + 6 gallons since the first full tank.
+    #expect(rows[0].mpg == 30)
+    #expect(rows[0].pricePerGallon == 4.25, "A recorded price wins")
+    #expect(rows[1].note == "Oil change")
+    #expect(rows[1].gallons == nil && rows[1].mpg == nil)
+    #expect(rows[2].isPartial && rows[2].mpg == nil)
+    #expect(rows[3].pricePerGallon == 4, "Worked out from the total when none was recorded")
+    #expect(rows[3].mpg == nil, "The first full tank only sets the baseline")
+}
+
+@MainActor
+@Test func vehicleLogRowsOnOneDayFallBackToTheOdometer() throws {
+    let context = try makeContext()
+    let car = SharedVehicle(context: context, name: "My Q5")
+    let morning = SharedFuelEntry(context: context, date: day(2026, 4, 1), odometer: 2_000, gallons: 10)
+    let evening = SharedFuelEntry(context: context, date: day(2026, 4, 1), odometer: 2_250, gallons: 8)
+    morning.vehicle = car
+    evening.vehicle = car
+
+    let rows = VehicleLogRow.rows(fillUps: car.orderedFillUps, services: [])
+    #expect(rows.map(\.odometer) == [2_250, 2_000])
+}
+
+@MainActor
+@Test func vehicleLogSpendCountsOnlyThisYearsEntriesOfThatKind() throws {
+    let context = try makeContext()
+    let car = SharedVehicle(context: context, name: "My X3")
+    let entries = [
+        SharedFuelEntry(context: context, date: day(2025, 12, 30), odometer: 900, gallons: 10, totalCost: 50),
+        SharedFuelEntry(context: context, date: day(2026, 1, 5), odometer: 1_000, gallons: 10, totalCost: 40),
+        SharedFuelEntry(context: context, date: day(2026, 6, 5), odometer: 1_300, gallons: 10, totalCost: 45),
+        SharedFuelEntry(context: context, kind: .service, date: day(2026, 2, 20), odometer: 1_200, totalCost: 90),
+        SharedFuelEntry(context: context, kind: .service, date: day(2025, 2, 20), odometer: 500, totalCost: 300),
+    ]
+    for entry in entries { entry.vehicle = car }
+    let rows = VehicleLogRow.rows(fillUps: car.orderedFillUps, services: car.orderedServices)
+
+    var utc = Calendar(identifier: .gregorian)
+    utc.timeZone = TimeZone(identifier: "UTC")!
+    let now = day(2026, 9, 27)
+    #expect(VehicleLogRow.spend(on: .fillUp, in: rows, yearOf: now, calendar: utc) == 85)
+    #expect(VehicleLogRow.spend(on: .service, in: rows, yearOf: now, calendar: utc) == 90)
+}
+
+@MainActor
+@Test func fuelSidebarDetailWaitsForAMeasuredTank() throws {
+    let context = try makeContext()
+    let car = addVehicle("My X3", fills: [(odometer: 1_000, date: day(2026, 1, 1))], to: context)
+    #expect(FuelTrackerModule.sidebarDetail(vehicles: [car]) == nil, "One full tank has nothing to measure yet")
+    #expect(FuelTrackerModule.sidebarDetail(vehicles: []) == nil)
+
+    let second = SharedFuelEntry(context: context, date: day(2026, 1, 20), odometer: 1_300, gallons: 10, totalCost: 40)
+    second.vehicle = car
+    #expect(FuelTrackerModule.sidebarDetail(vehicles: [car]) == VehicleSummary.mpgText(30))
+}

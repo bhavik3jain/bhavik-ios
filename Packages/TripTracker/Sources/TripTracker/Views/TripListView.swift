@@ -24,6 +24,16 @@ struct TripListView: View {
     @State private var showingAdd = false
     @State private var pendingDelete: SharedTrip?
 
+    /// Opens a trip somewhere other than this stack. The Mac sidebar lists
+    /// the trips too, and a trip pushed here left the sidebar's row for it
+    /// unselected; it passes a handler that selects that row instead. Nil
+    /// pushes, as the phone always has.
+    private let onOpen: ((SharedTrip) -> Void)?
+
+    init(onOpen: ((SharedTrip) -> Void)? = nil) {
+        self.onOpen = onOpen
+    }
+
     var body: some View {
         NavigationStack {
             // Re-read the clock once a minute, so "In progress" moves on at
@@ -31,6 +41,7 @@ struct TripListView: View {
             TimelineView(.everyMinute) { context in
                 content(groups: TripGroups(Array(trips), asOf: context.date), now: context.date)
             }
+            .refreshesFromCloud()
             .navigationTitle("Trips")
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
@@ -77,6 +88,7 @@ struct TripListView: View {
                 Button("Add Trip") { showingAdd = true }
                     .primaryActionStyle(tint: TripTrackerModule.accent.color)
             }
+            .scrollsForRefresh()
         } else {
             List {
                 if !groups.inProgress.isEmpty {
@@ -120,8 +132,20 @@ struct TripListView: View {
     }
 
     private func row(for trip: SharedTrip, @ViewBuilder label: () -> some View) -> some View {
-        NavigationLink(value: trip) {
-            label()
+        Group {
+            if let onOpen {
+                Button {
+                    onOpen(trip)
+                } label: {
+                    label()
+                        .contentShape(.rect)
+                }
+                .buttonStyle(.plain)
+            } else {
+                NavigationLink(value: trip) {
+                    label()
+                }
+            }
         }
         .swipeActions(edge: .trailing) {
             // Read-only participants get no destructive or archiving swipe at

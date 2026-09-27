@@ -35,4 +35,10 @@ public extension EnvironmentValues {
     /// `BhavikApp.init()`'s `pointsContainer` and re-scoped by
     /// `PointsTrackerModule.rootView(context:container:)`.
     @Entry var pointsPersistentContainer: NSPersistentCloudKitContainer?
+
+    /// Finance's own Core Data container — same reasoning as
+    /// `pointsPersistentContainer` above; the Share button needs it. Set from
+    /// `BhavikApp.init()`'s `financeContainer` and re-scoped by
+    /// `FinanceTrackerModule.rootView(context:container:)`.
+    @Entry var financePersistentContainer: NSPersistentCloudKitContainer?
 }

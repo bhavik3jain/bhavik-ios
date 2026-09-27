@@ -18,8 +18,10 @@ public final class SharedFlight: NSManagedObject, Identifiable {
     /// Airport codes, "FCO".
     @NSManaged public var originCode: String
     @NSManaged public var destinationCode: String
-    /// Real moments, unlike an item's time: a flight doesn't move when the trip
-    /// around it is rescheduled.
+    /// Real moments, unlike an item's time. They move only alongside
+    /// `dayIndex` — see `move(toDay:shiftingTimesBy:calendar:)` — so the day
+    /// the timeline files it under and the date Codes and the PDF print
+    /// can't drift apart.
     @NSManaged public var departsAt: Date?
     @NSManaged public var arrivesAt: Date?
     @NSManaged public var seat: String

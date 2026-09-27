@@ -1,17 +1,18 @@
 # Multitrack
 
-A personal app with seven self-contained tracker modules behind one home screen. Ships to iPhone
+A personal app with eight self-contained tracker modules behind one home screen. Ships to iPhone
 through TestFlight; also builds for the Mac.
 
 | Module | What it does |
 | --- | --- |
-| Trips | Plan a trip day by day — itinerary, flights, bookings and door codes — with a map, the forecast, and a PDF itinerary to share |
+| Trips | Plan a trip day by day — itinerary, flights, bookings and door codes — with a map, the forecast, and a PDF itinerary to share; undecided ideas wait off the calendar, ranked by how far they are from you or a day's plan |
 | Explore | Keep guides of places to eat, see and do in an area, mark them tried and rated, and see how far away they are |
 | Gym | Log workouts as weight × reps, save routines, track per-exercise progress |
 | TV | Track shows, episodes and films, with a catch-up backlog and an upcoming-episode schedule |
 | Fuel | Log fill-ups per vehicle, track MPG and cost, import a Fuelly CSV export |
 | Orders | Track FedEx, UPS and USPS deliveries, with an in-app browser for the ones that can't be read automatically |
 | Points | Track credit card, hotel and airline points for everyone in the household, with balance history, expiry warnings, and sharing with a partner |
+| Finance | Track net worth month by month — balances, cards, loans, gold and silver, spending and budgets — shared with a partner, with a JSON export that scripts turn back into the old Numbers sheet |
 
 Each tracker is its own local Swift package so the modules stay independent and can be developed —
 or removed — without disturbing the others.
@@ -56,6 +57,9 @@ Packages/
   FuelTracker/    Vehicles, fill-ups, MPG, Fuelly import
   ParcelTracker/  Parcels, carriers, tracking-number detection
   PointsTracker/  Household, people, loyalty accounts, balance history, expiry warnings
+  FinanceTracker/ Household, accounts, monthly balances, metals, card transactions, budgets, month JSON
+scripts/
+  finance/        Mac-only Python (uv + numbers-parser): month JSON <-> the Numbers sheet; see its README
 .github/workflows/
   tests.yml       Runs on every push
   testflight.yml  Ships a build
@@ -102,12 +106,40 @@ reinstalling the app. Two constraints this places on the models, both enforced b
 
 Breaking either one fails at launch when the container loads, not at compile time.
 
-Trips, Explore, Fuel and Points are the exception: they use hand-built Core Data models
-(`TripModel`, `GuideModel`, `FuelModel`, `PointsModel`) on their own `NSPersistentCloudKitContainer`s,
+Trips, Explore, Fuel, Points and Finance are the exception: they use hand-built Core Data models
+(`TripModel`, `GuideModel`, `FuelModel`, `PointsModel`, `FinanceModel`) on their own `NSPersistentCloudKitContainer`s,
 so their data can be shared with another iCloud account through a `CKShare`. In Points the shared
 root is the household, so sharing it shares everyone in it — people, accounts and balance history.
 Once you accept a partner's share, new people and accounts you add go into that shared household.
+Finance works the same way: its household (`SharedFinanceHousehold`) is the share root, and sharing it
+shares every owner, account, month, metal item and transaction in it.
 The schema ritual below covers these models too.
+
+**Trip ideas need every sharer on a current build.** An idea is an itinerary item whose `dayIndex`
+is `-1` — no new attribute, so no schema change — but builds from before ideas existed clamp any
+negative `dayIndex` to Day 1 whenever they save a trip (any edit to its title, notes or dates), and
+CloudKit then syncs that to everyone on the trip. They also show ideas as ordinary stops. Before
+anyone adds ideas to a shared trip, make sure every device on it has updated its TestFlight build.
+
+**Notifications about shared changes.** When someone you share a trip, vehicle, guide or household
+with changes it, the app posts a local notification ("Saloni added Gelato at Giolitti to Day 3"),
+one per shared item per burst of edits; tapping it opens that tracker. Core's `SharedChangeNotifier`
+reads each Core Data container's persistent history after every remote change, keeps only what the
+CloudKit mirroring delegate imported (this device's own saves carry the `app` transaction author),
+keeps only objects that are actually shared, and asks each module's `describeSharedChange` for the
+wording. Settings → Notifications has the switch and one per tracker; permission is asked when you
+share or accept a share, or from that switch — never at launch. The honest limits:
+
+- Nothing comes from a server. A notification exists only once *this* device has imported the change,
+  which means while the app is running or the next time it opens. A CloudKit silent push (the
+  `aps-environment` entitlement is on — see *How quickly changes arrive*) can wake a suspended app to
+  import it, but delivery is at the system's discretion and force-quit apps never get one.
+- The first download after installing (or after this feature first ships) is never announced, nor is
+  the download that follows accepting a share. Deletions are never announced — a deleted record can't
+  be read to say what it was.
+- The name comes from the share's participant list, cached locally. When the record doesn't say who
+  last changed it, the notification says "Someone". Edits from your own other devices are skipped.
+- A notification about the tracker you're looking at is held back while the app is in front.
 
 **Adding or changing a `@Model` needs one extra step.** CloudKit only creates a record type when a
 record of that type first syncs, and it never creates schema in Production — so a new model silently
@@ -127,6 +159,26 @@ a `String` raw value is *not* a schema change and needs none of this.
 
 Development and Production are separate **data** stores as well as separate schemas, so a debug build
 and a TestFlight build never see each other's records.
+
+**How quickly changes arrive.** Mirroring imports at launch, whenever the app comes to the foreground,
+and when a CloudKit push says the database changed. The push entitlement (`aps-environment`, and
+`com.apple.developer.aps-environment` on the Mac) is what makes a partner's new itinerary item or
+fuel-up show up within seconds while the app is open; before it was added they waited for the next
+foreground, often minutes. Pushes are best-effort — iOS may delay or coalesce them, especially in the
+background — so there is also a manual refresh:
+
+- pull to refresh on the hub (every tracker), Trips' list and day plan, Fuel's log and garage,
+  Explore's guides, Points, and Finance's summary and months (just that tracker's store);
+- **Settings → Sync**, which shows "Last synced …" next to the iCloud status, with a **Refresh from
+  iCloud** button;
+- **View → Refresh from iCloud** (`⌘R`) on the Mac.
+
+There is no public "sync now" API, so a refresh asks mirroring to run its foreground import (at most
+once a minute — asking more often gets all syncing throttled for hours) and waits up to 15 seconds for
+that import to finish. It then says what actually happened: updated, nothing new yet, failed with
+CloudKit's error, or iCloud unavailable. "Last synced" is the latest import or export this session
+saw finish; it resets on relaunch. Run with `-com.apple.CoreData.CloudKitDebug 1` and filter the
+console on the `CloudSync` category to watch it.
 
 ## Importing
 
@@ -163,10 +215,12 @@ All debug-only, and inert unless passed (Product → Scheme → Edit Scheme → 
 | `-TVSeedShows YES` | Adds sample shows, looked up on TMDB (needs a key; does nothing if any show exists) |
 | `-FuelSeedCSV YES` | Imports a sample Fuelly export |
 | `-ParcelSeed YES` | Adds sample orders |
-| `-TripSeed YES` | Adds four trips, one under way today (does nothing if any trip exists) |
+| `-TripSeed YES` | Adds four trips, one under way today with six ideas for Nearby (does nothing if any trip exists) |
 | `-ExploreSeed YES` | Adds three guides with real places (does nothing if any guide exists) |
 | `-PointsSeed YES` | Adds a sample household with people and points accounts (does nothing if any account exists) |
+| `-FinanceSeed YES` | Adds a sample household with accounts, cards, metals, three months and budgets (does nothing if any household has data) |
 | `-WeatherStub YES` | Made-up weather in place of WeatherKit |
+| `-CloudSyncRefreshAfter <seconds>` | Runs a Refresh from iCloud that long after launch and prints how it ended |
 
 The module seeders run when their module is first opened, not at launch.
 
@@ -178,7 +232,7 @@ Each module carries its own suite. Run one the way CI does:
 cd Packages/FuelTracker && xcodebuild test -scheme FuelTracker -destination 'platform=iOS Simulator,name=iPhone 17 Pro'
 ```
 
-Swap in `Core`, `GymTracker`, `TVTracker`, `ParcelTracker`, `TripTracker`, `ExploreTracker` or `PointsTracker` for the others.
+Swap in `Core`, `GymTracker`, `TVTracker`, `ParcelTracker`, `TripTracker`, `ExploreTracker`, `PointsTracker` or `FinanceTracker` for the others.
 
 The TV suite also carries tests that hit the real TMDB API. They are skipped by default and report
 *why* they skipped, so a missing key can never read as a pass. To run them, put a key in a file and
@@ -188,7 +242,7 @@ into the simulator, so exporting the variable in a shell will not work.
 
 ## Releasing
 
-`Tests` runs on every push to `main`: the eight package suites, an iOS app build, and an unsigned macOS
+`Tests` runs on every push to `main`: the nine package suites, an iOS app build, and an unsigned macOS
 build.
 
 `TestFlight` ships. It is deliberately **not** triggered by every push — otherwise each
@@ -214,13 +268,12 @@ distribution certificate through the App Store Connect API key.
 ## macOS
 
 `bhavik-macOS` builds and runs, sharing every source file with the iPhone app and the same CloudKit
-container — so the two see the same data. The hub is a `NavigationSplitView`: a sidebar lists the seven
-trackers, and the selected one's content sits in the detail pane — no sheet, no segmented strip.
-`⌘1`–`⌘7` (the Trackers menu) jump straight to a tracker. Each module's own screens are otherwise
-identical to iOS, including its internal "Home" tab, which has nothing to dismiss once embedded in
-the detail pane and just bounces back to the module's own first tab — leaving a tracker is what the
-sidebar is for now. Only `App/Sources/HomeView.swift` and `BhavikApp.swift` know about any of this;
-no feature package changed.
+container — so the two see the same data. The hub is a `NavigationSplitView`: the sidebar opens
+on an Overview of every tracker, then lists the trackers, with the open one's sections (or Trips'
+trips) nested under it — the Mac has no tab bars. iCloud status and Refresh (`⌘R`) sit at the foot
+of the sidebar, Settings is its own window (`⌘,`), and `⌘0`–`⌘9` (the Trackers menu) jump to the
+Overview or a tracker. Modules learn they are in the sidebar from Core's `moduleLayout` environment
+value, so no feature package contains a platform check.
 
 Platform differences inside a module are handled in `Packages/Core/Sources/Core/MacCompat.swift`,
 which provides `#if os(macOS)` no-op shims so the feature packages compile unchanged. Files relying on
@@ -235,10 +288,26 @@ artifact. Download it, open it, drag Multitrack into Applications. It's signed f
 CloudKit — the same real data as your phone — unlike a debug build run from Xcode, which always
 talks to Development regardless of what account is signed in.
 
-The workflow reuses the `testflight` environment, plus two secrets of its own — `MAC_DEVELOPER_ID_P12`
-and `MAC_DEVELOPER_ID_P12_PASSWORD` — imported into a disposable keychain for the run. Cloud-managed
+The workflow reuses the `testflight` environment, plus three secrets of its own — `MAC_DEVELOPER_ID_P12`
+and `MAC_DEVELOPER_ID_P12_PASSWORD`, imported into a disposable keychain for the run, and
+`MAC_DEVELOPER_ID_PROFILE`, the base64 of the Developer ID provisioning profile. Cloud-managed
 signing (what the App Store Connect key does for iOS) only covers App Store distribution; Apple never
 holds a Developer ID private key for you, by design, so this genuinely needed a real certificate
 exported from Xcode once and stored as a secret, not something the API key alone could mint. The same
-key still handles matching that certificate to a Developer ID provisioning profile and authorizing
-notarization.
+key still authorizes notarization.
+
+**After adding a capability to `App-macOS.entitlements`, regenerate that profile.** A provisioning
+profile's entitlements are fixed when it's generated, so the old one rejects the new entitlement and
+the next Mac Release fails at signing. CloudKit pushes (`com.apple.developer.aps-environment`) need
+this once:
+
+1. [Certificates, Identifiers & Profiles](https://developer.apple.com/account/resources/profiles/list)
+   → Identifiers → `com.bhavikjain.trackers`: check **Push Notifications** is ticked (a signed debug
+   build with automatic signing has already turned it on).
+2. Profiles → the Developer ID profile for `com.bhavikjain.trackers` → **Edit** → **Save** (or make a
+   new one), then **Download** it.
+3. `base64 -i <downloaded>.provisionprofile | pbcopy`, and paste it over the `MAC_DEVELOPER_ID_PROFILE`
+   secret in the `testflight` environment.
+
+TestFlight should need none of this: its archive runs with `-allowProvisioningUpdates` and fetches a current
+App Store profile every time.
