@@ -71,6 +71,13 @@ public enum CloudKitImportGate {
         }
     }
 
+    /// Whether `storeIdentifier` has finished a successful import since
+    /// launch — for `SharedChangeNotifier`, which starts after the stores
+    /// load and so may have missed that event itself.
+    static func hasImported(_ container: NSPersistentCloudKitContainer, storeIdentifier: String) -> Bool {
+        trackers.withLock { $0[ObjectIdentifier(container)] }?.hasImported(storeIdentifier: storeIdentifier) ?? false
+    }
+
     /// Returns once `container`'s private store has finished a successful
     /// CloudKit import since launch, or once one of the fallbacks in the type's
     /// doc comment applies. Returns `false` only when the calling task was

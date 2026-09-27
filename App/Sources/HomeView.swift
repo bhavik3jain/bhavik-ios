@@ -16,6 +16,7 @@ struct HomeView: View {
     /// Which trackers the hub and the Mac sidebar list, in what order — set
     /// from Settings' Customize Trackers screen.
     @ObservedObject private var layoutStore = TrackerLayoutStore.shared
+    @ObservedObject private var notificationRouter = SharedChangeNotificationRouter.shared
 
     // Each module's own data, so a row can say what is actually going on
     // rather than repeating a fixed description.
@@ -129,6 +130,19 @@ struct HomeView: View {
             financeMonthFetch.start(context: financeContext)
         }
         .showsShareAcceptOutcome()
+        // A tapped shared-change notification opens its tracker: the same
+        // selection the hub row, the Mac sidebar and ⌘1… set. `initial`, so
+        // a tap that launched the app is picked up once the hub exists.
+        .onChange(of: notificationRouter.moduleToOpen, initial: true) { _, raw in
+            guard let raw, let module = SelectedModule(rawValue: raw) else { return }
+            notificationRouter.moduleToOpen = nil
+            selectedModule = module
+        }
+        // What's on screen, so a notification about it is held back while
+        // the app is in front — see SharedChangeNotificationDelegate.
+        .onChange(of: selectedModule, initial: true) { _, module in
+            notificationRouter.foregroundModuleID = module?.rawValue
+        }
     }
 
     // MARK: - iOS: hub list, modules as a full-screen cover

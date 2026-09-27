@@ -133,6 +133,8 @@ struct AppSettingsView: View {
                 Text("Choose which trackers appear, and in what order.")
             }
 
+            SharedChangeNotificationsSection()
+
             Section {
                 // Same order as the home screen, hidden trackers included —
                 // their data is still here and still syncing.

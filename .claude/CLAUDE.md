@@ -55,6 +55,14 @@ interpolates the underlying SwiftData error, which names the offending model: re
 
 No `VersionedSchema` or migration plan exists; every change so far has been additive.
 
+**Trip ideas are a sentinel, not a schema change.** An itinerary item with no day (Trips' Ideas tab,
+ranked by distance in Nearby) is `dayIndex == SharedItineraryItem.unassignedDayIndex` (`-1`), and
+`isUnassigned` treats **any** negative value as an idea; pickers map them all to `DayChoice.unassigned`.
+Flights never take it — `FlightEditorView` passes `includesUnassigned: false`. Anything that clamps or
+iterates days (`clampPlanToDates()`, `ItineraryReschedule`, day grouping) must skip negatives, or it
+drags ideas onto Day 1 — which is exactly what builds from before ideas still do whenever they save a
+trip, and that syncs to every sharer.
+
 **Adding a @Model.** Write it under `Packages/<Module>/Sources/<Module>/Models/`; add it to that
 module's `models` array — the **only** registration point, and a type left out compiles and runs,
 then fails the moment anything queries it. Then the Console ritual (README → Data and sync): launch a
@@ -88,7 +96,14 @@ or the schema-init / in-memory launch crashes on a missing env value; a
 `ShareAcceptRouter.shared.register(recordTypePrefix: "CD_Shared…")` for its share root, or accepted
 shares land nowhere; env keys in Core's `ModuleManagedObjectContexts.swift` **and**
 `ModulePersistentContainers.swift`; and an entry in `CloudKitSchemaInitializer.coreDataModels()`,
-or Production never gets its record types. `/add-tracker` (`.claude/skills/add-tracker`) scaffolds a
+or Production never gets its record types. It also needs a `describeSharedChange` on its
+`<Module>TrackerModule` and a row in `BhavikApp.startSharedChangeNotifications` (plus
+`SharedChangeNotificationsSection.modules`), or a partner's edits to it are never notified, and its
+container in the `syncMonitor.track` loop beside it, or Refresh from iCloud never waits on it. Its
+container must come from `CloudSharedStore.makeContainer`, which stamps the `app` transaction author
+that keeps this device's own saves out of those notifications. `SharedChangeNotifier` also **purges
+persistent history** once an export has succeeded — anything new that reads history must be added to
+its cutoff, or it loses the transactions it hasn't read yet. `/add-tracker` (`.claude/skills/add-tracker`) scaffolds a
 new module and walks this whole list.
 
 ## Module chrome — a new root view can ship with no way back

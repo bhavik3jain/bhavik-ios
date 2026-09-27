@@ -79,6 +79,9 @@ public final class ShareAcceptRouter: ObservableObject {
                         title: "Share Added",
                         message: "It can take a minute to download. It'll appear in its tracker, marked Shared with me."
                     )
+                    // The moment notifications about the other person's
+                    // changes start to matter — see SharedChangeNotifications.
+                    await SharedChangeNotifications.requestAuthorizationIfUndetermined()
                 }
             }
         }

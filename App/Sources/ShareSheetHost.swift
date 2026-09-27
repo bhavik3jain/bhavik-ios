@@ -156,6 +156,12 @@ enum CloudSharingPresenter {
 
         // Required by the protocol; CloudKit uses a default title when nil.
         func itemTitle(for csc: UICloudSharingController) -> String? { nil }
+
+        // Sharing has started: the moment notifications about the other
+        // person's changes start to matter. See SharedChangeNotifications.
+        func cloudSharingControllerDidSaveShare(_ csc: UICloudSharingController) {
+            Task { await SharedChangeNotifications.requestAuthorizationIfUndetermined() }
+        }
     }
 }
 #endif
@@ -235,7 +241,14 @@ struct MacShareSheet: View {
             }
         }
         .frame(minWidth: 420, minHeight: 360)
-        .task { await coordinator.prepare() }
+        .task {
+            await coordinator.prepare()
+            // Sharing has started — see the iOS delegate's
+            // cloudSharingControllerDidSaveShare above.
+            if coordinator.share != nil {
+                await SharedChangeNotifications.requestAuthorizationIfUndetermined()
+            }
+        }
     }
 
     @ViewBuilder
