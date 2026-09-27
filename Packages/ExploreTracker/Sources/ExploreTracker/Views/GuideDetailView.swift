@@ -132,15 +132,18 @@ struct GuideDetailView: View {
                     .accessibilityLabel("Add a place")
                 }
             }
-            ToolbarItem(placement: .secondaryAction) {
+            // Out on the bar, as Trips has it. In the ••• menu nobody found it:
+            // guide sharing shipped and was asked for again as a new feature.
+            ToolbarItem(placement: .primaryAction) {
                 Button {
                     if let container {
                         presentShareSheet(ShareSheetRequest(object: guide, container: container))
                     }
                 } label: {
-                    Label("Share Guide", systemImage: "person.crop.circle.badge.plus")
+                    Image(systemName: "person.crop.circle.badge.plus")
                 }
                 .disabled(container == nil)
+                .accessibilityLabel("Share guide")
             }
             if canEdit {
                 ToolbarItem(placement: .secondaryAction) {
