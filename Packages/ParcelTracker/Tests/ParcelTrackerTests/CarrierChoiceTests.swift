@@ -3,7 +3,7 @@ import Testing
 @testable import ParcelTracker
 
 @Test func carrierFollowsTheNumberUntilSomeoneChooses() {
-    var choice = CarrierChoice()
+    let choice = CarrierChoice()
     #expect(choice.resolved(for: "") == .other)
     #expect(choice.resolved(for: "111111111111") == .fedex)
     #expect(choice.resolved(for: "1ZR0Y0651268323735") == .ups, "Detection keeps up as the number changes")
