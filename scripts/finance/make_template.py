@@ -33,6 +33,7 @@ DATA_TABLES = [
     *fn.ACCOUNT_TABLES, fn.FIXED_TABLE, fn.LOAN_TABLE, fn.CARD_TABLE,
     fn.METAL_TABLE, fn.PRICE_TABLE, fn.TRANSACTION_TABLE,
 ]
+SUMMARY_TABLES = {"Total Assets", "Total Liabilities", "Total Net Worth"}
 
 
 def blank_values(source: str, output: str) -> None:
@@ -101,6 +102,19 @@ def leftovers(template: str, filled: str) -> dict[str, list[str]]:
                 v = fn.value(cell)
                 if isinstance(v, str) and len(v.strip()) >= 4 and v.strip() not in ("N/A", "Gold", "Silver", "Joint"):
                     needles.add(v.strip())
+    # A word inside one of the template's own labels is layout, not leftover data: the real
+    # sheet's "Personal" category was flagged on every template because the "Personal Items" row
+    # label contains it, and no re-save can clear a label. Only header rows and the summary tables
+    # count as labels; a data cell never does, or a real name left in one would pass as layout.
+    template_doc, _ = fn.open_document(template)
+    labels = []
+    for sheet in template_doc.sheets:
+        for table in sheet.tables:
+            rows = fn.rows(table)
+            if table.name not in SUMMARY_TABLES:
+                rows = rows[:table.num_header_rows]
+            labels += [v for row in rows for v in map(fn.value, row) if isinstance(v, str)]
+    needles = {n for n in needles if not any(n in label for label in labels)}
     found: dict[str, list[str]] = {}
     with zipfile.ZipFile(template) as z:
         for info in z.infolist():
