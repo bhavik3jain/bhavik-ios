@@ -132,3 +132,30 @@ private func makeContext() throws -> ModelContext {
     #expect(WorkoutStats.durationText(for: long) == "1 hr 5 min")
     #expect(WorkoutStats.durationText(for: open) == nil)
 }
+
+@MainActor
+@Test func weekDotsFollowTheCalendarWeekAndSkipUnfinished() throws {
+    let context = try makeContext()
+    var calendar = Calendar(identifier: .gregorian)
+    calendar.firstWeekday = 2 // Monday
+    // Thursday 24 September 2026.
+    let now = try #require(calendar.date(from: DateComponents(year: 2026, month: 9, day: 24, hour: 18)))
+    func on(_ day: Int) throws -> Date {
+        try #require(calendar.date(from: DateComponents(year: 2026, month: 9, day: day, hour: 7)))
+    }
+
+    let monday = WorkoutSession(name: "Push", startedAt: try on(21))
+    monday.finishedAt = try on(21).addingTimeInterval(3_000)
+    let wednesday = WorkoutSession(name: "Pull", startedAt: try on(23))
+    wednesday.finishedAt = try on(23).addingTimeInterval(3_000)
+    let lastSunday = WorkoutSession(name: "Legs", startedAt: try on(20))
+    lastSunday.finishedAt = try on(20).addingTimeInterval(3_000)
+    let abandoned = WorkoutSession(name: "Abandoned", startedAt: try on(24))
+    let sessions = [monday, wednesday, lastSunday, abandoned]
+    sessions.forEach(context.insert)
+
+    let week = WorkoutStats.weekTrained(sessions, asOf: now, calendar: calendar)
+    #expect(week.count == 7)
+    #expect(calendar.component(.weekday, from: week[0].day) == 2)
+    #expect(week.map(\.trained) == [true, false, true, false, false, false, false])
+}
