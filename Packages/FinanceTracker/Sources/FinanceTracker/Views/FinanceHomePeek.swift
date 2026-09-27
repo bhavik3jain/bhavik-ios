@@ -29,8 +29,8 @@ struct FinanceHomePeek: View {
             subtitle: latest?.title ?? ""
         ) {
             if let latest {
-                let summary = MonthSummary(month: latest)
-                let delta = FinanceHistory(months: Array(latest.household?.months ?? [])).delta(.netWorth, at: latest.period ?? YearMonth(containing: .now))
+                let summary = MonthSummary(month: latest, live: MetalPriceFeed.shared.live)
+                let delta = FinanceHistory(months: Array(latest.household?.months ?? []), live: MetalPriceFeed.shared.live).delta(.netWorth, at: latest.period ?? YearMonth(containing: .now))
                 VStack(alignment: .leading, spacing: 12) {
                     PeekRow(
                         "Net worth",
@@ -41,7 +41,7 @@ struct FinanceHomePeek: View {
                     if !latest.isClosed {
                         PeekRow(
                             "\(latest.monthName) in progress",
-                            detail: MonthRollover.progress(of: latest).label
+                            detail: MonthRollover.progress(of: latest, live: MetalPriceFeed.shared.live).label
                         )
                     }
                     PeekRow(
@@ -54,5 +54,6 @@ struct FinanceHomePeek: View {
                 PeekEmpty("No months yet.")
             }
         }
+        .task { await MetalPriceFeed.shared.refreshIfStale() }
     }
 }

@@ -25,7 +25,19 @@ user's sheet seeded with fake "Seed Data" rows, and goes in only after `make_tem
 prints `clean` (it checks text and amounts): pivots and Numbers' calc cache kept card names and
 merchants after every cell was cleared, until Numbers itself re-saved the file, so change the
 template's numbers only in Numbers too. The export drives Numbers itself (JXA) to grow tables —
-numbers-parser's `add_row` on a grouped table makes rows Numbers never shows.
+numbers-parser's `add_row` on a grouped table makes rows Numbers never shows. The **Mac app** runs
+the same export in-process (`App/Sources/MacFinanceNumbers.swift`, OSAKit): project.yml bundles
+`numbers_fill.js` and the template into the Mac target, and `FinanceNumbersSpec.swift` is a port of
+`export_numbers.build_spec` — **change one, change the other**. It needs the Apple-events sandbox
+exception, `com.apple.security.automation.apple-events` and `NSAppleEventsUsageDescription`; lose
+any one and every Apple event fails -1743 with no prompt. `-FinanceNumbersExportProbe YES` (Debug,
+Mac) runs it on a made-up month at launch.
+
+**Gold and silver prices are live and deliberately not stored as they arrive.** `MetalPriceFeed`
+reads GC=F / SI=F (Yahoo's chart endpoint, no key, undocumented) and the household's latest month,
+while open, is valued at them everywhere (`MonthSummary`, `FinanceHistory`, progress, exports all
+take `live:`). Closing the month writes them into it. Saving on every refresh would sync, and
+iCloud's zone alert subscriptions fire on any change — every app open would alert the partner.
 
 - `bhavik-ios.xcodeproj` is XcodeGen output and is **gitignored**. (Three stale iCloud conflict
   copies, `bhavik-ios 2/3/4.xcodeproj`, also sit in the root — ignore them.)
@@ -180,7 +192,8 @@ logic into a value type and leave the view declarative.**
 Debug launch arguments, all `#if DEBUG`: `-InitializeCloudKitSchema YES`, plus
 the module seeders that are the only way to get a simulator into a state worth looking at —
 `-TVSeedShows` (needs a TMDB key, no-ops if any `Show` exists), `-FuelSeedCSV`, `-ParcelSeed`,
-`-TripSeed`, `-ExploreSeed`, `-PointsSeed`, `-FinanceSeed` (each no-ops once its store has a record). Seeders run from the module
+`-TripSeed`, `-ExploreSeed`, `-PointsSeed`, `-FinanceSeed` (each no-ops once its store has a record).
+(The Points seed, like the others behind `CloudKitImportGate`, waits up to 60 s on a simulator.) Seeders run from the module
 root view's `.task`, so nothing happens until the module is opened. `-WeatherStub YES` injects
 `StubWeatherProvider` at the app root — the only way to see weather on a simulator today. `-CloudSyncRefreshAfter <seconds>` runs one Refresh from iCloud after launch and prints its outcome.
 

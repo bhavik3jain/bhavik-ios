@@ -2,8 +2,8 @@ import Core
 import CoreData
 import SwiftUI
 
-/// Typing in a month: metal prices, then every account's balance category by
-/// category. Rows still showing last month's figure say so until changed or
+/// Typing in a month: metal prices (live while it's the open latest month —
+/// see `MetalPriceFeed`), then every account's balance category by category. Rows still showing last month's figure say so until changed or
 /// confirmed. Cards are read-only here — their figure is their transactions.
 struct MonthEntryView: View {
     @ObservedObject var month: SharedFinanceMonth
@@ -20,20 +20,30 @@ struct MonthEntryView: View {
         let snapshot = data.snapshot
         let isEditable = canEdit(month, in: container)
         let previousName = month.previousMonth?.monthName
+        let feed = MetalPriceFeed.shared
         List {
             if !month.isClosed {
                 Section {
-                    MonthProgressRow(month: month, progress: MonthRollover.progress(of: month))
+                    MonthProgressRow(month: month, progress: MonthRollover.progress(of: month, live: feed.live))
                 }
             }
 
             Section {
-                priceRow("Gold", value: month.goldPricePerOz, isEditable: isEditable) { month.goldPricePerOz = $0 }
-                priceRow("Silver", value: month.silverPricePerOz, isEditable: isEditable) { month.silverPricePerOz = $0 }
+                if feed.isLive(month), let live = feed.live {
+                    livePriceRow("Gold", value: live.gold)
+                    livePriceRow("Silver", value: live.silver)
+                } else {
+                    priceRow("Gold", value: month.goldPricePerOz, isEditable: isEditable) { month.goldPricePerOz = $0 }
+                    priceRow("Silver", value: month.silverPricePerOz, isEditable: isEditable) { month.silverPricePerOz = $0 }
+                }
             } header: {
                 Text("Metal prices")
             } footer: {
-                Text("Per troy ounce. Gold & silver are valued at these.")
+                if feed.isLive(month) {
+                    Text("Live, per troy ounce, from gold and silver futures (\(MetalQuoteClient.goldSymbol) and \(MetalQuoteClient.silverSymbol))\(updated(feed.fetchedAt)). Closing \(month.monthName) saves the prices with it.")
+                } else {
+                    Text("Per troy ounce. Gold & silver are valued at these.")
+                }
             }
 
             ForEach(AccountCategory.monthlyCases) { category in
@@ -99,6 +109,11 @@ struct MonthEntryView: View {
                         }
                     } else {
                         Button("Close \(month.monthName)") {
+                            // The live prices it's been valued at become its
+                            // own; see MetalPriceFeed for why not before.
+                            let prices = feed.prices(for: month)
+                            month.goldPricePerOz = prices.gold
+                            month.silverPricePerOz = prices.silver
                             month.close()
                             save()
                         }
@@ -114,6 +129,19 @@ struct MonthEntryView: View {
         .navigationTitle(month.title)
         .navigationBarTitleDisplayMode(.inline)
         .onDisappear(perform: save)
+        .task { await MetalPriceFeed.shared.refreshIfStale() }
+    }
+
+    private func livePriceRow(_ title: String, value: Double) -> some View {
+        LabeledContent(title) {
+            Text(FinanceFormat.cents(value))
+                .monospacedDigit()
+        }
+    }
+
+    private func updated(_ date: Date?) -> String {
+        guard let date else { return "" }
+        return ", updated \(date.formatted(.relative(presentation: .named)))"
     }
 
     /// Every account with a balance this month, plus open accounts added

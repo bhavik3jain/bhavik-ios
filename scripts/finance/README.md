@@ -17,6 +17,15 @@ Numbers itself, because Numbers does the writing.
 
 ## Monthly export
 
+**Easiest: the Mac app.** Finance › Summary › Export › **Export September 2026 to Numbers** fills a
+copy of `Finance Template.numbers` straight from iCloud — no JSON, no Terminal, no uv. It takes a
+minute or two, asks where to save, and opens the result; the first time, macOS asks whether
+Multitrack may control Numbers. It runs this folder's own `numbers_fill.js` and template, bundled
+into the Mac app by project.yml, with a spec from `FinanceNumbersSpec.swift` — a port of
+`export_numbers.build_spec` that must stay in step with it. Refresh the pivots afterwards (step 3).
+
+Or with the scripts, from any device's JSON:
+
 1. In the app: Finance › Summary › Export › choose the month. It saves `Finance 2026-09.json`;
    save it to iCloud Drive › Multitrack › Finance.
 2. On the Mac, double-click `scripts/finance/Export Finance to Numbers.command`. It looks in

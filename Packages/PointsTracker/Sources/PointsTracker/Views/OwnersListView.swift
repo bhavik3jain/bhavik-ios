@@ -185,7 +185,7 @@ private struct OwnerDetailView: View {
                     }
                 } header: {
                     HStack {
-                        Text(section.title)
+                        PointsSectionTitle(section: section)
                         Spacer()
                         Text(section.total.summary)
                             .monospacedDigit()

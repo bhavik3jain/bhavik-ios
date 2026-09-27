@@ -188,7 +188,7 @@ struct HoldingsView: View {
 
     @ViewBuilder
     private func metalSections(_ snapshot: FinanceSnapshot, isEditable: Bool) -> some View {
-        let prices = snapshot.latestMonth?.metalPrices ?? MetalPrices()
+        let prices = snapshot.currentPrices
         let holdings = MetalHoldings(snapshot.metals, prices: prices)
         let locations = MetalHoldings.locations(snapshot.metals)
         let shown = snapshot.metals.filter { item in

@@ -3,7 +3,9 @@
 //     osascript -l JavaScript numbers_fill.js spec.json
 //
 // export_numbers.py writes spec.json (which rows go in which table, cell by cell) and runs this;
-// it isn't meant to be run by hand. It opens the file at spec.path, fills it, saves and closes it,
+// it isn't meant to be run by hand. The Mac app runs it too (App/Sources/MacFinanceNumbers.swift,
+// with a spec from FinanceNumbersSpec.swift, a port of build_spec), through OSAKit rather than
+// osascript, having opened the copy in Numbers itself (spec.opened). It opens the file at spec.path, fills it, saves and closes it,
 // and never touches any other document Numbers has open.
 //
 // Why Numbers and not numbers-parser: numbers-parser's add_row on a table grouped by owner stores
@@ -35,7 +37,7 @@ function readFile(path) {
 
 function run(argv) {
   const spec = JSON.parse(readFile(argv[0]));
-  const doc = openDocument(spec.path);
+  const doc = openDocument(spec.path, spec.opened);
   const report = [];
   try {
     const tables = {};
@@ -58,17 +60,21 @@ function run(argv) {
   return JSON.stringify(report);
 }
 
-function openDocument(path) {
+function openDocument(path, opened) {
   const target = $(path).stringByResolvingSymlinksInPath.js;
   const find = () => Numbers.documents().find(d => {
     try { return $(d.file().toString()).stringByResolvingSymlinksInPath.js === target; } catch (e) { return false; }
   });
-  if (find()) throw new Error(`${path} is already open in Numbers; close it and run this again`);
-  // Through Launch Services, not Numbers' own open command: that Apple event sometimes never
-  // replied (AppleEvent timed out, -1712) though the document had opened. -g keeps Numbers behind.
-  const shell = Application.currentApplication();
-  shell.includeStandardAdditions = true;
-  shell.doShellScript("open -g -b com.apple.Numbers '" + path.replace(/'/g, "'\\''") + "'");
+  // The Mac app opens the copy itself, with NSWorkspace: its sandbox would stop `open` handing
+  // Numbers a file in the app's container. Then it's expected to be open, and only waited for.
+  if (!opened) {
+    if (find()) throw new Error(`${path} is already open in Numbers; close it and run this again`);
+    // Through Launch Services, not Numbers' own open command: that Apple event sometimes never
+    // replied (AppleEvent timed out, -1712) though the document had opened. -g keeps Numbers behind.
+    const shell = Application.currentApplication();
+    shell.includeStandardAdditions = true;
+    shell.doShellScript("open -g -b com.apple.Numbers '" + path.replace(/'/g, "'\\''") + "'");
+  }
   for (let i = 0; i < 120; i++) {  // open returns before the document exists
     const d = find();
     if (d) return Numbers.documents.byId(d.id());

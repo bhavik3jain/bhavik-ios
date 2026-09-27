@@ -44,7 +44,7 @@ struct MetalEditorView: View {
 
     var body: some View {
         let snapshot = data.snapshot
-        let prices = snapshot.latestMonth?.metalPrices ?? MetalPrices()
+        let prices = snapshot.currentPrices
         NavigationStack {
             Form {
                 Section {

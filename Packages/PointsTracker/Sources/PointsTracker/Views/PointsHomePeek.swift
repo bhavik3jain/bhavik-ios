@@ -37,7 +37,7 @@ struct PointsHomePeek: View {
                             section.title,
                             detail: counted(section.accounts.count, "account"),
                             value: section.total.summary,
-                            tint: PointsTrackerModule.accent.color
+                            tint: section.kind?.color ?? PointsTrackerModule.accent.color
                         )
                     }
                     ForEach(expiring.prefix(2)) { account in

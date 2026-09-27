@@ -111,7 +111,17 @@ targets:
     # Lives on the target, not in options.deploymentTarget, so that adding the
     # Mac build writes nothing into the settings the shipping iOS app inherits.
     deploymentTarget: "15.0"
-    sources: *appSources
+    sources:
+      - path: App/Sources
+      - path: App/Resources/Assets.xcassets
+      # Finance's Export to Numbers (App/Sources/MacFinanceNumbers.swift) fills
+      # the committed template with the scripts' own fill script, so the Mac
+      # app and scripts/finance can never drift apart. Mac only: the phone
+      # can't script Numbers.
+      - path: scripts/finance/Finance Template.numbers
+        buildPhase: resources
+      - path: scripts/finance/numbers_fill.js
+        buildPhase: resources
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.bhavikjain.trackers
@@ -160,6 +170,10 @@ targets:
         CKSharingSupported: true
         # See the iOS target.
         UTExportedTypeDeclarations: *itineraryItemType
+        # The Automation prompt for Finance's Export to Numbers, which drives
+        # Numbers. Without it the hardened runtime refuses every Apple event
+        # (-1743) and the prompt never appears. See also App-macOS.entitlements.
+        NSAppleEventsUsageDescription: Multitrack fills your Finance template in Numbers when you export a month.
 
 schemes:
   # Every package's tests in one scheme, so CI builds Core once instead of once

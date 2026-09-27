@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 
 /// What sort of loyalty programme an account belongs to. Stored as a raw
 /// string on `SharedPointsAccount`, so adding a case is not a schema change.
@@ -31,6 +32,18 @@ public enum PointsKind: String, Codable, CaseIterable, Identifiable, Sendable {
         case .creditCard: "creditcard.fill"
         case .hotel: "bed.double.fill"
         case .airline: "airplane"
+        }
+    }
+
+    /// Each kind's own colour, for its icon tiles and section headers. With
+    /// every tile in the module's purple, cards, hotels and airlines were
+    /// only told apart by a small glyph. The purple stays the module's chrome
+    /// and marks people (Owners).
+    public var color: Color {
+        switch self {
+        case .creditCard: .blue
+        case .hotel: .orange
+        case .airline: .teal
         }
     }
 

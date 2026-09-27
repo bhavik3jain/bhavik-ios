@@ -134,6 +134,14 @@ private var liveKey: String? {
     #expect(!detail.posterPath.isEmpty)
 }
 
+@Test(.enabled(if: liveKey != nil, "Set TMDB_KEY_FILE to run live TMDB tests")) func liveMovieDetailsForEndgame() async throws {
+    let details = try await TMDBClient(apiKey: liveKey!).movieDetails(id: 299534)
+    #expect(details.summary.runtime == 181)
+    #expect(details.genres.contains("Action"))
+    #expect(!details.tagline.isEmpty)
+    #expect(details.rating > 0 && details.voteCount > 0)
+}
+
 @Test func movieRuntimeIsFormattedForReading() {
     #expect(Movie(title: "Endgame", runtime: 181).formattedRuntime == "3h 1m")
     #expect(Movie(title: "Short", runtime: 45).formattedRuntime == "45m")

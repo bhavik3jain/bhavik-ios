@@ -96,7 +96,7 @@ struct SummaryView: View {
                     NavigationLink {
                         MonthEntryView(month: latest)
                     } label: {
-                        MonthProgressRow(month: latest, progress: MonthRollover.progress(of: latest))
+                        MonthProgressRow(month: latest, progress: snapshot.progress(of: latest))
                     }
                 }
             }

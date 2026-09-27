@@ -38,7 +38,14 @@ struct AccountDetailView: View {
 
             Section {
                 LabeledContent("Person", value: account.owner?.name ?? PointsSummary.unassigned)
-                LabeledContent("Type", value: account.kind.displayName)
+                LabeledContent("Type") {
+                    Label {
+                        Text(account.kind.displayName)
+                    } icon: {
+                        Image(systemName: account.kind.symbolName)
+                            .foregroundStyle(account.kind.color)
+                    }
+                }
                 if !account.program.isEmpty {
                     LabeledContent("Programme", value: account.program)
                 }
