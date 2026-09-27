@@ -101,6 +101,12 @@ jobs:
         # this is downloaded from the portal by hand, once, like the
         # certificate. Xcode finds profiles here by filename; the name itself
         # doesn't matter, only its UUID and its contents.
+        #
+        # Its entitlements are frozen at generation: a capability added to
+        # App-macOS.entitlements later (CloudKit pushes'
+        # com.apple.developer.aps-environment was the first) fails signing
+        # here until the profile is regenerated in the portal and this secret
+        # replaced — README → macOS → Installing it has the steps.
         env:
           MAC_DEVELOPER_ID_PROFILE: ${{ secrets.MAC_DEVELOPER_ID_PROFILE }}
         run: |

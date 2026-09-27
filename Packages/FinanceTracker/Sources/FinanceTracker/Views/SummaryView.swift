@@ -32,8 +32,10 @@ struct SummaryView: View {
                             ProgressView("Checking iCloud…")
                         }
                     }
+                    .scrollsForRefresh()
                 }
             }
+            .refreshesFromCloud()
             .navigationTitle("Finance")
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {

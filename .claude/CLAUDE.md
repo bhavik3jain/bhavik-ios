@@ -149,7 +149,7 @@ the module seeders that are the only way to get a simulator into a state worth l
 `-TVSeedShows` (needs a TMDB key, no-ops if any `Show` exists), `-FuelSeedCSV`, `-ParcelSeed`,
 `-TripSeed`, `-ExploreSeed`, `-PointsSeed`, `-FinanceSeed` (each no-ops once its store has a record). Seeders run from the module
 root view's `.task`, so nothing happens until the module is opened. `-WeatherStub YES` injects
-`StubWeatherProvider` at the app root — the only way to see weather on a simulator today.
+`StubWeatherProvider` at the app root — the only way to see weather on a simulator today. `-CloudSyncRefreshAfter <seconds>` runs one Refresh from iCloud after launch and prints its outcome.
 
 ## CI and release — what README doesn't say
 
@@ -170,6 +170,16 @@ Developer ID provisioning profile and authorizing notarization. A Developer ID e
 not notarized** on its own; Gatekeeper refuses to launch it on any Mac but the one that built it until
 the notary step staples a ticket to it, which is why that step exists and can't be skipped for "just
 testing."
+
+The Developer ID provisioning profile itself comes from a third secret, `MAC_DEVELOPER_ID_PROFILE`
+(base64 of a profile downloaded from the portal by hand). **A profile's entitlements are frozen when
+it's generated**, so any new capability in `App-macOS.entitlements` breaks the next Mac Release until
+that profile is regenerated and the secret replaced; the only clue is a codesign/export error about an
+entitlement the profile doesn't allow. `com.apple.developer.aps-environment` (CloudKit pushes) is the
+first such addition: Push Notifications is already on for the App ID (a signed local build with
+`-allowProvisioningUpdates` turned it on, and the team profile it made carries it), but the Developer
+ID profile in the secret predates it. TestFlight should need nothing: its `-allowProvisioningUpdates`
+archive fetches a fresh App Store profile each run.
 
 ## Conventions
 
@@ -209,11 +219,19 @@ Don't trust these comments, and don't "fix" the code they describe.
 - `TVTrackerModule.apiKeyDefaultsKey`, `ParcelTrackerModule.fedExKeyDefaultsKey` /
   `fedExSecretDefaultsKey` and their doc comments say "user defaults". They are **iCloud Keychain
   account names** — credentials go through `Core/SyncedSecret.swift`.
-- The app declares `UIBackgroundModes: [remote-notification]` but has **no `aps-environment`
-  entitlement**, and there is no `BGTaskScheduler` anywhere, so sync is foreground/opportunistic and
-  no background work exists at all. Don't promise live cross-device sync or background parcel
+- CloudKit pushes are on: `aps-environment` in `App.entitlements`, `com.apple.developer.aps-environment`
+  in `App-macOS.entitlements` (both `development`; export rewrites them from the profile), plus
+  `UIBackgroundModes: [remote-notification]` and `registerForRemoteNotifications()` in
+  `ShareAcceptDelegate.swift`. Until they were added a partner's change only arrived at the next
+  launch or foreground, minutes later. Silent-push delivery is still at the system's discretion and
+  there is no `BGTaskScheduler` anywhere, so don't promise instant sync or background parcel
   tracking. (`SyncedSecret.swift` cites "a background parcel refresh" for
   `kSecAttrAccessibleAfterFirstUnlock` — fiction, but the choice is right: ThisDeviceOnly won't sync.)
+- There is no "sync now" in `NSPersistentCloudKitContainer`. Core's `CloudSyncMonitor` (injected at
+  the app root) re-posts the app's did-become-active notification — at most once a minute, or
+  `dasd` rate-limits all syncing for hours — then waits, bounded, for a real import event. A list
+  gets pull-to-refresh with `.refreshesFromCloud()`; don't hand-roll a `.refreshable` that sleeps.
+  Never "force" a sync by removing and re-adding stores: every managed object a view holds dies.
 - `CSVParser.swift`'s `case "\n", "\r\n", "\r":` only *looks* redundant. Swift folds CRLF into a
   single `Character`, so `"\r\n"` matches neither neighbour. Delete it and a Windows-exported CSV
   arrives as one enormous field and parses to zero rows — breaking both importers.

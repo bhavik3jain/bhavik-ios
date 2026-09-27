@@ -33,10 +33,12 @@ struct MonthsView: View {
                             ProgressView("Checking iCloud…")
                         }
                     }
+                    .scrollsForRefresh()
                 } else {
                     list(snapshot, isEditable: isEditable)
                 }
             }
+            .refreshesFromCloud()
             .navigationTitle("Months")
             .toolbar {
                 if isEditable {

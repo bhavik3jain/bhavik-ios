@@ -14,6 +14,9 @@ import TVTracker
 struct AppSettingsView: View {
     @AppStorage(Appearance.defaultsKey) private var appearanceRaw = Appearance.system.rawValue
     @State private var syncState: CloudSyncState = .checking
+    /// "Last synced" and the refresh button beside the account status. See
+    /// CloudSyncMonitor.swift for what a refresh can and can't promise.
+    @Environment(CloudSyncMonitor.self) private var syncMonitor: CloudSyncMonitor?
     @ObservedObject private var layoutStore = TrackerLayoutStore.shared
 
     @Query private var sessions: [WorkoutSession]
@@ -88,10 +91,36 @@ struct AppSettingsView: View {
                             .foregroundStyle(syncState.isHealthy ? Color.secondary : Color.orange)
                     }
                 }
+                if let syncMonitor {
+                    // Re-read once a minute, so "5 min ago" doesn't sit frozen
+                    // while the screen stays open.
+                    TimelineView(.everyMinute) { context in
+                        // The label already reads "Last synced 5 min ago", so
+                        // it stands alone rather than repeating itself as a
+                        // LabeledContent title.
+                        Label(
+                            CloudSyncStatusText.lastSynced(
+                                syncMonitor.lastSyncedAt,
+                                isRefreshing: syncMonitor.isRefreshing,
+                                asOf: context.date
+                            ),
+                            systemImage: "clock.arrow.circlepath"
+                        )
+                        .foregroundStyle(.secondary)
+                    }
+                    Button("Refresh from iCloud") {
+                        Task { await syncMonitor.refresh() }
+                    }
+                    .disabled(syncMonitor.isRefreshing || !syncState.isHealthy)
+                }
             } header: {
                 Text("Sync")
             } footer: {
-                Text(syncState.explanation)
+                if let message = syncMonitor?.lastOutcome.flatMap(CloudSyncStatusText.message(for:)) {
+                    Text("\(syncState.explanation)\n\n\(message)")
+                } else {
+                    Text(syncState.explanation)
+                }
             }
 
             Section {

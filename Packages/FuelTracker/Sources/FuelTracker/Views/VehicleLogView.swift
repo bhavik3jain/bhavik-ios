@@ -90,9 +90,11 @@ struct VehicleLogView: View {
                             systemImage: "car",
                             description: Text("Add a vehicle in the Garage tab, or import a Fuelly export.")
                         )
+                        .scrollsForRefresh()
                     }
                 }
             }
+            .refreshesFromCloud()
             .navigationTitle(summary?.name ?? "Fuel")
             .toolbar {
                 if let vehicle {

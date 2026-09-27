@@ -35,6 +35,7 @@ struct GuideListView: View {
                         Button("New Guide") { showingNewGuide = true }
                             .primaryActionStyle(tint: ExploreTrackerModule.accent.color)
                     }
+                    .scrollsForRefresh()
                 } else {
                     List {
                         Section {
@@ -84,6 +85,7 @@ struct GuideListView: View {
                     }
                 }
             }
+            .refreshesFromCloud()
             .navigationTitle("Guides")
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {

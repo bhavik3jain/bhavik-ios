@@ -29,6 +29,7 @@ struct AccountsListView: View {
                         Button("Add Account") { showingAdd = true }
                             .primaryActionStyle(tint: PointsTrackerModule.accent.color)
                     }
+                    .scrollsForRefresh()
                 } else {
                     List {
                         Section {
@@ -68,6 +69,7 @@ struct AccountsListView: View {
                     }
                 }
             }
+            .refreshesFromCloud()
             .navigationTitle("Points")
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {

@@ -89,6 +89,7 @@ struct HomeView: View {
     // The container itself, for Finance's Share button and sharing-status
     // badges — same reasoning as `fuelPersistentContainer` above.
     @Environment(\.financePersistentContainer) private var financePersistentContainer
+    @Environment(CloudSyncMonitor.self) private var syncMonitor: CloudSyncMonitor?
     @StateObject private var financeMonthFetch = ManagedObjectFetch<SharedFinanceMonth>(
         SharedFinanceMonth.fetchRequest(sortDescriptors: [NSSortDescriptor(keyPath: \SharedFinanceMonth.yearMonth, ascending: true)])
     )
@@ -151,6 +152,10 @@ struct HomeView: View {
                         }
                 }
             }
+            // Every store at once, not `.refreshesFromCloud()`: this list's
+            // `\.managedObjectContext` is Trips' alone, and the hub's counts come
+            // from all eight trackers.
+            .refreshable { await syncMonitor?.refresh() }
             .navigationTitle("Trackers")
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
@@ -189,6 +194,11 @@ struct HomeView: View {
                     } preview: {
                         peek(for: module)
                     }
+            }
+            // ⌘R had nothing on screen to show it working unless Settings
+            // happened to be open; the sidebar is always there.
+            .safeAreaInset(edge: .bottom) {
+                if let syncMonitor { MacSyncFooter(monitor: syncMonitor) }
             }
             .navigationTitle("Trackers")
             .navigationSplitViewColumnWidth(min: 220, ideal: 260, max: 320)
@@ -477,6 +487,33 @@ private struct MacSidebarRow: View {
             }
         }
         .padding(.vertical, 3)
+    }
+}
+
+/// "Last synced …" under the sidebar, with the outcome of a refresh that
+/// didn't bring anything in — the Mac's answer to letting go of a pull.
+private struct MacSyncFooter: View {
+    let monitor: CloudSyncMonitor
+
+    var body: some View {
+        // Re-read once a minute, so "5 min ago" doesn't sit frozen.
+        TimelineView(.everyMinute) { context in
+            VStack(alignment: .leading, spacing: 2) {
+                Label(
+                    CloudSyncStatusText.lastSynced(monitor.lastSyncedAt, isRefreshing: monitor.isRefreshing, asOf: context.date),
+                    systemImage: "clock.arrow.circlepath"
+                )
+                if let message = monitor.lastOutcome.flatMap(CloudSyncStatusText.message(for:)) {
+                    Text(message)
+                        .lineLimit(3)
+                }
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+        }
     }
 }
 #endif

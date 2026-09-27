@@ -31,6 +31,7 @@ struct TripListView: View {
             TimelineView(.everyMinute) { context in
                 content(groups: TripGroups(Array(trips), asOf: context.date), now: context.date)
             }
+            .refreshesFromCloud()
             .navigationTitle("Trips")
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
@@ -77,6 +78,7 @@ struct TripListView: View {
                 Button("Add Trip") { showingAdd = true }
                     .primaryActionStyle(tint: TripTrackerModule.accent.color)
             }
+            .scrollsForRefresh()
         } else {
             List {
                 if !groups.inProgress.isEmpty {

@@ -16,6 +16,19 @@ import Core
 import UIKit
 
 final class AppDelegate: NSObject, UIApplicationDelegate {
+    // CloudKit's silent pushes are what make mirroring import a partner's
+    // change within seconds instead of at the next foreground. The container
+    // is widely reported to register on its own, but Apple documents no such
+    // promise; registering here costs nothing if it's redundant, and needs the
+    // aps-environment entitlement to get a token at all.
+    func application(
+        _ application: UIApplication,
+        didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
+    ) -> Bool {
+        application.registerForRemoteNotifications()
+        return true
+    }
+
     // Supplying scene configuration is the only way to name a custom
     // UIWindowSceneDelegate — without it there is nowhere for
     // windowScene(_:userDidAcceptCloudKitShareWith:) to be called.
@@ -59,6 +72,12 @@ final class SceneDelegate: NSObject, UIWindowSceneDelegate {
 import AppKit
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    // Same reason as the iOS delegate's registration: CloudKit's pushes, so a
+    // partner's change imports within seconds while the app is running.
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        NSApplication.shared.registerForRemoteNotifications()
+    }
+
     // macOS has no scene layer to thread this through — the app delegate
     // gets the callback directly, whether or not the app was running.
     func application(_ application: NSApplication, userDidAcceptCloudKitShareWith metadata: CKShare.Metadata) {
