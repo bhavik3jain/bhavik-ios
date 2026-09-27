@@ -46,11 +46,13 @@ public extension FinanceTrackerModule {
 
         case let budget as SharedFinanceBudget:
             guard let household = budget.month?.household else { return nil }
-            // "set a budget", never "set a a budget" for a blank category.
+            // "the", never "a", in front of the category: a hard-coded "a"
+            // read "set a Entertainment budget" for any category starting
+            // with a vowel. A blank category still reads "set the budget".
             let category = budget.category.trimmingCharacters(in: .whitespacesAndNewlines)
             let budgetName = category.isEmpty ? "budget" : "\(category) budget"
             let month = budget.month?.period.map { " for \($0.title)" } ?? ""
-            return description(household, inserted ? "set a \(budgetName)\(month)" : "changed the \(budgetName)\(month)")
+            return description(household, inserted ? "set the \(budgetName)\(month)" : "changed the \(budgetName)\(month)")
 
         case let item as SharedFinanceMetalItem:
             guard let household = item.household else { return nil }
@@ -60,7 +62,9 @@ public extension FinanceTrackerModule {
         case let transaction as SharedFinanceTransaction:
             guard let household = transaction.household ?? transaction.card?.household else { return nil }
             let merchant = transaction.merchant.trimmingCharacters(in: .whitespacesAndNewlines)
-            let what = merchant.isEmpty ? "a transaction" : "a \(merchant) transaction"
+            // The merchant goes after "at", never after an article: "a \(merchant)
+            // transaction" read "added a Amazon transaction" on the lock screen.
+            let what = merchant.isEmpty ? "a transaction" : "a transaction at \(merchant)"
             return description(household, inserted ? "added \(what)" : "changed \(what)")
 
         default:

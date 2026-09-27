@@ -32,7 +32,7 @@ private func describe(_ object: NSManagedObject, _ kind: SharedChangeKind, _ pro
 
         let added = try #require(describe(charge, .inserted))
         #expect(added.rootID == household.objectID)
-        #expect(added.action == "added a Whole Foods transaction")
+        #expect(added.action == "added a transaction at Whole Foods")
         let updated = try #require(describe(balance, .updated, ["amount"]))
         #expect(updated.action == "updated Sapphire for September 2026")
         for text in [added.action, updated.action] {
@@ -49,5 +49,26 @@ private func describe(_ object: NSManagedObject, _ kind: SharedChangeKind, _ pro
         #expect(describe(month, .inserted)?.action == "started September 2026")
         month.closedAt = .now
         #expect(describe(month, .updated, ["closedAt"])?.action == "closed September 2026")
+    }
+}
+
+/// A hard-coded "a" in front of typed text read "added a Amazon transaction"
+/// and "set a Entertainment budget"; the wording keeps articles off it.
+@MainActor
+@Test func typedNamesStartingWithAVowelNeverFollowAnArticle() throws {
+    try withHousehold { household in
+        let card = SharedFinanceAccount(institution: "Chase", name: "Sapphire", category: .card, household: household)
+        let charge = SharedFinanceTransaction(date: .now, cost: 20, merchant: "Amazon", household: household, card: card)
+        let blank = SharedFinanceTransaction(date: .now, cost: 5, merchant: "  ", household: household, card: card)
+        let month = SharedFinanceMonth(period: YearMonth(year: 2026, month: 9), household: household)
+        let budget = SharedFinanceBudget(category: "Entertainment", limit: 100, month: month)
+        let uncategorised = SharedFinanceBudget(category: "", limit: 50, month: month)
+
+        #expect(describe(charge, .inserted)?.action == "added a transaction at Amazon")
+        #expect(describe(charge, .updated, ["merchant"])?.action == "changed a transaction at Amazon")
+        #expect(describe(blank, .inserted)?.action == "added a transaction")
+        #expect(describe(budget, .inserted)?.action == "set the Entertainment budget for September 2026")
+        #expect(describe(budget, .updated, ["limit"])?.action == "changed the Entertainment budget for September 2026")
+        #expect(describe(uncategorised, .inserted)?.action == "set the budget for September 2026")
     }
 }
