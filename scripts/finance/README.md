@@ -8,6 +8,8 @@ Numbers itself, because Numbers does the writing.
 
 | Script | What it does |
 | --- | --- |
+| `Export Finance to Numbers.command` | Double-click: runs `export_folder.py` on iCloud Drive › Multitrack › Finance |
+| `export_folder.py` | Every month JSON in a folder without an up-to-date `.numbers` → `export_numbers.py`, into the same folder |
 | `export_numbers.py` | App month JSON + template → a filled `.numbers`, every table grown to fit, filled by Numbers (`numbers_fill.js`) |
 | `import_numbers.py` | A filled `.numbers` → month JSON the app imports (one-time move off the sheet) |
 | `make_template.py` | `--check` that a template holds nothing from the real sheet; also blanks a filled copy |
@@ -15,32 +17,48 @@ Numbers itself, because Numbers does the writing.
 
 ## Monthly export
 
-1. In the app: Finance › Summary › Export › choose the month. It saves `Finance 2026-09.json`
-   (suggested folder: iCloud Drive › Multitrack › Finance).
-2. On the Mac:
+1. In the app: Finance › Summary › Export › choose the month. It saves `Finance 2026-09.json`;
+   save it to iCloud Drive › Multitrack › Finance.
+2. On the Mac, double-click `scripts/finance/Export Finance to Numbers.command`. It looks in
+   iCloud Drive › Multitrack › Finance and writes `Finance 2026-09.numbers` beside every
+   `Finance 2026-09.json` that has no Numbers file yet, or whose JSON is newer than its Numbers
+   file (you exported that month again). Nothing runs in the background: it's on demand, and does
+   nothing until you double-click it. The same from a terminal:
 
    ```sh
-   uv run scripts/finance/export_numbers.py \
-       ~/Library/Mobile\ Documents/com~apple~CloudDocs/Multitrack/Finance/Finance\ 2026-09.json \
-       --template "scripts/finance/Finance Template.numbers" -o "Finance 2026-09.numbers"
+   uv run scripts/finance/export_folder.py            # --force redoes every month
+   uv run scripts/finance/export_folder.py --folder ~/Desktop/Finance --troy-fix
    ```
 
-   Numbers opens the copy, fills it, saves and closes it; a month of about 120 transactions takes
-   one to two minutes. Leave Numbers alone while it runs. It only touches the file it opened, so a
-   spreadsheet you already have open is safe, but don't open the output until it says `wrote`.
-3. Open the file in Numbers and refresh the two pivot tables, `Credit Card` and
+   Each month takes one to two minutes (about 120 transactions); Numbers opens a copy, fills it,
+   saves and closes it. Leave Numbers alone while it runs. It only touches the file it opened, so
+   a spreadsheet you already have open is safe, but don't open the output until the month says
+   `wrote`. A month that fails is reported and the others still run; a Numbers file already in
+   the folder is only replaced once its replacement is complete.
+3. Open each new file in Numbers and refresh the two pivot tables, `Credit Card` and
    `Personal Items Pivot`: select each one, and in the Organize sidebar click Refresh. Numbers
    doesn't refresh them on open or on save, and its scripting has no command for it, so until then
    they still show the template's "Seed Data" rows. Save after refreshing. The export prints this
    reminder when it finishes.
 
+One month at a time, anywhere:
+
+```sh
+uv run scripts/finance/export_numbers.py "Finance 2026-09.json" \
+    --template "scripts/finance/Finance Template.numbers" -o "Finance 2026-09.numbers"
+```
+
 ### Setup, once
 
-- **uv**: `curl -LsSf https://astral.sh/uv/install.sh | sh` (or `brew install uv`).
+- **uv**: `curl -LsSf https://astral.sh/uv/install.sh | sh` (or `brew install uv`). The command
+  file finds it in `~/.local/bin` or Homebrew.
 - **Numbers**, from the App Store. If it's missing the export says so.
-- **Automation permission.** The first run asks whether your terminal may control Numbers; allow
-  it. If it was refused, the export stops with a pointer to System Settings › Privacy & Security ›
-  Automation, where the terminal app needs Numbers turned on.
+- **Automation permission.** The first run asks whether Terminal (or whichever app ran the script)
+  may control Numbers; allow it. If it was refused, the export stops with a pointer to System
+  Settings › Privacy & Security › Automation, where that app needs Numbers turned on.
+- The first time you double-click the `.command` file, macOS may ask whether to open it; after
+  that it opens straight into Terminal. When something fails, the window stays open until you
+  press a key.
 
 ### Troy ounces
 

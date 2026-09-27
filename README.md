@@ -59,7 +59,7 @@ Packages/
   PointsTracker/  Household, people, loyalty accounts, balance history, expiry warnings
   FinanceTracker/ Household, accounts, monthly balances, metals, card transactions, budgets, month JSON
 scripts/
-  finance/        Mac-only Python (uv + numbers-parser): month JSON <-> the Numbers sheet; see its README
+  finance/        Mac-only Python (uv, Numbers): month JSON <-> the Numbers sheet, "Export Finance to Numbers"; see its README
 .github/workflows/
   tests.yml       Runs on every push
   testflight.yml  Ships a build

@@ -70,7 +70,7 @@ struct MonthExchangeView: View {
                 } header: {
                     Text("Export")
                 } footer: {
-                    Text("Save it to iCloud Drive › Multitrack › Finance. Then on the Mac, run `uv run --with numbers-parser scripts/finance/export_numbers.py` to write it into the Numbers sheet.")
+                    Text("Save it to iCloud Drive › Multitrack › Finance. Then on your Mac, run “Export Finance to Numbers” (in scripts/finance) to turn it into the Numbers file.")
                 }
 
                 Section {
