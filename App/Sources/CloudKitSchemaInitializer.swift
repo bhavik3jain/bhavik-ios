@@ -174,25 +174,20 @@ enum CloudKitSchemaInitializer {
             throw Failure.storeLoad("ShareProbe: no entity to share")
         }
         let context = container.newBackgroundContext()
-        var object: NSManagedObject?
-        var saveError: Error?
-        context.performAndWait {
-            let probe = NSManagedObject(entity: entity, insertInto: context)
-            do { try context.save() } catch { saveError = error }
-            object = probe
+        // performAndWait's block is `@Sendable`, and neither
+        // `NSEntityDescription` nor `NSManagedObject` is: the entity goes in
+        // by name and the object comes out as the block's return value,
+        // rather than being captured and assigned to a local `var`.
+        let entityName = entity.name ?? ""
+        let object = try context.performAndWait {
+            let probe = NSEntityDescription.insertNewObject(forEntityName: entityName, into: context)
+            try context.save()
+            return probe
         }
-        if let saveError { throw saveError }
-        guard let object else { throw Failure.storeLoad("ShareProbe: nothing inserted") }
 
-        let shared = DispatchSemaphore(value: 0)
-        var share: CKShare?
-        var shareError: Error?
-        container.share([object], to: nil) { _, result, _, error in
-            share = result
-            shareError = error
-            shared.signal()
+        let (share, shareError): (CKShare?, Error?) = waitForCompletion { finish in
+            container.share([object], to: nil) { _, result, _, error in finish((result, error)) }
         }
-        shared.wait()
         if let shareError { throw shareError }
 
         // The app saves every share with a title and a stamp saying which
@@ -201,13 +196,9 @@ enum CloudKitSchemaInitializer {
         if let share, let store = container.persistentStoreCoordinator.persistentStores.first {
             share[CKShare.SystemFieldKey.title] = "Schema probe" as CKRecordValue
             share[CKShare.SystemFieldKey.shareType] = "CD_\(entity.name ?? "")" as CKRecordValue
-            let saved = DispatchSemaphore(value: 0)
-            var saveShareError: Error?
-            container.persistUpdatedShare(share, in: store) { _, error in
-                saveShareError = error
-                saved.signal()
+            let saveShareError: Error? = waitForCompletion { finish in
+                container.persistUpdatedShare(share, in: store) { _, error in finish(error) }
             }
-            saved.wait()
             if let saveShareError { throw saveShareError }
         }
 
@@ -220,6 +211,34 @@ enum CloudKitSchemaInitializer {
         }
         print("[CloudKitSchemaInitializer] ShareProbe: made and removed a test share, so cloudkit.share exists")
         return "cloudkit.share"
+    }
+
+    /// Runs `start`, blocks until the completion it hands CloudKit fires, and
+    /// returns what that completion was called with. Those completions are
+    /// `@Sendable` and run on CloudKit's own queues, so assigning a local
+    /// `var` from inside them — as this file first did — is a data race Swift
+    /// 6 flags ("mutation of captured var in concurrently-executing code").
+    /// The result rides back in a locked box instead, and the semaphore
+    /// orders the hand-off exactly as the per-call semaphores did before.
+    private static func waitForCompletion<Value>(_ start: (@escaping @Sendable (Value) -> Void) -> Void) -> Value {
+        let box = CompletionBox<Value>()
+        let done = DispatchSemaphore(value: 0)
+        start { value in
+            box.store(value)
+            done.signal()
+        }
+        done.wait()
+        return box.take()
+    }
+
+    /// Written once from CloudKit's queue, read once after the semaphore; the
+    /// lock is what makes the unchecked `Sendable` true.
+    private final class CompletionBox<Value>: @unchecked Sendable {
+        private let lock = NSLock()
+        private var value: Value?
+
+        func store(_ newValue: Value) { lock.withLock { value = newValue } }
+        func take() -> Value { lock.withLock { value! } }
     }
 
     /// One model on its own throwaway container: a private-scope store only.

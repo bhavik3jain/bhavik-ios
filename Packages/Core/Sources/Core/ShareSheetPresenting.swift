@@ -34,5 +34,34 @@ public extension EnvironmentValues {
     /// so a witness that's `@MainActor`-isolated (needed here, since the real
     /// closures this carries mutate a `@MainActor` `@State` var) can't satisfy
     /// it by hand. The macro generates a conformance that does.
-    @Entry var presentShareSheet: (ShareSheetRequest) -> Void = { _ in }
+    ///
+    /// The value is a `PresentShareSheetAction`, not the bare closure it used
+    /// to be: a closure isn't comparable, so SwiftUI treated every update of
+    /// the host as a new value and invalidated every view reading this key,
+    /// `TripDetailView` among them (Xcode 27 warns "Storing a closure in
+    /// '@Entry' may invalidate dependents on every update").
+    @Entry var presentShareSheet = PresentShareSheetAction { _ in }
+}
+
+/// `\.presentShareSheet`'s value, shaped like SwiftUI's own `DismissAction`:
+/// call it as a function — `presentShareSheet(request)` — and it compares
+/// equal to any other, so re-setting it never invalidates its readers.
+///
+/// Always-equal is safe because a host never changes what its action means
+/// over its lifetime. On iOS it calls a static presenter; on macOS it writes
+/// the host's own `@State`, whose storage belongs to the host's identity, not
+/// to the closure value. A reader sits under exactly one host, and a new host
+/// brings new readers with it.
+public struct PresentShareSheetAction: Equatable {
+    private let action: (ShareSheetRequest) -> Void
+
+    public init(_ action: @escaping (ShareSheetRequest) -> Void) {
+        self.action = action
+    }
+
+    public func callAsFunction(_ request: ShareSheetRequest) {
+        action(request)
+    }
+
+    public static func == (lhs: Self, rhs: Self) -> Bool { true }
 }

@@ -26,10 +26,10 @@ private struct PresentsShareSheets: ViewModifier {
     func body(content: Content) -> some View {
         #if os(iOS)
         content
-            .environment(\.presentShareSheet) { CloudSharingPresenter.present($0) }
+            .environment(\.presentShareSheet, PresentShareSheetAction { CloudSharingPresenter.present($0) })
         #else
         content
-            .environment(\.presentShareSheet) { request = $0 }
+            .environment(\.presentShareSheet, PresentShareSheetAction { request = $0 })
             .sheet(item: $request) { MacShareSheet(request: $0) }
         #endif
     }
@@ -105,7 +105,17 @@ enum CloudSharingPresenter {
             }
             controller = UICloudSharingController(share: share, container: CKContainer(identifier: identifier))
         } else {
+            // Deprecated, and the one warning left on purpose: this works end
+            // to end, and a replacement can only be proven on two devices.
             controller = UICloudSharingController { _, preparationCompletionHandler in
+                // share(_:to:)'s completion is `@Sendable` and runs on
+                // CloudKit's queue, which Swift 6 won't let the non-`Sendable`
+                // object or UIKit's handler be captured into. Both were
+                // always used from that queue, and still are, unchanged: the
+                // object only for its entity and its object ID, and the
+                // handler, which UIKit accepts from any queue.
+                nonisolated(unsafe) let object = object
+                nonisolated(unsafe) let preparationCompletionHandler = preparationCompletionHandler
                 container.share([object], to: nil) { _, share, ckContainer, error in
                     guard let share, let store = object.objectID.persistentStore else {
                         preparationCompletionHandler(share, ckContainer, error)
