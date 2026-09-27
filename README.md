@@ -134,6 +134,26 @@ a `String` raw value is *not* a schema change and needs none of this.
 Development and Production are separate **data** stores as well as separate schemas, so a debug build
 and a TestFlight build never see each other's records.
 
+**How quickly changes arrive.** Mirroring imports at launch, whenever the app comes to the foreground,
+and when a CloudKit push says the database changed. The push entitlement (`aps-environment`, and
+`com.apple.developer.aps-environment` on the Mac) is what makes a partner's new itinerary item or
+fuel-up show up within seconds while the app is open; before it was added they waited for the next
+foreground, often minutes. Pushes are best-effort — iOS may delay or coalesce them, especially in the
+background — so there is also a manual refresh:
+
+- pull to refresh on the hub (every tracker), Trips' list and day plan, Fuel's log and garage,
+  Explore's guides, Points, and Finance's summary and months (just that tracker's store);
+- **Settings → Sync**, which shows "Last synced …" next to the iCloud status, with a **Refresh from
+  iCloud** button;
+- **View → Refresh from iCloud** (`⌘R`) on the Mac.
+
+There is no public "sync now" API, so a refresh asks mirroring to run its foreground import (at most
+once a minute — asking more often gets all syncing throttled for hours) and waits up to 15 seconds for
+that import to finish. It then says what actually happened: updated, nothing new yet, failed with
+CloudKit's error, or iCloud unavailable. "Last synced" is the latest import or export this session
+saw finish; it resets on relaunch. Run with `-com.apple.CoreData.CloudKitDebug 1` and filter the
+console on the `CloudSync` category to watch it.
+
 ## Importing
 
 **TV → Settings → Import Library** reads a watch-history export — `library.csv` for what you track and
@@ -174,6 +194,7 @@ All debug-only, and inert unless passed (Product → Scheme → Edit Scheme → 
 | `-PointsSeed YES` | Adds a sample household with people and points accounts (does nothing if any account exists) |
 | `-FinanceSeed YES` | Adds a sample household with accounts, cards, metals, three months and budgets (does nothing if any household has data) |
 | `-WeatherStub YES` | Made-up weather in place of WeatherKit |
+| `-CloudSyncRefreshAfter <seconds>` | Runs a Refresh from iCloud that long after launch and prints how it ended |
 
 The module seeders run when their module is first opened, not at launch.
 

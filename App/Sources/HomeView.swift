@@ -88,6 +88,7 @@ struct HomeView: View {
     // The container itself, for Finance's Share button and sharing-status
     // badges — same reasoning as `fuelPersistentContainer` above.
     @Environment(\.financePersistentContainer) private var financePersistentContainer
+    @Environment(CloudSyncMonitor.self) private var syncMonitor: CloudSyncMonitor?
     @StateObject private var financeMonthFetch = ManagedObjectFetch<SharedFinanceMonth>(
         SharedFinanceMonth.fetchRequest(sortDescriptors: [NSSortDescriptor(keyPath: \SharedFinanceMonth.yearMonth, ascending: true)])
     )
@@ -150,6 +151,10 @@ struct HomeView: View {
                         }
                 }
             }
+            // Every store at once, not `.refreshesFromCloud()`: this list's
+            // `\.managedObjectContext` is Trips' alone, and the hub's counts come
+            // from all eight trackers.
+            .refreshable { await syncMonitor?.refresh() }
             .navigationTitle("Trackers")
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {

@@ -31,6 +31,7 @@ struct TripListView: View {
             TimelineView(.everyMinute) { context in
                 content(groups: TripGroups(Array(trips), asOf: context.date), now: context.date)
             }
+            .refreshesFromCloud()
             .navigationTitle("Trips")
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {

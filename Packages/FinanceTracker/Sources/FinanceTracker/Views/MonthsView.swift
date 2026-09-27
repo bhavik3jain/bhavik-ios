@@ -35,6 +35,7 @@ struct MonthsView: View {
                     list(snapshot, isEditable: isEditable)
                 }
             }
+            .refreshesFromCloud()
             .navigationTitle("Months")
             .toolbar {
                 if isEditable {

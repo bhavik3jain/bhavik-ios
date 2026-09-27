@@ -27,6 +27,9 @@ struct TripPlanView: View {
         TimelineView(.everyMinute) { context in
             content(now: context.date)
         }
+        // Mid-trip is exactly when a partner adds to today, and waiting on the
+        // next automatic import was minutes.
+        .refreshesFromCloud()
     }
 
     private func content(now: Date) -> some View {

@@ -61,10 +61,16 @@ struct BhavikApp: App {
     /// `\.financeManagedObjectContext` key, the same reason `pointsContainer`
     /// needed one.
     let financeContainer: NSPersistentCloudKitContainer
+    /// Every store's CloudKit mirroring, and the "refresh from iCloud" that
+    /// pull-to-refresh, Settings and the Mac's ⌘R all go through. Built before
+    /// any container so it hears each store's launch import. See
+    /// `CloudSyncMonitor`'s doc comment.
+    let syncMonitor = CloudSyncMonitor(containerID: BhavikApp.cloudContainerID)
     @AppStorage(Appearance.defaultsKey) private var appearanceRaw = Appearance.system.rawValue
     // Only reason for an app/scene delegate in an otherwise pure SwiftUI App:
     // CKShare-accept has no SwiftUI-native entry point on either platform.
-    // See ShareAcceptDelegate.swift.
+    // See ShareAcceptDelegate.swift. (It also registers for CloudKit's
+    // pushes, for the same lack of a SwiftUI entry point.)
     #if os(iOS)
     @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     #elseif os(macOS)
@@ -176,6 +182,13 @@ struct BhavikApp: App {
             // owner, account and month under it shares with it — see
             // FinanceModel.swift).
             ShareAcceptRouter.shared.register(recordTypePrefix: "CD_SharedFinanceHousehold", container: financeContainer)
+
+            for container in [tripContainer, fuelContainer, exploreContainer, pointsContainer, financeContainer] {
+                syncMonitor.track(container)
+            }
+            #if DEBUG
+            CloudSyncRefreshProbe.scheduleIfRequested(syncMonitor)
+            #endif
         } catch {
             fatalError("Failed to create ModelContainer: \(error)")
         }
@@ -238,11 +251,15 @@ struct BhavikApp: App {
         // The container itself (not just its context) — Finance's Share
         // button and its sharing-status badges need it, same as Points' above.
         .environment(\.financePersistentContainer, financeContainer)
+        .environment(syncMonitor)
         #if os(macOS)
         // A left-over default-sized window reads as an unfinished iPhone app
         // squeezed onto a Mac; a sidebar layout wants the width to show it.
         .defaultSize(width: 1100, height: 700)
-        .commands { TrackerCommands() }
+        .commands {
+            TrackerCommands()
+            CloudSyncCommands(monitor: syncMonitor)
+        }
         #endif
     }
 }
@@ -268,9 +285,43 @@ private struct TrackerCommands: Commands {
         }
     }
 }
+
+/// View ▸ Refresh from iCloud, ⌘R. Unlike the Trackers menu this needs no
+/// notification: the monitor is the app's own object, not HomeView state.
+private struct CloudSyncCommands: Commands {
+    let monitor: CloudSyncMonitor
+
+    var body: some Commands {
+        CommandGroup(after: .toolbar) {
+            Button("Refresh from iCloud") {
+                Task { await monitor.refresh() }
+            }
+            .keyboardShortcut("r", modifiers: .command)
+            .disabled(monitor.isRefreshing)
+        }
+    }
+}
 #endif
 
 #if DEBUG
+/// `-CloudSyncRefreshAfter <seconds>` runs an app-wide refresh that long after
+/// launch and prints how it ended — the only way to watch whether a refresh
+/// really makes mirroring import, alongside `-com.apple.CoreData.CloudKitDebug 1`
+/// and the "CloudSync" log category.
+private enum CloudSyncRefreshProbe {
+    @MainActor
+    static func scheduleIfRequested(_ monitor: CloudSyncMonitor) {
+        let delay = UserDefaults.standard.double(forKey: "CloudSyncRefreshAfter")
+        guard delay > 0 else { return }
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(delay))
+            print("CloudSyncRefreshProbe: refreshing at \(Date.now)")
+            let outcome = await monitor.refresh()
+            print("CloudSyncRefreshProbe: \(outcome) at \(Date.now)")
+        }
+    }
+}
+
 /// `-WeatherStub YES` swaps in made-up weather for the whole app.
 ///
 /// The live WeatherKit provider throws until the WeatherKit capability is

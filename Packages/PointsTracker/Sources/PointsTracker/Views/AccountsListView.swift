@@ -68,6 +68,7 @@ struct AccountsListView: View {
                     }
                 }
             }
+            .refreshesFromCloud()
             .navigationTitle("Points")
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {

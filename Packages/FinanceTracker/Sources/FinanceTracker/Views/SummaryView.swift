@@ -32,6 +32,7 @@ struct SummaryView: View {
                     }
                 }
             }
+            .refreshesFromCloud()
             .navigationTitle("Finance")
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {

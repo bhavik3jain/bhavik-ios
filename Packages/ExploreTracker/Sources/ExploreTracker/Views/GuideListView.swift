@@ -78,6 +78,7 @@ struct GuideListView: View {
                     }
                 }
             }
+            .refreshesFromCloud()
             .navigationTitle("Guides")
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {

@@ -19,6 +19,14 @@
 	     throws and both modules quietly show no weather at all. -->
 	<key>com.apple.developer.weatherkit</key>
 	<true/>
+	<!-- CloudKit's silent pushes, the Mac spelling of iOS's aps-environment.
+	     Without it a partner's change only appeared when the app was next
+	     activated or relaunched, minutes later. "development" is right for a
+	     local build; the Developer ID profile supplies "production" at export,
+	     which is why that profile has to be regenerated once push is enabled
+	     for the app ID, or the export fails on the mismatch. -->
+	<key>com.apple.developer.aps-environment</key>
+	<string>development</string>
 	<!-- CloudKit refuses to hand a Mac app its private database unless the app
 	     is sandboxed, so the sandbox is a requirement here, not a hardening
 	     choice. The keys below are what it then has to give back. -->

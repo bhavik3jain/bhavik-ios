@@ -93,6 +93,7 @@ struct VehicleLogView: View {
                     }
                 }
             }
+            .refreshesFromCloud()
             .navigationTitle(summary?.name ?? "Fuel")
             .toolbar {
                 if let vehicle {
