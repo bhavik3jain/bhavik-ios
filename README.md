@@ -130,10 +130,25 @@ keeps only objects that are actually shared, and asks each module's `describeSha
 wording. Settings → Notifications has the switch and one per tracker; permission is asked when you
 share or accept a share, or from that switch — never at launch. The honest limits:
 
-- Nothing comes from a server. A notification exists only once *this* device has imported the change,
-  which means while the app is running or the next time it opens. A CloudKit silent push (the
-  `aps-environment` entitlement is on — see *How quickly changes arrive*) can wake a suspended app to
-  import it, but delivery is at the system's discretion and force-quit apps never get one.
+- That rich notification exists only once *this* device has imported the change: while the app is
+  running, when a CloudKit silent push wakes it (the `aps-environment` entitlement is on — see *How
+  quickly changes arrive*; delivery is at the system's discretion), or the next time it opens. iOS
+  never wakes a force-quit app, and a rebooted phone doesn't count as running until it's opened.
+- So iCloud also sends an alert of its own, shown by the system with the app not running at all
+  (Core's `SharedChangeServerAlerts`). It's a CloudKit subscription whose text is fixed when it's
+  saved, so it can't say who or what: the owner of a share gets "Rome & Amalfi was updated" (one
+  record-zone subscription per shared trip, vehicle, guide or household, reworded when it's renamed);
+  someone it's shared *with* gets "Something shared with you was updated", because the shared
+  database only accepts one subscription for everything in it. Tapping one opens its tracker (the
+  participant's only when everything shared with them is in one tracker). When the app posts its own
+  notification about the same share, it removes iCloud's; while the app is open iCloud's isn't shown.
+- iCloud's alert comes from the account, not the app, so it has two limits. **Your own edits alert
+  your other devices**: CloudKit skips only the device that made the change, and has no "not from me"
+  option for zone or database subscriptions. If the app is alive on the other device it removes the
+  alert once it has imported the change and seen it was yours; after a force-quit it stays. And the
+  subscriptions belong to the Apple Account, so **the Settings switch acts for every device**:
+  turning it off deletes them everywhere, and any device with it on (and permission granted)
+  re-creates them the next time it opens. A share only gets one once someone else is on it.
 - The first download after installing (or after this feature first ships) is never announced, nor is
   the download that follows accepting a share. Deletions are never announced — a deleted record can't
   be read to say what it was.

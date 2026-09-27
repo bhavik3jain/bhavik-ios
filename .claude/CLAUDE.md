@@ -103,7 +103,8 @@ or the schema-init / in-memory launch crashes on a missing env value; a
 shares land nowhere; env keys in Core's `ModuleManagedObjectContexts.swift` **and**
 `ModulePersistentContainers.swift`; and an entry in `CloudKitSchemaInitializer.coreDataModels()`,
 or Production never gets its record types. It also needs a `describeSharedChange` on its
-`<Module>TrackerModule` and a row in `BhavikApp.startSharedChangeNotifications` (plus
+`<Module>TrackerModule` and a row in `BhavikApp.startSharedChangeNotifications` — with its share-root
+entity name, which iCloud's alert subscriptions read — (plus
 `SharedChangeNotificationsSection.modules`), or a partner's edits to it are never notified, and its
 container in the `syncMonitor.track` loop beside it, or Refresh from iCloud never waits on it. Its
 container must come from `CloudSharedStore.makeContainer`, which stamps the `app` transaction author
@@ -257,7 +258,11 @@ Don't trust these comments, and don't "fix" the code they describe.
   `ShareAcceptDelegate.swift`. Until they were added a partner's change only arrived at the next
   launch or foreground, minutes later. Silent-push delivery is still at the system's discretion and
   there is no `BGTaskScheduler` anywhere, so don't promise instant sync or background parcel
-  tracking. (`SyncedSecret.swift` cites "a background parcel refresh" for
+  tracking. What *does* reach a force-quit or rebooted device is iCloud's own alert
+  (`SharedChangeServerAlerts`: CloudKit subscriptions with a visible `notificationInfo`, IDs prefixed
+  `multitrack.alert.`) — fixed text only, and CloudKit sends it to the account's other devices for the
+  user's own edits too. Never touch a subscription without that prefix: Core Data's silent ones live
+  beside them. (`SyncedSecret.swift` cites "a background parcel refresh" for
   `kSecAttrAccessibleAfterFirstUnlock` — fiction, but the choice is right: ThisDeviceOnly won't sync.)
 - There is no "sync now" in `NSPersistentCloudKitContainer`. Core's `CloudSyncMonitor` (injected at
   the app root) re-posts the app's did-become-active notification — at most once a minute, or
