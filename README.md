@@ -5,7 +5,7 @@ through TestFlight; also builds for the Mac.
 
 | Module | What it does |
 | --- | --- |
-| Trips | Plan a trip day by day — itinerary, flights, bookings and door codes — with a map, the forecast, and a PDF itinerary to share |
+| Trips | Plan a trip day by day — itinerary, flights, bookings and door codes — with a map, the forecast, and a PDF itinerary to share; undecided ideas wait off the calendar, ranked by how far they are from you or a day's plan |
 | Explore | Keep guides of places to eat, see and do in an area, mark them tried and rated, and see how far away they are |
 | Gym | Log workouts as weight × reps, save routines, track per-exercise progress |
 | TV | Track shows, episodes and films, with a catch-up backlog and an upcoming-episode schedule |
@@ -115,6 +115,12 @@ Finance works the same way: its household (`SharedFinanceHousehold`) is the shar
 shares every owner, account, month, metal item and transaction in it.
 The schema ritual below covers these models too.
 
+**Trip ideas need every sharer on a current build.** An idea is an itinerary item whose `dayIndex`
+is `-1` — no new attribute, so no schema change — but builds from before ideas existed clamp any
+negative `dayIndex` to Day 1 whenever they save a trip (any edit to its title, notes or dates), and
+CloudKit then syncs that to everyone on the trip. They also show ideas as ordinary stops. Before
+anyone adds ideas to a shared trip, make sure every device on it has updated its TestFlight build.
+
 **Adding or changing a `@Model` needs one extra step.** CloudKit only creates a record type when a
 record of that type first syncs, and it never creates schema in Production — so a new model silently
 fails to sync until the schema is deployed. The ritual:
@@ -169,7 +175,7 @@ All debug-only, and inert unless passed (Product → Scheme → Edit Scheme → 
 | `-TVSeedShows YES` | Adds sample shows, looked up on TMDB (needs a key; does nothing if any show exists) |
 | `-FuelSeedCSV YES` | Imports a sample Fuelly export |
 | `-ParcelSeed YES` | Adds sample orders |
-| `-TripSeed YES` | Adds four trips, one under way today (does nothing if any trip exists) |
+| `-TripSeed YES` | Adds four trips, one under way today with six ideas for Nearby (does nothing if any trip exists) |
 | `-ExploreSeed YES` | Adds three guides with real places (does nothing if any guide exists) |
 | `-PointsSeed YES` | Adds a sample household with people and points accounts (does nothing if any account exists) |
 | `-FinanceSeed YES` | Adds a sample household with accounts, cards, metals, three months and budgets (does nothing if any household has data) |

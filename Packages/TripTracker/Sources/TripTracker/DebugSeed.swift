@@ -57,6 +57,26 @@ public enum TripDebugSeed {
             item.trip = rome
         }
 
+        // Ideas: not on any day yet, spread out from the centre so Nearby has
+        // something in every bucket from the Pantheon, plus one with no place
+        // for its "add an address" footer.
+        let ideas: [(String, ItemKind, String, Double?, Double?, String)] = [
+            ("Gelato at Giolitti", .food, "Via degli Uffici del Vicario 40", 41.9010, 12.4776, "Near the Pantheon"),
+            ("Sant'Ignazio ceiling", .sight, "Piazza di Sant'Ignazio", 41.8990, 12.4797, "Stand on the marble disc"),
+            ("Aventine keyhole", .sight, "Piazza dei Cavalieri di Malta", 41.8833, 12.4787, ""),
+            ("Appian Way by bike", .activity, "Via Appia Antica 58", 41.8580, 12.5160, "Rent at the visitor centre"),
+            ("Ostia Antica", .sight, "Viale dei Romagnoli 717", 41.7556, 12.2918, "Half a day by train"),
+            ("Pasta-making class", .activity, "", nil, nil, "Maria's recommendation"),
+        ]
+        for (order, idea) in ideas.enumerated() {
+            let item = SharedItineraryItem(context: context, title: idea.0, kind: idea.1, dayIndex: SharedItineraryItem.unassignedDayIndex, sortOrder: order)
+            item.address = idea.2
+            item.latitude = idea.3
+            item.longitude = idea.4
+            item.detail = idea.5
+            item.trip = rome
+        }
+
         let outbound = SharedFlight(context: context, airlineCode: "BA", number: "285", originCode: "LHR", destinationCode: "FCO", dayIndex: 0)
         outbound.departsAt = at(-2, 8, 5)
         outbound.arrivesAt = at(-2, 11, 45)

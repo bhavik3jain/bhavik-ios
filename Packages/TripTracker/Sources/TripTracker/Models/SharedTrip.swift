@@ -100,19 +100,34 @@ public extension SharedTrip {
 
     var dates: TripDates { TripDates(start: startDate, end: endDate) }
 
-    /// Items with somewhere to put a pin. What the trip list and the PDF call
-    /// "places".
+    /// Items with somewhere to put a pin, ideas included — the map pins them
+    /// too. What the trip list calls "places".
     var places: [SharedItineraryItem] {
         (items ?? []).filter(\.hasCoordinate)
+    }
+
+    /// Placed items that are on a day — what the PDF, which leaves ideas out,
+    /// counts as "places".
+    var plannedPlaces: [SharedItineraryItem] {
+        places.filter { !$0.isUnassigned }
+    }
+
+    /// Ideas: items not on any day yet. See `SharedItineraryItem.unassignedDayIndex`.
+    var ideas: [SharedItineraryItem] {
+        (items ?? []).filter(\.isUnassigned)
     }
 
     /// Pulls anything planned past the last day back onto it. Shortening a trip
     /// otherwise left those items on days that no longer exist — on no chip, in
     /// no timeline, still counted as places — with no way to reach them.
+    ///
+    /// Ideas are left where they are. This used to clamp negative days up to
+    /// day 0 as well, which would have dumped every idea onto the first day the
+    /// next time the trip's dates were saved.
     func clampPlanToDates() {
         let last = dates.dayCount - 1
-        for item in items ?? [] where item.dayIndex > last || item.dayIndex < 0 {
-            item.dayIndex = min(max(item.dayIndex, 0), last)
+        for item in items ?? [] where !item.isUnassigned && item.dayIndex > last {
+            item.dayIndex = last
         }
         for flight in flights ?? [] where flight.dayIndex > last || flight.dayIndex < 0 {
             flight.dayIndex = min(max(flight.dayIndex, 0), last)

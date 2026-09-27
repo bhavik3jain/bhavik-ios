@@ -86,6 +86,10 @@ public enum TripLegacyMigration {
             trip.latitude = legacyTrip.latitude
             trip.longitude = legacyTrip.longitude
 
+            // `dayIndex` is copied as it stands. The SwiftData model predates
+            // ideas and never wrote a negative day on purpose; a stray one now
+            // reads as an idea (see `SharedItineraryItem.isUnassigned`) — still
+            // reachable, in Ideas, rather than on a day that isn't on the strip.
             for legacyItem in legacyTrip.items ?? [] {
                 let item = SharedItineraryItem(
                     context: context,

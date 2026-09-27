@@ -3,7 +3,8 @@ import CoreData
 import MapKit
 import SwiftUI
 
-/// Adds something to a day of the plan, or edits it.
+/// Adds something to a day of the plan, or edits it. Also adds and edits
+/// ideas — the same item with no day yet — and moves items between the two.
 struct ItemEditorView: View {
     let trip: SharedTrip
     let item: SharedItineraryItem?
@@ -26,7 +27,9 @@ struct ItemEditorView: View {
     init(trip: SharedTrip, item: SharedItineraryItem?, day: Int) {
         self.trip = trip
         self.item = item
-        _day = State(initialValue: day)
+        // Every negative day is an idea (see `isUnassigned`), but the picker
+        // only has a tag for -1: a stray -3 would open on no row at all.
+        _day = State(initialValue: day < 0 ? SharedItineraryItem.unassignedDayIndex : day)
         let center = trip.latitude.flatMap { latitude in
             trip.longitude.map { CLLocationCoordinate2D(latitude: latitude, longitude: $0) }
         }
@@ -98,6 +101,7 @@ struct ItemEditorView: View {
 
                 Section {
                     Picker("Day", selection: $day) {
+                        Text("No day yet · Ideas").tag(SharedItineraryItem.unassignedDayIndex)
                         ForEach(0..<trip.dates.dayCount, id: \.self) { index in
                             Text("Day \(index + 1) · \(trip.dates.date(forDay: index).formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated)))")
                                 .tag(index)
@@ -119,7 +123,9 @@ struct ItemEditorView: View {
                 } header: {
                     Text("When")
                 } footer: {
-                    if !hasTime {
+                    if day < 0 {
+                        Text("It waits in Ideas, off the calendar, until you pick a day for it.")
+                    } else if !hasTime {
                         Text("Without a time it goes under Anytime for that day.")
                     }
                 }
@@ -140,7 +146,7 @@ struct ItemEditorView: View {
                     }
                 }
             }
-            .navigationTitle(item == nil ? "Add to Plan" : "Edit")
+            .navigationTitle(item != nil ? "Edit" : (day < 0 ? "Add Idea" : "Add to Plan"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -167,23 +173,21 @@ struct ItemEditorView: View {
     private func save() {
         let target = item ?? SharedItineraryItem(context: modelContext, title: "", dayIndex: day)
         if item == nil {
-            // After everything already on the day, so a new untimed item joins
-            // the end of Anytime rather than jumping the queue.
-            let existing = (trip.items ?? []).filter { $0.dayIndex == day }.map(\.sortOrder)
-            target.sortOrder = (existing.max() ?? -1) + 1
+            target.trip = trip
         }
+        // After everything already on the day, so a new untimed item joins the
+        // end of Anytime rather than jumping the queue — and so does an idea
+        // moved onto a day, instead of keeping the sortOrder it had among the
+        // ideas. Staying on the same day keeps its place.
+        target.move(toDay: day)
         target.title = title.trimmingCharacters(in: .whitespaces)
         target.kind = kind
-        target.dayIndex = day
         target.startTime = hasTime ? time : nil
         target.durationMinutes = hasTime ? durationMinutes : 0
         target.detail = detail
         target.address = place?.address ?? ""
         target.latitude = place?.latitude
         target.longitude = place?.longitude
-        if item == nil {
-            target.trip = trip
-        }
         try? modelContext.saveIfNeeded()
         dismiss()
     }
