@@ -16,7 +16,9 @@ public struct ItineraryDocument: Sendable, Equatable {
         public let destination: String
         /// "Saturday 6 – Sunday 14 June 2026".
         public let dateRange: String
-        /// The stat tiles: 9 days, 22 places, 2 flights, 4 bookings.
+        /// The stat tiles: 9 days, 22 places, 2 flights, 4 bookings. Days
+        /// always; the others only when there are any — "0 Flights" on a
+        /// road trip was a tile saying nothing.
         public let facts: [Fact]
     }
 
@@ -86,17 +88,24 @@ public struct ItineraryDocument: Sendable, Equatable {
     public let days: [Day]
     /// Flights, then bookings by kind.
     public let confirmations: [Confirmation]
+    /// Ideas — items on no day yet — in the Ideas tab's order, for their own
+    /// page at the end. No time: `Line.time` is always nil here.
+    public let ideas: [Line]
     /// "27 Sep 2026" when any day carries weather: the pages that show it print
     /// the Apple Weather credit WeatherKit's terms require, and when it was
     /// fetched — a forecast printed today is stale by the trip. Nil otherwise.
     public let weatherAsOf: String?
 
-    public init(title: String, dateRange: String, cover: Cover, days: [Day], confirmations: [Confirmation], weatherAsOf: String?) {
+    public init(
+        title: String, dateRange: String, cover: Cover, days: [Day], confirmations: [Confirmation],
+        ideas: [Line] = [], weatherAsOf: String?
+    ) {
         self.title = title
         self.dateRange = dateRange
         self.cover = cover
         self.days = days
         self.confirmations = confirmations
+        self.ideas = ideas
         self.weatherAsOf = weatherAsOf
     }
 
@@ -104,12 +113,12 @@ public struct ItineraryDocument: Sendable, Equatable {
     /// `weather` is whatever the trip screen has already fetched, matched to
     /// days the same way the Plan tab does it (`TripForecast.byDay`).
     ///
-    /// Ideas — items on no day yet — are left out on purpose, and not counted
-    /// among the cover's places. The PDF is what gets sent to the people
-    /// meeting you, the house-sitter, the family group chat: a list of maybes
-    /// at the end reads as more plan, and "might go to the Aventine" isn't
-    /// something anyone else can act on. They stay in the app, where they can
-    /// still be moved onto a day.
+    /// Ideas — items on no day yet — get a page of their own at the end,
+    /// headed as not on a day yet, and aren't counted among the cover's
+    /// places. They were left out at first, on the thinking that a list of
+    /// maybes reads as more plan; but the PDF is also the trip on paper for
+    /// the people planning it, and a printed trip without its ideas lost half
+    /// of what was saved for it. Their own page keeps them from reading as plan.
     public init(trip: SharedTrip, weather: [DayWeather] = [], asOf now: Date = .now, calendar: Calendar = .current) {
         let dates = TripDates(start: trip.startDate, end: trip.endDate, calendar: calendar)
         // Core Data's to-many relationships are `Set<T>?`, not `[T]?` — turned
@@ -139,12 +148,11 @@ public struct ItineraryDocument: Sendable, Equatable {
             title: trip.title,
             destination: trip.destination,
             dateRange: ItineraryFormat.longDateRange(dates),
-            facts: [
-                Self.fact(dates.dayCount, "Day", "Days"),
-                Self.fact(trip.plannedPlaces.count, "Place", "Places"),
-                Self.fact(flights.count, "Flight", "Flights"),
-                Self.fact(bookings.count, "Booking", "Bookings"),
-            ]
+            facts: [Self.fact(dates.dayCount, "Day", "Days")] + [
+                (trip.plannedPlaces.count, "Place", "Places"),
+                (flights.count, "Flight", "Flights"),
+                (bookings.count, "Booking", "Bookings"),
+            ].filter { $0.0 > 0 }.map { Self.fact($0.0, $0.1, $0.2) }
         )
 
         self.init(
@@ -153,6 +161,9 @@ public struct ItineraryDocument: Sendable, Equatable {
             cover: cover,
             days: days,
             confirmations: Self.confirmations(flights: flights, bookings: bookings, dates: dates),
+            ideas: trip.ideas
+                .sorted { $0.sortOrder != $1.sortOrder ? $0.sortOrder < $1.sortOrder : $0.title.localizedStandardCompare($1.title) == .orderedAscending }
+                .map(ItineraryFormat.ideaLine),
             weatherAsOf: days.contains { $0.weather != nil } ? now.formatted(.dateTime.day().month(.abbreviated).year()) : nil
         )
     }
@@ -298,6 +309,18 @@ public enum ItineraryFormat {
             symbolName: day.symbolName,
             summary: day.summary,
             temperatures: "\(WeatherFormat.temperature(day.highCelsius)) / \(WeatherFormat.temperature(day.lowCelsius))"
+        )
+    }
+
+    /// An idea on the Ideas page: like a day's row, never with a time.
+    static func ideaLine(_ item: SharedItineraryItem) -> ItineraryDocument.Line {
+        ItineraryDocument.Line(
+            time: nil,
+            duration: duration(minutes: item.durationMinutes),
+            title: item.title,
+            detail: [item.address, item.detail].filter { !$0.isEmpty }.joined(separator: " · "),
+            symbolName: item.kind.symbolName,
+            isFlight: false
         )
     }
 

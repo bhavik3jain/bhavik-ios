@@ -20,12 +20,13 @@ struct ItineraryLayout: Equatable {
         case cover(CoverPage)
         case confirmations(ConfirmationsPage)
         case days(DaysPage)
+        case ideas(IdeasPage)
 
         /// Whether the page prints weather, and so needs Apple's credit.
         var showsWeather: Bool {
             switch self {
             case .cover(let page): page.glance.contains { $0.weather != nil }
-            case .confirmations: false
+            case .confirmations, .ideas: false
             case .days(let page): page.slices.contains { $0.day.weather != nil }
             }
         }
@@ -79,6 +80,13 @@ struct ItineraryLayout: Equatable {
         let slices: [DaySlice]
         /// "Days 1–3", "Day 4, continued".
         let label: String
+    }
+
+    /// The trip's ideas, after the days: rows like a day's, with no date badge
+    /// and no times.
+    struct IdeasPage: Equatable {
+        let rows: [Row]
+        let isContinuation: Bool
     }
 
     /// All of a day, or the part of a long day that fits on this page.
@@ -145,15 +153,30 @@ struct ItineraryLayout: Equatable {
             return DaysPage(slices: slices, label: Self.label(for: slices))
         }
 
+        // Then the ideas, on pages of their own so they never read as plan.
+        // Measured at a day row's width and drawn at it, so the heights hold.
+        let ideaRows = document.ideas.map { Self.row(for: $0, measure: measure) }
+        let ideaPages = ideaRows.isEmpty ? [] : Self.flow(
+            [FlowBlock(header: 0, rows: ideaRows.map(\.height))],
+            pageHeight: M.bodyHeight - M.pageHeaderHeight,
+            keepWithHeader: 1
+        ).enumerated().map { index, pieces in
+            IdeasPage(rows: pieces.flatMap { Array(ideaRows[$0.rows]) }, isContinuation: index > 0)
+        }
+
         // The cover last: its contents list needs the page numbers.
         let firstCodes = 2
         let firstDays = firstCodes + confirmationPages.count
+        let firstIdeas = firstDays + dayPages.count
         var contents: [ContentsEntry] = []
         if !confirmationPages.isEmpty {
             contents.append(ContentsEntry(title: "Flights & bookings", pages: Self.pageSpan(firstCodes, count: confirmationPages.count)))
         }
         if !dayPages.isEmpty {
             contents.append(ContentsEntry(title: "Day by day", pages: Self.pageSpan(firstDays, count: dayPages.count)))
+        }
+        if !ideaPages.isEmpty {
+            contents.append(ContentsEntry(title: "Ideas, not on a day yet", pages: Self.pageSpan(firstIdeas, count: ideaPages.count)))
         }
         let titleLines = min(2, measure.lines(document.cover.title, .coverTitle, M.bodyWidth))
         let capacity = M.glanceCapacity(titleLines: titleLines, contentsCount: contents.count)
@@ -167,7 +190,7 @@ struct ItineraryLayout: Equatable {
             contents: contents
         )
 
-        pages = [.cover(cover)] + confirmationPages.map(Page.confirmations) + dayPages.map(Page.days)
+        pages = [.cover(cover)] + confirmationPages.map(Page.confirmations) + dayPages.map(Page.days) + ideaPages.map(Page.ideas)
     }
 
     // MARK: - Flow

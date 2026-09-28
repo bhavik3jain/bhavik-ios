@@ -193,7 +193,7 @@ import Testing
 // MARK: - PDF
 
 @MainActor
-@Test func theItineraryLeavesIdeasOut() throws {
+@Test func theItineraryKeepsIdeasOffTheDays() throws {
     let context = try makeContext()
     let trip = makeRome(in: context)
     addItem("Galleria Borghese", to: trip, in: context, day: 2, at: (9, 30), placed: true)
