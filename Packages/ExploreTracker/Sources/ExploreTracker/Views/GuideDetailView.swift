@@ -4,6 +4,7 @@ import MapKit
 import SwiftUI
 
 struct GuideDetailView: View {
+    @Environment(\.moduleLayout) private var layout
     let guide: SharedGuide
 
     @Environment(\.managedObjectContext) private var modelContext
@@ -147,13 +148,13 @@ struct GuideDetailView: View {
                 .accessibilityLabel("Share guide")
             }
             if canEdit {
-                ToolbarItem(placement: .secondaryAction) {
+                ToolbarItem(placement: layout.secondaryToolbarPlacement) {
                     Button("Edit Guide", systemImage: "pencil") { showingEdit = true }
                 }
             }
             // Deliberately outside the `canEdit` gate: a pin is this person's
             // own private record, so a read-only participant can pin too.
-            ToolbarItem(placement: .secondaryAction) {
+            ToolbarItem(placement: layout.secondaryToolbarPlacement) {
                 Button(
                     isPinned ? "Unpin Guide" : "Pin to Top",
                     systemImage: isPinned ? "pin.slash" : "pin"

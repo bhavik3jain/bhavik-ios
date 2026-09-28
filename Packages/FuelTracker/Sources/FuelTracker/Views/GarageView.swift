@@ -88,15 +88,11 @@ struct GarageView: View {
             ) { result in
                 handleImport(result)
             }
-            .alert("Add Vehicle", isPresented: $showingAddVehicle) {
-                TextField("Name", text: $newVehicleName)
-                Button("Cancel", role: .cancel) {}
-                Button("Add") {
-                    let trimmed = newVehicleName.trimmingCharacters(in: .whitespaces)
-                    guard !trimmed.isEmpty else { return }
-                    _ = SharedVehicle(context: modelContext, name: trimmed)
-                    try? modelContext.saveIfNeeded()
-                }
+            .textPrompt("Add Vehicle", isPresented: $showingAddVehicle, text: $newVehicleName, prompt: "Name") {
+                let trimmed = newVehicleName.trimmingCharacters(in: .whitespaces)
+                guard !trimmed.isEmpty else { return }
+                _ = SharedVehicle(context: modelContext, name: trimmed)
+                try? modelContext.saveIfNeeded()
             }
             .confirmationDialog("Merge Duplicate Cars?", isPresented: $confirmingMerge, titleVisibility: .visible) {
                 Button("Merge \(counted(duplicates.extraCount, "Copy", plural: "Copies"))", role: .destructive, action: mergeDuplicates)

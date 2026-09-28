@@ -13,7 +13,7 @@ public enum ParcelTrackerModule {
     /// in the Mac sidebar. The first is where the module opens.
     public static let sections = [
         ModuleSection("parcels", title: "Orders", systemImage: "shippingbox"),
-        ModuleSection("settings", title: "Settings", systemImage: "gear"),
+        ModuleSection("settings", title: "Settings", systemImage: "gear", isSettings: true),
     ]
 
     /// Carrier credentials live in user defaults rather than the source tree,
@@ -28,6 +28,13 @@ public enum ParcelTrackerModule {
     /// `section` is the Mac sidebar's selection, which picks the section in
     /// place of a tab bar; leave it nil on the phone.
     @MainActor
+    /// Orders' settings on their own, for the Mac's Settings window — see
+    /// `ModuleSection.isSettings`.
+    public static func settingsView() -> some View {
+        ParcelSettingsView()
+            .tint(accent.color)
+    }
+
     public static func rootView(section: Binding<String>? = nil) -> some View {
         ParcelRootView(section: section)
     }

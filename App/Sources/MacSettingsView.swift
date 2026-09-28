@@ -1,11 +1,15 @@
 #if os(macOS)
+import ParcelTracker
 import SwiftUI
+import TVTracker
 
 /// The Settings window (⌘,): the phone's Settings screen, and Customize
 /// Trackers as a tab of its own rather than a row that pushes it — a Mac
 /// settings window switches panes from its toolbar and has no back button.
 /// General is the phone's screen itself, so "Apple Intelligence in Trips"
 /// (`TripsIntelligenceSection`) is here with no Mac-only copy to keep in step.
+/// TV and Orders have their settings here too, as tabs: on the phone they're a
+/// tab of the tracker, which on the Mac read as one of its screens.
 struct MacSettingsView: View {
     var body: some View {
         TabView {
@@ -18,6 +22,12 @@ struct MacSettingsView: View {
                 NavigationStack {
                     CustomizeTrackersView()
                 }
+            }
+            Tab("TV", systemImage: TVTrackerModule.symbolName) {
+                TVTrackerModule.settingsView()
+            }
+            Tab("Orders", systemImage: ParcelTrackerModule.symbolName) {
+                ParcelTrackerModule.settingsView()
             }
         }
         .formStyle(.grouped)

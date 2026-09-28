@@ -6,6 +6,7 @@ struct MoviesListView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \Movie.addedAt, order: .reverse) private var movies: [Movie]
     @State private var showingAddMovie = false
+    @Environment(\.moduleLayout) private var layout
 
     private var watchlist: [Movie] { movies.filter { !$0.isWatched } }
     private var watched: [Movie] { movies.filter(\.isWatched) }
@@ -22,6 +23,8 @@ struct MoviesListView: View {
                         Button("Add Movie") { showingAddMovie = true }
                             .primaryActionStyle(tint: TVTrackerModule.accent.color)
                     }
+                } else if layout == .sidebar {
+                    MacMoviesGrid(watchlist: watchlist, watched: watched) { modelContext.delete($0) }
                 } else {
                     List {
                         if !watchlist.isEmpty {

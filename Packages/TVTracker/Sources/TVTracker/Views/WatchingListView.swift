@@ -6,6 +6,7 @@ struct WatchingListView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \Show.addedAt, order: .reverse) private var shows: [Show]
     @State private var showingAddShow = false
+    @Environment(\.moduleLayout) private var layout
 
     private var grouped: [(ShowStatus, [Show])] {
         ShowStatus.allCases.compactMap { status in
@@ -26,6 +27,8 @@ struct WatchingListView: View {
                         Button("Add Show") { showingAddShow = true }
                             .primaryActionStyle(tint: TVTrackerModule.accent.color)
                     }
+                } else if layout == .sidebar {
+                    MacShowsGrid(groups: grouped) { modelContext.delete($0) }
                 } else {
                     List {
                         ForEach(grouped, id: \.0) { status, statusShows in

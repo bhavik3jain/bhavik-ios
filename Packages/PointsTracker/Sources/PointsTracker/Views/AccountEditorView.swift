@@ -107,10 +107,8 @@ struct AccountEditorView: View {
                         .disabled(!canSave || !canEdit(account, in: container))
                 }
             }
-            .alert("Add Person", isPresented: $addingPerson) {
-                TextField("Name", text: $newPersonName)
-                Button("Cancel", role: .cancel) {}
-                Button("Add") { addPerson() }
+            .textPrompt("Add Person", isPresented: $addingPerson, text: $newPersonName, prompt: "Name") {
+                addPerson()
             }
             .onAppear(perform: load)
             // Cancel is the only way out: it rolls back a person added from

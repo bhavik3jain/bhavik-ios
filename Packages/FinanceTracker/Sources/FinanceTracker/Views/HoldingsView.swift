@@ -5,6 +5,7 @@ import SwiftUI
 /// What the household holds: every account by category, and the gold and
 /// silver.
 struct HoldingsView: View {
+    @Environment(\.moduleLayout) private var layout
     @Environment(\.managedObjectContext) private var context
     @Environment(\.financePersistentContainer) private var container
     var data = FinanceFetches()
@@ -61,7 +62,7 @@ struct HoldingsView: View {
                         .accessibilityLabel(mode == .accounts ? "New Account" : "Add Gold or Silver")
                     }
                 }
-                ToolbarItem(placement: .secondaryAction) {
+                ToolbarItem(placement: layout.secondaryToolbarPlacement) {
                     ShareHouseholdButton()
                 }
             }

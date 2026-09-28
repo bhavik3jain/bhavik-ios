@@ -8,6 +8,11 @@ public enum FinanceFormat {
         value.formatted(.currency(code: "USD").precision(.fractionLength(0)))
     }
 
+    /// "$1.2M", "$850K" — a chart axis, where there's room for a few characters.
+    public static func compactMoney(_ value: Double) -> String {
+        value.formatted(.currency(code: "USD").notation(.compactName).precision(.significantDigits(1...3)))
+    }
+
     /// "$4.35".
     public static func cents(_ value: Double) -> String {
         value.formatted(.currency(code: "USD").precision(.fractionLength(2)))

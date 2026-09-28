@@ -23,7 +23,7 @@ struct TripRootView: View {
 
     @State private var selection = TripTrackerModule.sections[0].id
 
-    /// The sidebar's trip, while it still exists — one deleted here or on
+    /// The open trip, while it still exists — one deleted here or on
     /// another device drops back to the list rather than showing a husk.
     private var openTrip: SharedTrip? {
         guard let id = trip?.wrappedValue,
@@ -34,12 +34,26 @@ struct TripRootView: View {
     }
 
     var body: some View {
-        // One section — the trips themselves nest under Trips in the Mac
-        // sidebar instead of sections.
+        // One section: on the Mac, Trips is its trip list, and a trip opens
+        // in place of it with a way back in the toolbar.
         ModuleTabView(selection: $selection, sections: TripTrackerModule.sections) { _ in
             if layout == .sidebar, let openTrip {
                 NavigationStack {
                     TripDetailView(trip: openTrip, section: tripSection)
+                        .toolbar {
+                            // Back to the trips. They were rows under Trips in
+                            // the sidebar, which was the way back; the list
+                            // lives inside Trips now.
+                            ToolbarItem(placement: .navigation) {
+                                Button {
+                                    trip?.wrappedValue = nil
+                                } label: {
+                                    Label("All Trips", systemImage: "chevron.backward")
+                                }
+                                .help("All Trips (⌘[)")
+                                .keyboardShortcut("[", modifiers: .command)
+                            }
+                        }
                 }
                 // A fresh identity per trip, so its selected day and weather
                 // don't carry over into the next one picked in the sidebar.

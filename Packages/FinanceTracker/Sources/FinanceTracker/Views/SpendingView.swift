@@ -79,10 +79,8 @@ struct SpendingView: View {
             .sheet(item: $editing) { transaction in
                 TransactionEditorView(transaction: transaction, defaultDate: transaction.date)
             }
-            .alert("Add Budget", isPresented: $addingBudget) {
-                TextField("Category", text: $newBudgetCategory)
-                Button("Cancel", role: .cancel) {}
-                Button("Add") { addBudget(in: snapshot.household?.month(for: period)) }
+            .textPrompt("Add Budget", isPresented: $addingBudget, text: $newBudgetCategory, prompt: "Category") {
+                addBudget(in: snapshot.household?.month(for: period))
             }
             .onChange(of: snapshot.cards) { _, cards in
                 if let cardFilter, !cards.contains(cardFilter) { self.cardFilter = nil }

@@ -108,10 +108,10 @@ struct HomeView: View {
     /// The section each tracker was last left on in the Mac sidebar, so coming
     /// back to Fuel lands on Trends again — what a tab bar's own selection did.
     @State private var macSections: [SelectedModule: String] = [:]
-    /// The trip the sidebar has open under Trips; nil shows the trip list.
+    /// The trip open in Trips; nil shows the trip list. Kept here, not in the
+    /// module, so the Overview's trip card can open a trip on a given face.
     @State private var openTripID: NSManagedObjectID?
     @State private var tripSection: TripSection = .plan
-    @State private var showsPastTrips = false
     #endif
 
     var body: some View {
@@ -211,11 +211,11 @@ struct HomeView: View {
     /// expected to have: the sidebar IS the way in and out of a tracker, so
     /// there is no dismiss control to build and no sheet to size.
     ///
-    /// The sidebar also picks the tracker's section, nested under it, so a
-    /// module shows no tab bar here (`ModuleLayout.sidebar`). It used to embed
-    /// each module's phone chrome unchanged — a row of tabs under the toolbar
-    /// and a "Home" tab that, with no sheet to dismiss, just bounced back to
-    /// the module's first tab.
+    /// The sidebar lists the trackers and nothing else; a tracker's sections
+    /// are a segmented control in the window's toolbar (`ModuleTabView`'s
+    /// `.sidebar` layout), and Trips' trips are a list inside Trips. Both used
+    /// to be rows nested under the open tracker, so the sidebar grew and shrank
+    /// with every click and read as two levels of navigation in one list.
     private var macBody: some View {
         NavigationSplitView {
             // Re-read once a minute, as the sync footer is: "Day 3" and "in 12
@@ -231,9 +231,6 @@ struct HomeView: View {
                             MacSidebarRow(accent: module.accent, icon: module.icon, detail: sidebarDetail(for: module, asOf: context.date))
                                 .tag(MacSidebarItem.tracker(module))
                                 .contextMenu { contextMenuItems(for: module) }
-                            if module == selectedModule {
-                                nestedRows(for: module, asOf: context.date)
-                            }
                         }
                     }
                 }
@@ -243,7 +240,7 @@ struct HomeView: View {
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 if let syncMonitor { MacSyncFooter(monitor: syncMonitor) }
             }
-            .navigationSplitViewColumnWidth(min: 220, ideal: 240, max: 300)
+            .navigationSplitViewColumnWidth(min: 200, ideal: 220, max: 280)
         } detail: {
             if let selectedModule {
                 moduleContent(
@@ -302,18 +299,10 @@ struct HomeView: View {
         .onChange(of: layoutStore.visibleModules) { _, visible in
             if let selectedModule, !visible.contains(selectedModule) { self.selectedModule = nil }
         }
-        // A trip deleted or archived on another device dropped the detail pane
-        // back to the list, but the selection still named it — so neither
-        // Trips nor any trip showed as selected.
+        // A trip deleted or archived on another device goes back to the list
+        // rather than leaving Trips on a trip that's gone.
         .onChange(of: tripResults.map(\.objectID)) { _, ids in
             if let openTripID, !ids.contains(openTripID) { self.openTripID = nil }
-        }
-        // A past trip opened from the list, or open when "Past trips" was
-        // folded, was selected inside a collapsed disclosure: nothing in the
-        // sidebar looked selected.
-        .onChange(of: openTripID, initial: true) { _, id in
-            guard let id, TripTrackerModule.sidebarTrips(trips).past.contains(where: { $0.objectID == id }) else { return }
-            showsPastTrips = true
         }
     }
 
@@ -330,31 +319,18 @@ struct HomeView: View {
         }
     }
 
-    /// The List's selection, read from and written to the state the detail
-    /// pane is actually built from — which tracker, which of its sections,
-    /// which trip. A tracker with sections is shown selected on its section
-    /// row, so choosing the tracker's own row lands on the section it was
-    /// last left on, as reopening a tab bar did.
+    /// The List's selection: Overview or a tracker. Choosing a tracker lands
+    /// on the section it was last left on, and Trips on the trip it was last
+    /// left on, as reopening a tab bar did.
     private var sidebarSelection: Binding<MacSidebarItem?> {
         Binding {
-            guard let module = selectedModule else { return .overview }
-            if module == .trips, let openTripID { return .trip(openTripID) }
-            if module.sections.count > 1 { return .section(module, sectionBinding(for: module).wrappedValue) }
-            return .tracker(module)
+            selectedModule.map(MacSidebarItem.tracker) ?? .overview
         } set: { item in
             switch item {
             case .overview?:
                 selectedModule = nil
             case .tracker(let module)?:
-                if module == .trips { openTripID = nil }
                 selectedModule = module
-            case .section(let module, let section)?:
-                macSections[module] = section
-                selectedModule = module
-            case .trip(let id)?:
-                if openTripID != id { tripSection = .plan }
-                openTripID = id
-                selectedModule = .trips
             case nil:
                 // A click on empty sidebar space clears a List's selection;
                 // the detail pane stays as it was rather than going blank.
@@ -368,37 +344,6 @@ struct HomeView: View {
             macSections[module] ?? module.sections.first?.id ?? ""
         } set: {
             macSections[module] = $0
-        }
-    }
-
-    /// Under the open tracker: its sections when it has more than one, or —
-    /// for Trips, whose one section is the list — the trips themselves.
-    @ViewBuilder
-    private func nestedRows(for module: SelectedModule, asOf now: Date) -> some View {
-        if module == .trips {
-            let groups = TripTrackerModule.sidebarTrips(trips, asOf: now)
-            ForEach(groups.current) { trip in
-                MacNestedRow(
-                    title: trip.title,
-                    dot: groups.underWay.contains(trip.objectID) ? module.accent.color : nil
-                )
-                .tag(MacSidebarItem.trip(trip.objectID))
-            }
-            if !groups.past.isEmpty {
-                DisclosureGroup(isExpanded: $showsPastTrips) {
-                    ForEach(groups.past) { trip in
-                        MacNestedRow(title: trip.title)
-                            .tag(MacSidebarItem.trip(trip.objectID))
-                    }
-                } label: {
-                    MacNestedRow(title: "Past trips")
-                }
-            }
-        } else if module.sections.count > 1 {
-            ForEach(module.sections) { section in
-                MacNestedRow(title: section.title)
-                    .tag(MacSidebarItem.section(module, section.id))
-            }
         }
     }
 
@@ -698,58 +643,27 @@ private struct ModuleRow: View {
 enum MacSidebarItem: Hashable {
     case overview
     case tracker(SelectedModule)
-    case section(SelectedModule, String)
-    case trip(NSManagedObjectID)
 }
 
-/// A tracker's sidebar row: its 22pt tile, its name, and a short figure at the
-/// trailing edge. No chevron and no button action — `List(selection:)` on the
-/// enclosing list already makes the whole row a click target and shows the
-/// selected one highlighted, the way Mail's or Notes' sidebar does.
+/// A tracker's sidebar row: its symbol in its colour, its name, and a short
+/// figure as the system's own badge — the way Mail and Notes draw theirs.
+///
+/// It used to be a filled 22pt tile (the phone hub's icon, shrunk) and the
+/// figure as hand-set 11pt text, which read as an iPhone settings list
+/// dropped into a Mac window.
 private struct MacSidebarRow: View {
     let accent: ModuleAccent
     let icon: String
     let detail: String?
 
     var body: some View {
-        HStack(spacing: 8) {
-            ModuleIconTile(color: accent.color, symbol: icon, size: 22)
+        Label {
             Text(accent.name)
-            Spacer(minLength: 4)
-            if let detail {
-                Text(detail)
-                    .font(.system(size: 11))
-                    .monospacedDigit()
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
+        } icon: {
+            Image(systemName: icon)
+                .foregroundStyle(accent.color)
         }
-    }
-}
-
-/// A section or trip nested under the open tracker: text only, indented to
-/// line up with the tracker's name rather than its tile, with a dot at the
-/// trailing edge for the trip under way.
-///
-/// It used to carry an SF Symbol per row (suitcase, clock, car), which gave
-/// the nested rows the same weight as the trackers they sit under.
-private struct MacNestedRow: View {
-    let title: String
-    var dot: Color?
-
-    var body: some View {
-        HStack(spacing: 6) {
-            Text(title).lineLimit(1)
-            Spacer(minLength: 4)
-            if let dot {
-                Circle()
-                    .fill(dot)
-                    .frame(width: 6, height: 6)
-                    .accessibilityLabel("In progress")
-            }
-        }
-        .font(.system(size: 12.5))
-        .padding(.leading, 30)
+        .badge(detail.map { Text($0).monospacedDigit() })
     }
 }
 
