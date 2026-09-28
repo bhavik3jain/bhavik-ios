@@ -271,6 +271,8 @@ private struct VehicleDesktopLog: View {
                 }
             }
         }
+        // No blank striped rows filling the space under the last fill-up.
+        .alternatingRowBackgrounds(.disabled)
     }
 
     private func figure(_ text: String?) -> some View {

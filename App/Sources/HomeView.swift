@@ -250,6 +250,10 @@ struct HomeView: View {
                     tripSection: $tripSection
                 )
                 .environment(\.moduleLayout, .sidebar)
+                // Every form — editors, sheets, settings panes — in the grouped
+                // style System Settings uses, not the Mac's default two-column
+                // one, which laid the phone's forms out like a 2001 dialog.
+                .formStyle(.grouped)
                 .presentsShareSheets()
                 // A fresh identity per tracker, so switching trackers can't
                 // leave one module's navigation state bleeding into another's

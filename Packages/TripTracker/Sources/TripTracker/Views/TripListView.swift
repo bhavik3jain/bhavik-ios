@@ -23,6 +23,8 @@ struct TripListView: View {
 
     @State private var showingAdd = false
     @State private var pendingDelete: SharedTrip?
+    @State private var showingArchived = false
+    @Environment(\.moduleLayout) private var layout
 
     /// Opens a trip somewhere other than this stack. The Mac sidebar lists
     /// the trips too, and a trip pushed here left the sidebar's row for it
@@ -89,6 +91,21 @@ struct TripListView: View {
                     .primaryActionStyle(tint: TripTrackerModule.accent.color)
             }
             .scrollsForRefresh()
+        } else if layout == .sidebar {
+            MacTripsGrid(
+                groups: groups,
+                archivedCount: archived.count,
+                now: now,
+                open: { onOpen?($0) },
+                canEdit: canEdit,
+                archive: { trip in
+                    trip.isArchived = true
+                    try? modelContext.saveIfNeeded()
+                },
+                delete: { pendingDelete = $0 },
+                showArchived: { showingArchived = true }
+            )
+            .navigationDestination(isPresented: $showingArchived) { ArchivedTripsView() }
         } else {
             List {
                 if !groups.inProgress.isEmpty {
