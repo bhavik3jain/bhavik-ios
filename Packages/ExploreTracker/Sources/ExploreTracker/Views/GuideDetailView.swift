@@ -25,12 +25,13 @@ struct GuideDetailView: View {
         GuidePins.earliestPinDates(pinResults)[GuidePins.key(for: guide)] != nil
     }
 
-    // Sharing status is a cheap, synchronous CloudKit cache lookup (see
-    // `SharingStatusResolver`'s own doc comment), not something worth a round
-    // trip through `@State` — read fresh on every body evaluation.
+    // Read through `badgeStatus`: this device's last known answer at once,
+    // looked up again off the main thread (`SharingStatusCache`). It was a
+    // synchronous `fetchShares` on every body evaluation, thought cheap, but it
+    // waits on the container's executor — the wait that deadlocked Share.
     private var sharingStatus: SharingStatus {
         guard let container else { return .notShared }
-        return SharingStatusResolver.status(for: guide, in: container)
+        return SharingStatusResolver.badgeStatus(for: guide, in: container)
     }
     private var canEdit: Bool {
         guard let container else { return true }

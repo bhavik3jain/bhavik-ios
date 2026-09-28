@@ -157,7 +157,7 @@ struct GarageView: View {
 
     private func sharingLabel(for vehicle: SharedVehicle) -> String? {
         guard let container else { return nil }
-        return SharingStatusResolver.status(for: vehicle, in: container).vehicleBadgeLabel
+        return SharingStatusResolver.badgeStatus(for: vehicle, in: container).vehicleBadgeLabel
     }
 
     private func canEdit(_ vehicle: SharedVehicle) -> Bool {

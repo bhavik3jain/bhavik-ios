@@ -201,6 +201,7 @@ enum CloudSharingPresenter {
         // Sharing has started: the moment notifications about the other
         // person's changes start to matter. See SharedChangeNotifications.
         func cloudSharingControllerDidSaveShare(_ csc: UICloudSharingController) {
+            Task { @MainActor in SharingStatusCache.shared.invalidateAll() }
             Task {
                 await SharedChangeNotifications.requestAuthorizationIfUndetermined()
                 SharedChangeServerAlerts.shared.sync(force: true)
@@ -210,7 +211,10 @@ enum CloudSharingPresenter {
         // The owner stopped sharing, or a participant left: that share's
         // iCloud alert goes with it.
         func cloudSharingControllerDidStopSharing(_ csc: UICloudSharingController) {
-            Task { @MainActor in SharedChangeServerAlerts.shared.sync(force: true) }
+            Task { @MainActor in
+                SharingStatusCache.shared.invalidateAll()
+                SharedChangeServerAlerts.shared.sync(force: true)
+            }
         }
     }
 }
@@ -424,6 +428,7 @@ private final class ShareCoordinator: ObservableObject {
                     } else if let newShare {
                         ShareAcceptRouter.stamp(newShare, for: self.request.object)
                         self.share = newShare
+                        SharingStatusCache.shared.invalidateAll()
                         self.persist(newShare)
                     }
                     continuation.resume()
@@ -478,6 +483,7 @@ private final class ShareCoordinator: ObservableObject {
                     self.errorMessage = error.localizedDescription
                 } else if let updatedShare {
                     self.share = updatedShare
+                    SharingStatusCache.shared.invalidateAll()
                 }
             }
         }

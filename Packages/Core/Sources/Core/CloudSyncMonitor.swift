@@ -124,9 +124,9 @@ public final class CloudSyncMonitor {
         // `-[NSOperation waitUntilFinished]` under `eventUpdated:`. The share
         // calls moved off the main thread too (CloudShareCalls.swift); this
         // takes the other half of the cycle away, so the main thread's
-        // remaining synchronous container calls (`fetchShares(matching:)`
-        // for a "Shared" badge, `canUpdateRecord`) can wait, but never
-        // deadlock. `DispatchQueue.main` runs the blocks in the order they
+        // remaining synchronous container calls (`canUpdateRecord`, and
+        // Finance's rare owned-share check) can wait, but never deadlock.
+        // "Shared" badges moved off the main thread (`SharingStatusCache`). `DispatchQueue.main` runs the blocks in the order they
         // were posted, which the ledger relies on.
         _ = center.addObserver(
             forName: NSPersistentCloudKitContainer.eventChangedNotification,

@@ -283,6 +283,15 @@ Don't trust these comments, and don't "fix" the code they describe.
   `dasd` rate-limits all syncing for hours — then waits, bounded, for a real import event. A list
   gets pull-to-refresh with `.refreshesFromCloud()`; don't hand-roll a `.refreshable` that sleeps.
   Never "force" a sync by removing and re-adding stores: every managed object a view holds dies.
+- **Never call `NSPersistentCloudKitContainer`'s sharing API on the main thread.** Each call
+  (`fetchShares`, `share`, `persistUpdatedShare`, `fetchParticipants`, `acceptShareInvitations`)
+  waits synchronously for the container's executor, which iCloud's own exports hold: TestFlight
+  build 16 deadlocked on Share and was killed (0x8BADF00D). Use Core's `…InBackground` forms
+  (`CloudShareCalls.swift`), and `SharingStatusResolver.badgeStatus(for:in:)` for any "Shared"
+  badge — it answers from `SharingStatusCache` and looks up off the main thread. The synchronous
+  `status(for:in:)` is only for Finance's rare owned-share checks, which must not act on a stale
+  answer. Notification delegate methods use the completion-handler forms, answered on the main
+  thread: the `async` forms ran on Swift's cooperative pool and crashed every notification tap.
 - `CSVParser.swift`'s `case "\n", "\r\n", "\r":` only *looks* redundant. Swift folds CRLF into a
   single `Character`, so `"\r\n"` matches neither neighbour. Delete it and a Windows-exported CSV
   arrives as one enormous field and parses to zero rows — breaking both importers.

@@ -183,7 +183,7 @@ struct InProgressTripCard: View {
     @Environment(\.tripPersistentContainer) private var container
     private var sharingLabel: String? {
         guard let container else { return nil }
-        return SharingStatusResolver.status(for: trip, in: container).tripBadgeLabel
+        return SharingStatusResolver.badgeStatus(for: trip, in: container).tripBadgeLabel
     }
 
     var body: some View {
@@ -279,7 +279,7 @@ struct UpcomingTripRow: View {
     @Environment(\.tripPersistentContainer) private var container
     private var sharingLabel: String? {
         guard let container else { return nil }
-        return SharingStatusResolver.status(for: trip, in: container).tripBadgeLabel
+        return SharingStatusResolver.badgeStatus(for: trip, in: container).tripBadgeLabel
     }
 
     var body: some View {
@@ -330,7 +330,7 @@ struct FinishedTripRow: View {
     @Environment(\.tripPersistentContainer) private var container
     private var sharingLabel: String? {
         guard let container else { return nil }
-        return SharingStatusResolver.status(for: trip, in: container).tripBadgeLabel
+        return SharingStatusResolver.badgeStatus(for: trip, in: container).tripBadgeLabel
     }
 
     var body: some View {

@@ -14,12 +14,13 @@ struct VehicleLogView: View {
     @Environment(\.presentShareSheet) private var presentShareSheet
     @Environment(\.moduleLayout) private var layout
 
-    // Sharing status is a cheap, synchronous CloudKit cache lookup (see
-    // `SharingStatusResolver`'s own doc comment), not something worth a round
-    // trip through `@State` — read fresh on every body evaluation.
+    // Read through `badgeStatus`: this device's last known answer at once,
+    // looked up again off the main thread (`SharingStatusCache`). It was a
+    // synchronous `fetchShares` on every body evaluation, thought cheap, but it
+    // waits on the container's executor — the wait that deadlocked Share.
     private var sharingStatus: SharingStatus {
         guard let vehicle, let container else { return .notShared }
-        return SharingStatusResolver.status(for: vehicle, in: container)
+        return SharingStatusResolver.badgeStatus(for: vehicle, in: container)
     }
     private var canEdit: Bool {
         guard let vehicle, let container else { return true }
