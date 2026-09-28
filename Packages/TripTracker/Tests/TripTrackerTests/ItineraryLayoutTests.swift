@@ -194,6 +194,8 @@ private func code(_ section: String, _ code: String, isFlight: Bool = false) -> 
     #expect(short.codeWidth == M.minCodeWidth)
     #expect(long.codeWidth > short.codeWidth)
     #expect(long.codeWidth <= M.maxCodeWidth)
+    let drawn = TextMeasure.fixed.width("VAT-230611-88-EXTRA-LONG", .code) + 24 * M.codeKerning + 2 * M.codePadding
+    #expect(long.codeWidth >= drawn, "The tracking the code is drawn with is part of its width")
 }
 
 @Test func codesGroupBySectionAndSplitAcrossPages() {
@@ -249,6 +251,25 @@ private func code(_ section: String, _ code: String, isFlight: Bool = false) -> 
     #expect(footers[0].weatherCredit?.contains("1 Jun 2026") == true, "A printed forecast says when it was fetched")
     #expect(footers[1].weatherCredit == nil, "The codes page has no weather")
     #expect(footers[2].weatherCredit != nil)
+}
+
+@Test func theWeatherCreditIsALinkOverItsOwnLine() {
+    let rect = M.weatherCreditRect
+    let url = ItineraryLayout.Footer.legalAttributionURL
+    #expect(url.absoluteString == "https://weatherkit.apple.com/legal-attribution.html")
+    // PDF space starts at the bottom left: the footer's second line sits on
+    // the bottom margin, under the page and clear of its body.
+    // Compared as a point: `rect.minY == M.bottomMargin` inside `#expect`
+    // mixes CGFloat and Double, and failed printing 40.0 on both sides.
+    #expect(rect.origin == CGPoint(x: M.sideMargin, y: M.bottomMargin))
+    #expect(rect.maxY <= M.bottomMargin + M.footerHeight)
+    #expect(rect.maxX < M.pageSize.width - M.sideMargin, "Stops short of \"Made in Multitrack\"")
+
+    let sunny = ItineraryDocument.Weather(symbolName: "sun.max", summary: "Sunny", temperatures: "28° / 19°")
+    let doc = document(days: [sampleDay(1, lines: [line("Colosseum")], weather: sunny)], weatherAsOf: "1 Jun 2026")
+    let layout = ItineraryLayout(document: doc, measure: .fixed)
+    let footer = ItineraryLayout.Footer(document: doc, page: layout.pages[1], number: 2, count: 2)
+    #expect(footer.weatherCredit?.contains("weatherkit.apple.com/legal-attribution.html") == true, "The printed link is the linked one")
 }
 
 @Test func pageLabelsNameTheirDays() {

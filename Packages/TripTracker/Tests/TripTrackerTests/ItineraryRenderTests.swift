@@ -1,6 +1,7 @@
 import Core
 import CoreData
 import Foundation
+import PDFKit
 import Testing
 @testable import TripTracker
 
@@ -90,4 +91,42 @@ func rendersTheSampleItinerary() throws {
     let url = folder.appendingPathComponent("itinerary.pdf")
     try ItineraryPDF.write(document, to: url)
     #expect(FileManager.default.fileExists(atPath: url.path))
+}
+
+/// The written file itself, not just the page model: the layout tests prove
+/// where things should go, and nothing else checked that `ItineraryPDF`
+/// draws one PDF page per layout page, keeps the text as text (a material or
+/// shadow anywhere rasterises the page, and it stops being searchable), and
+/// never lets the secure note in. Runs in CI, into a throwaway folder.
+@MainActor
+@Test func theWrittenPDFMatchesItsLayout() throws {
+    let context = try makeContext()
+    let trip = makeSampleTrip(in: context)
+    let document = ItineraryDocument(trip: trip, weather: sampleWeather, asOf: day(6, 5))
+    let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+    try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let url = folder.appendingPathComponent("itinerary.pdf")
+    try ItineraryPDF.write(document, to: url)
+
+    let pdf = try #require(PDFDocument(url: url))
+    let layout = ItineraryLayout(document: document)
+    #expect(pdf.pageCount == layout.pages.count)
+    #expect(pdf.documentAttributes?[PDFDocumentAttribute.titleAttribute] as? String == "Rome & Amalfi")
+
+    var text = ""
+    for index in 0..<pdf.pageCount {
+        let page = try #require(pdf.page(at: index))
+        #expect(page.bounds(for: .mediaBox).size == ItineraryMetrics.pageSize)
+        let pageText = page.string ?? ""
+        #expect(pageText.contains("Page \(index + 1) of \(pdf.pageCount)"), "Page \(index + 1) is drawn as text")
+        let links = page.annotations.compactMap(\.url)
+        #expect(links == (layout.pages[index].showsWeather ? [ItineraryLayout.Footer.legalAttributionURL] : []))
+        text += pageText
+    }
+    for code in ["XK7P2M", "RM-88412", "HMX4920", "PNR 7XQ2LA", "VAT-230611-88"] {
+        #expect(text.contains(code), "\(code) is printed")
+    }
+    #expect(!text.contains("DOOR-4471"), "The secure note never reaches the file")
+    #expect(!text.contains("Aventine keyhole"), "Ideas stay in the app")
 }

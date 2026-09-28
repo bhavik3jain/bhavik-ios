@@ -271,7 +271,12 @@ struct ItineraryLayout: Equatable {
     static func card(for confirmation: ItineraryDocument.Confirmation, measure: TextMeasure) -> Card {
         typealias M = ItineraryMetrics
         let code = confirmation.code.isEmpty ? "—" : confirmation.code
-        let codeWidth = min(M.maxCodeWidth, max(M.minCodeWidth, measure.width(code, .code) + 2 * M.codePadding))
+        // The code is drawn with tracking, so that goes into its width too.
+        // Measured without it, a 13-character code came out 6pt short, and
+        // `minimumScaleFactor` quietly shrank the one thing on the page meant
+        // to be read from arm's length.
+        let codeText = measure.width(code, .code) + Double(code.count) * M.codeKerning
+        let codeWidth = min(M.maxCodeWidth, max(M.minCodeWidth, codeText + 2 * M.codePadding))
         let textWidth = M.bodyWidth - 2 * M.cardPadding - M.cardSpacing - codeWidth
         let detailLines = confirmation.detail.isEmpty ? 0 : min(2, measure.lines(confirmation.detail, .cardDetail, textWidth))
         return Card(
@@ -346,11 +351,18 @@ struct ItineraryLayout: Equatable {
         /// page without weather.
         let weatherCredit: String?
 
+        /// The legal page `WeatherAttributionView` links to. Printed as text,
+        /// and made a real link over `ItineraryMetrics.weatherCreditRect` for
+        /// whoever reads the PDF on a screen — text alone was only a link in
+        /// the viewers that happen to guess at URLs.
+        static let legalAttributionURL = URL(string: "https://weatherkit.apple.com/legal-attribution.html")!
+
         init(document: ItineraryDocument, page: Page, number: Int, count: Int) {
             trip = document.dateRange.isEmpty ? document.title : "\(document.title) · \(document.dateRange)"
             pageNumber = "Page \(number) of \(count)"
             if page.showsWeather, let asOf = document.weatherAsOf {
-                weatherCredit = "Apple Weather · Other data sources: weatherkit.apple.com/legal-attribution.html · forecast as of \(asOf)"
+                let link = "\(Self.legalAttributionURL.host() ?? "")\(Self.legalAttributionURL.path())"
+                weatherCredit = "Apple Weather · Other data sources: \(link) · forecast as of \(asOf)"
             } else {
                 weatherCredit = nil
             }
@@ -389,6 +401,10 @@ enum ItineraryMetrics {
     /// Two lines of footer, and the rule and space above them.
     static let footerHeight = 34.0
     static let bodyHeight = pageSize.height - topMargin - bottomMargin - footerHeight - 12
+    /// The footer's second line, where the weather credit sits, in the PDF's
+    /// own coordinates — origin bottom left, which is what a link annotation
+    /// is placed in. It stops short of "Made in Multitrack" on the right.
+    static let weatherCreditRect = CGRect(x: sideMargin, y: bottomMargin, width: bodyWidth - 80, height: 10)
 
     /// "Day by day" or "Flights & bookings", its rule and the space under it.
     static let pageHeaderHeight = 48.0
@@ -423,6 +439,8 @@ enum ItineraryMetrics {
     static let cardSpacing = 12.0
     static let cardGap = 7.0
     static let codePadding = 10.0
+    /// The tracking between a code's characters, drawn and measured.
+    static let codeKerning = 0.5
     static let minCodeWidth = 118.0
     static let maxCodeWidth = 230.0
 

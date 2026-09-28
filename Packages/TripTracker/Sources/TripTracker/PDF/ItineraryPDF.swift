@@ -42,6 +42,11 @@ enum ItineraryPDF {
             renderer.render { _, draw in
                 draw(context)
             }
+            if footer.weatherCredit != nil {
+                // `ImageRenderer` draws a SwiftUI `Link` as plain text, so the
+                // legal link WeatherKit asks for is annotated onto the page here.
+                context.setURL(ItineraryLayout.Footer.legalAttributionURL as CFURL, for: ItineraryMetrics.weatherCreditRect)
+            }
             context.endPDFPage()
         }
         context.closePDF()
@@ -303,13 +308,19 @@ private struct CoverPageView: View {
                 .frame(width: M.glanceDayWidth, alignment: .leading)
             Text(row.date)
                 .font(.system(size: 10))
+                .minimumScaleFactor(0.8)
                 .frame(width: M.glanceDateWidth, alignment: .leading)
-            Group {
+            // The count is its own Text, never truncated: interpolated into
+            // the highlights, a first title too long for the line took the
+            // "+3" down with it under the ellipsis, and a day of four stops
+            // read on the cover as a day of one.
+            HStack(spacing: 4) {
+                Text(row.highlights)
+                    .foregroundStyle(row.highlights == ItineraryLayout.nothingPlanned ? Ink.muted : Ink.text)
                 if row.more > 0 {
-                    Text("\(Text(row.highlights)) \(Text("+\(row.more)").foregroundStyle(Ink.faint))")
-                } else {
-                    Text(row.highlights)
-                        .foregroundStyle(row.highlights == ItineraryLayout.nothingPlanned ? Ink.muted : Ink.text)
+                    Text("+\(row.more)")
+                        .foregroundStyle(Ink.faint)
+                        .fixedSize()
                 }
             }
             .font(.system(size: 10))
@@ -405,7 +416,7 @@ private struct CardView: View {
                     .foregroundStyle(Ink.muted)
                 Text(confirmation.code.isEmpty ? "—" : confirmation.code)
                     .font(.system(size: ItineraryType.code.size, weight: .bold, design: .monospaced))
-                    .kerning(0.5)
+                    .kerning(M.codeKerning)
                     .lineLimit(1)
                     .minimumScaleFactor(0.5)
             }
@@ -505,6 +516,9 @@ private struct DaySliceView: View {
         HStack(alignment: .firstTextBaseline, spacing: 6) {
             Text("\(Text("Day \(day.dayNumber)").foregroundStyle(Ink.accent)) · \(day.heading)")
                 .font(.system(size: 13.5, weight: .bold))
+                // The date wins the line: with a long month and a long
+                // forecast, it's the weather that gets the ellipsis.
+                .layoutPriority(1)
             if slice.isContinuation {
                 Text("continued")
                     .font(.system(size: 8.5))
@@ -544,6 +558,9 @@ private struct RowView: View {
                 }
             }
             .lineLimit(1)
+            // "12:30 PM" just fits the column; a locale's longer form, like
+            // en_CA's "12:30 p.m.", would otherwise be cut to "12:30 p…".
+            .minimumScaleFactor(0.7)
             .frame(width: M.timeWidth, alignment: .trailing)
 
             Image(systemName: line.symbolName)
