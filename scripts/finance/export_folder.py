@@ -89,7 +89,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--folder", default=DEFAULT_FOLDER, help="default: iCloud Drive › Multitrack › Finance")
     parser.add_argument("--template", default=DEFAULT_TEMPLATE, help="default: the committed template")
     parser.add_argument("--force", action="store_true", help="export every month, even those up to date")
-    parser.add_argument("--troy-fix", action="store_true", help="write Weight (oz) in troy ounces")
+    parser.add_argument("--troy-fix", action="store_true", help="write Weight (oz) in troy ounces; the sheet then disagrees with the app by ~9.7%% on metals")
     args = parser.parse_args(argv)
 
     if not os.path.isdir(args.folder):

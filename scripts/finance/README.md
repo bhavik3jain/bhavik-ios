@@ -71,10 +71,15 @@ uv run scripts/finance/export_numbers.py "Finance 2026-09.json" \
 
 ### Troy ounces
 
-`--troy-fix` writes Weight (oz) as grams ÷ 31.1035. Without it every metal row gets the sheet's
-own `CONVERT(Weight (g),"g","ozm")`, which uses the 28.35 g avoirdupois ounce and overstates gold
-and silver by about 9.7%. The app always values metals in troy ounces, so the sheet and the app
-differ by that much until you use `--troy-fix`.
+By default every metal row gets the sheet's own `CONVERT(Weight (g),"g","ozm")`, which uses the
+28.35 g avoirdupois ounce. The app values metals in that same regular ounce
+(`MetalValuation.gramsPerOunce`), so the sheet and the app agree. Gold and silver are priced per
+troy ounce (31.1035 g), so both come out about 9.7% above market: a deliberate choice, to match
+the sheet.
+
+`--troy-fix` writes Weight (oz) as grams ÷ 31.1035 instead, valuing metals in troy ounces. That's
+nearer the market, but the sheet then **disagrees with the app** by about 9.7% on every metal, and
+on Personal Items, Total Assets and Total Net Worth with it.
 
 ## Rules the export keeps
 

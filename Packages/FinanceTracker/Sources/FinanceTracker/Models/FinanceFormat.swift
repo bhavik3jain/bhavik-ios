@@ -24,9 +24,9 @@ public enum FinanceFormat {
         "\(value.formatted(.number.precision(.fractionLength(0...2)))) g"
     }
 
-    /// "0.868 oz t".
-    public static func troyOunces(_ value: Double) -> String {
-        "\(value.formatted(.number.precision(.fractionLength(0...3)))) oz t"
+    /// "0.952 oz" — regular ounces, the ones `MetalValuation` values in.
+    public static func ounces(_ value: Double) -> String {
+        "\(value.formatted(.number.precision(.fractionLength(0...3)))) oz"
     }
 
     /// A figure for a text field: no currency sign or grouping, so it reads

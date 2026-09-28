@@ -34,7 +34,7 @@ private func twoMonths() -> (august: SharedFinanceMonth, september: SharedFinanc
     let september = SharedFinanceMonth(period: YearMonth(year: 2026, month: 9), household: household)
     september.goldPricePerOz = 4_000
     september.silverPricePerOz = 50
-    _ = SharedFinanceMetalItem(name: "Bar", metal: .gold, grams: 31.1035, household: household, owner: nil)
+    _ = SharedFinanceMetalItem(name: "Bar", metal: .gold, grams: MetalValuation.gramsPerOunce, household: household, owner: nil)
     return (august, september)
 }
 

@@ -3,7 +3,8 @@ import CoreData
 import SwiftUI
 
 /// Adds a piece of gold or silver, or edits one. Weight can be typed in grams
-/// or troy ounces; it's always stored in grams.
+/// or regular ounces (the ones `MetalValuation` values in); it's always stored
+/// in grams.
 struct MetalEditorView: View {
     let item: SharedFinanceMetalItem?
 
@@ -14,7 +15,7 @@ struct MetalEditorView: View {
 
     private enum WeightUnit: String, CaseIterable, Identifiable {
         case grams = "g"
-        case troyOunces = "oz t"
+        case ounces = "oz"
         var id: String { rawValue }
     }
 
@@ -35,7 +36,7 @@ struct MetalEditorView: View {
     /// Whatever was typed, in grams.
     private var grams: Double? {
         guard let weight = FinanceInput.parse(weightText) else { return nil }
-        return unit == .grams ? weight : MetalValuation.grams(troyOunces: weight)
+        return unit == .grams ? weight : MetalValuation.grams(ounces: weight)
     }
 
     private var canSave: Bool {
@@ -72,13 +73,13 @@ struct MetalEditorView: View {
                 } footer: {
                     if let grams {
                         Text(unit == .grams
-                             ? "= \(FinanceFormat.troyOunces(MetalValuation.troyOunces(grams: grams)))"
+                             ? "= \(FinanceFormat.ounces(MetalValuation.ounces(grams: grams)))"
                              : "= \(FinanceFormat.grams(grams))")
                     }
                 }
 
                 Section {
-                    LabeledContent("Price paid per oz t") {
+                    LabeledContent("Price paid per oz") {
                         TextField("Unknown", text: $pricePaidText)
                             .keyboardType(.decimalPad)
                             .multilineTextAlignment(.trailing)
@@ -108,7 +109,7 @@ struct MetalEditorView: View {
                 } footer: {
                     Text(hasManualValue
                          ? "For a piece worth more than its metal — a ring with stones."
-                         : "Weight at \(snapshot.latestMonth?.monthName ?? "the latest month")'s \(metal.displayName.lowercased()) price, \(FinanceFormat.cents(prices.price(for: metal))) per oz t.")
+                         : "Weight at \(snapshot.latestMonth?.monthName ?? "the latest month")'s \(metal.displayName.lowercased()) price, \(FinanceFormat.cents(prices.price(for: metal))) per oz.")
                 }
 
                 Section("Where") {
@@ -148,12 +149,12 @@ struct MetalEditorView: View {
             }
             .onAppear(perform: load)
             // Switching the unit converts what's typed rather than
-            // reinterpreting it: 31.1 g must not become 31.1 oz t.
+            // reinterpreting it: 28.35 g must not become 28.35 oz.
             .onChange(of: unit) { oldUnit, newUnit in
                 guard let weight = FinanceInput.parse(weightText), oldUnit != newUnit else { return }
                 let converted = newUnit == .grams
-                    ? MetalValuation.grams(troyOunces: weight)
-                    : MetalValuation.troyOunces(grams: weight)
+                    ? MetalValuation.grams(ounces: weight)
+                    : MetalValuation.ounces(grams: weight)
                 weightText = converted.formatted(
                     .number.grouping(.never).precision(.fractionLength(0...4)).locale(Locale(identifier: "en_US_POSIX"))
                 )
@@ -164,7 +165,7 @@ struct MetalEditorView: View {
     /// Weight × price paid, shown as the purchase value's placeholder.
     private var purchasePlaceholder: String {
         guard let grams, let price = FinanceInput.parse(pricePaidText), price > 0 else { return "Unknown" }
-        return FinanceFormat.money(MetalValuation.troyOunces(grams: grams) * price)
+        return FinanceFormat.money(MetalValuation.ounces(grams: grams) * price)
     }
 
     private func automaticValue(prices: MetalPrices) -> Double {

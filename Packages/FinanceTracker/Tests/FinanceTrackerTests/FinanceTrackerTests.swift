@@ -75,29 +75,41 @@ private func approximately(_ lhs: Double, _ rhs: Double, within tolerance: Doubl
 
 // MARK: - Metals
 
-@Test func metalsAreValuedPerTroyOunce() {
-    #expect(MetalValuation.gramsPerTroyOunce == 31.1035)
-    #expect(approximately(MetalValuation.troyOunces(grams: 31.1035), 1))
-    #expect(approximately(MetalValuation.grams(troyOunces: 2), 62.207))
+/// One regular (avoirdupois) ounce: what the Numbers sheet's "ozm" converts with.
+private let ounce = 28.349523125
+
+@Test func metalsAreValuedPerRegularOunceLikeTheSheet() {
+    #expect(MetalValuation.gramsPerOunce == 28.349523125)
+    #expect(approximately(MetalValuation.ounces(grams: ounce), 1))
+    #expect(approximately(MetalValuation.grams(ounces: 2), 56.69904625))
 
     let prices = MetalPrices(gold: 4_500, silver: 52)
-    #expect(approximately(MetalValuation.value(grams: 62.207, metal: .gold, manualValue: nil, prices: prices), 9_000, within: 0.01))
-    #expect(approximately(MetalValuation.value(grams: 31.1035, metal: .silver, manualValue: nil, prices: prices), 52, within: 0.01))
+    #expect(approximately(MetalValuation.value(grams: 2 * ounce, metal: .gold, manualValue: nil, prices: prices), 9_000, within: 0.01))
+    #expect(approximately(MetalValuation.value(grams: ounce, metal: .silver, manualValue: nil, prices: prices), 52, within: 0.01))
     #expect(MetalValuation.value(grams: 6, metal: .gold, manualValue: 3_500, prices: prices) == 3_500, "A hand-set value wins")
 }
 
+@Test func aTroyOunceCoinIsWorthAboutTenPercentOverItsQuote() {
+    // Deliberate: prices are per troy ounce, weights in regular ounces, as in
+    // the sheet. A 1 oz t coin at $4,500 values at ~$4,937, not $4,500.
+    let prices = MetalPrices(gold: 4_500, silver: 52)
+    let coin = MetalValuation.value(grams: MetalValuation.gramsPerTroyOunce, metal: .gold, manualValue: nil, prices: prices)
+    #expect(approximately(coin, 4_500 * 31.1035 / 28.349523125, within: 0.01))
+    #expect(approximately(coin / 4_500, 1.0971, within: 0.0001))
+}
+
 @Test func aMetalsCostPrefersItsPurchaseValue() {
-    #expect(MetalValuation.cost(grams: 31.1035, pricePaidPerOz: 1_600, purchaseValue: 1_700) == 1_700)
-    #expect(approximately(MetalValuation.cost(grams: 31.1035, pricePaidPerOz: 1_600, purchaseValue: 0) ?? 0, 1_600, within: 0.01))
-    #expect(MetalValuation.cost(grams: 31.1035, pricePaidPerOz: 0, purchaseValue: 0) == nil)
+    #expect(MetalValuation.cost(grams: ounce, pricePaidPerOz: 1_600, purchaseValue: 1_700) == 1_700)
+    #expect(approximately(MetalValuation.cost(grams: ounce, pricePaidPerOz: 1_600, purchaseValue: 0) ?? 0, 1_600, within: 0.01))
+    #expect(MetalValuation.cost(grams: ounce, pricePaidPerOz: 0, purchaseValue: 0) == nil)
 }
 
 @MainActor
 @Test func holdingsCountGainOnlyWhereTheCostIsKnown() {
     let household = makeHousehold()
-    let bar = SharedFinanceMetalItem(name: "Bar", metal: .gold, grams: 31.1035, household: household)
+    let bar = SharedFinanceMetalItem(name: "Bar", metal: .gold, grams: ounce, household: household)
     bar.purchaseValue = 4_000
-    let chain = SharedFinanceMetalItem(name: "Chain", metal: .gold, grams: 31.1035, household: household)
+    let chain = SharedFinanceMetalItem(name: "Chain", metal: .gold, grams: ounce, household: household)
     let ring = SharedFinanceMetalItem(name: "Ring", metal: .gold, grams: 5, household: household)
     ring.hasManualValue = true
     ring.manualValue = 3_000
@@ -189,7 +201,7 @@ private func makeSeptember() throws -> (household: SharedFinanceHousehold, month
     _ = SharedFinanceTransaction(date: day(2026, 9, 3), cost: 300, merchant: "A", household: household, card: bhavikCard)
     _ = SharedFinanceTransaction(date: day(2026, 9, 4), cost: 200, merchant: "B", household: household, card: jointCard)
 
-    _ = SharedFinanceMetalItem(name: "Bar", metal: .gold, grams: 31.1035, household: household, owner: joint)
+    _ = SharedFinanceMetalItem(name: "Bar", metal: .gold, grams: ounce, household: household, owner: joint)
     let ring = SharedFinanceMetalItem(name: "Ring", metal: .gold, grams: 5, household: household, owner: saloni)
     ring.hasManualValue = true
     ring.manualValue = 2_000
@@ -592,6 +604,7 @@ private func makeSeptember() throws -> (household: SharedFinanceHousehold, month
     let document = try FinanceMonthExchange.decode(Data(json.utf8))
     #expect(document.accounts.isEmpty)
     #expect(document.metals.first?.manualValue == nil)
+    #expect(document.metals.first?.grams == 31.1035, "Grams arrive as written: no ounce is involved on the way in")
     #expect(document.transactions.first?.actualCost == 12.5, "A missing actual cost is the whole cost")
     #expect(FinanceMonthDocument.fileName(for: "2026-09") == "Finance 2026-09.json")
 }

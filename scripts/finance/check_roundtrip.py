@@ -20,7 +20,7 @@ amounts. Beyond the month coming back unchanged it checks what only Numbers can 
 
 exports with --troy-fix instead: the month and the formulas must still come back right, and Total
 Liabilities must match, but Total Assets and Total Net Worth are expected to differ, since every
-metal is then valued in troy ounces.
+metal is then valued in troy ounces (unlike the source sheet and the app, which use regular ones).
 """
 
 from __future__ import annotations

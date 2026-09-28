@@ -144,6 +144,8 @@ public struct FinanceNumbersSpec: Encodable, Equatable, Sendable {
             let grams = (metal.grams * 10_000).rounded() / 10_000
             let current = metal.manualValue.map { Op(6, "set", .number(Self.money($0))) }
                 ?? Op(6, "formula", .text("=Metal Price::{PRICE:\(metal.metal.lowercased())}×{COL:2} {ROW}"))
+            // "ozm" is the regular ounce MetalValuation values in, so the
+            // sheet's metals come out equal to the app's (no --troy-fix here).
             return [Op(3, "set", .number(grams)),
                     Op(2, "formula", .text("=CONVERT({COL:3} {ROW},\"g\",\"ozm\")")),
                     Op(4, "set", metal.pricePaidPerOz != 0 ? .number(Self.money(metal.pricePaidPerOz)) : .text("")),
