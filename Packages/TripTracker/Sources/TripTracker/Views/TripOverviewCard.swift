@@ -34,8 +34,10 @@ struct TripOverviewCard: View {
                 .filter { !$0.isEmpty }
                 .joined(separator: " · ")
         }
-        if let next = groups.upcoming.first {
-            return "\(next.title) \(TripOverview.countdown(days: next.dates.daysUntilStart(asOf: now)))"
+        // How many are planned: the countdown itself is the headline now,
+        // and saying "Dubai in 44 days" up here repeated it word for word.
+        if groups.upcoming.count > 1 {
+            return "\(counted(groups.upcoming.count, "trip")) planned"
         }
         return ""
     }
@@ -62,7 +64,7 @@ struct TripOverviewCard: View {
             } else if !groups.upcoming.isEmpty {
                 upcoming
             } else {
-                OverviewValue("No trips coming up")
+                OverviewEmptyState("No trips coming up", message: "Plan the next one in Trips.")
             }
         }
     }
@@ -117,25 +119,91 @@ struct TripOverviewCard: View {
 
     // MARK: - Nothing under way
 
+    /// The next trip as the card's headline — a countdown, like every other
+    /// card's one figure — and up to two more after it. It used to list the
+    /// next four under a "Coming up" caption with no figure at all, so Trips
+    /// was the one card on the Overview with nothing to read at a glance.
     private var upcoming: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            caption("Coming up")
-            ForEach(groups.upcoming.prefix(4)) { trip in
-                HStack {
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(trip.title)
-                            .font(.system(size: 13, weight: .semibold))
-                        Text([trip.destination, ItineraryFormat.dateRange(trip.dates)].filter { !$0.isEmpty }.joined(separator: " · "))
-                            .font(.system(size: 12))
-                            .foregroundStyle(.secondary)
+        let next = groups.upcoming[0]
+        let headline = TripOverview.countdownHeadline(days: next.dates.daysUntilStart(asOf: now))
+        return VStack(alignment: .leading, spacing: 4) {
+            OverviewValue(headline.value, unit: headline.unit)
+            OverviewCaption([next.title, ItineraryFormat.dateRange(next.dates)].filter { !$0.isEmpty }.joined(separator: " · "))
+            Spacer(minLength: 8)
+            // Two, not three: with nothing under way the Trips row is the
+            // same height as every other (see `OverviewGrid`), and more ran
+            // past the card's foot.
+            let later = groups.upcoming.dropFirst().prefix(2)
+            HStack(alignment: .bottom, spacing: 28) {
+                progress(of: next)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                if !later.isEmpty {
+                    VStack(alignment: .leading, spacing: 8) {
+                        caption("Later")
+                        ForEach(later) { trip in
+                            row(trip)
+                        }
                     }
-                    .lineLimit(1)
-                    Spacer(minLength: 8)
-                    Text(TripOverview.countdown(days: trip.dates.daysUntilStart(asOf: now)))
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(TripTrackerModule.accent.color)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
+        }
+    }
+
+    /// "5 of 7 days planned", a bar, and the stops, ideas and flights under
+    /// it — how ready the next trip is. See `TripOverview.planProgress`.
+    private func progress(of trip: SharedTrip) -> some View {
+        let plan = TripOverview.planProgress(
+            dayIndices: (trip.items ?? []).map(\.dayIndex),
+            flightCount: trip.flights?.count ?? 0,
+            dayCount: trip.dates.dayCount
+        )
+        let accent = TripTrackerModule.accent.color
+        return VStack(alignment: .leading, spacing: 7) {
+            caption("Plan")
+            Text("\(plan.daysPlanned) of \(counted(plan.dayCount, "day")) planned")
+                .font(.system(size: 13, weight: .semibold))
+                .monospacedDigit()
+            GeometryReader { proxy in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(accent.opacity(0.18))
+                    Capsule().fill(accent)
+                        .frame(width: proxy.size.width * plan.fractionPlanned)
+                }
+            }
+            .frame(height: 6)
+            .accessibilityHidden(true)
+            Text(
+                [
+                    counted(plan.stops, "stop"),
+                    counted(plan.ideas, "idea"),
+                    plan.flights > 0 ? counted(plan.flights, "flight") : "",
+                ]
+                .filter { !$0.isEmpty }
+                .joined(separator: " · ")
+            )
+            .font(.system(size: 12))
+            .monospacedDigit()
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+        }
+    }
+
+    private func row(_ trip: SharedTrip) -> some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 1) {
+                Text(trip.title)
+                    .font(.system(size: 13, weight: .semibold))
+                Text([trip.destination, ItineraryFormat.dateRange(trip.dates)].filter { !$0.isEmpty }.joined(separator: " · "))
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+            }
+            .lineLimit(1)
+            Spacer(minLength: 8)
+            Text(TripOverview.countdown(days: trip.dates.daysUntilStart(asOf: now)))
+                .font(.system(size: 12, weight: .medium))
+                .monospacedDigit()
+                .foregroundStyle(TripTrackerModule.accent.color)
         }
     }
 

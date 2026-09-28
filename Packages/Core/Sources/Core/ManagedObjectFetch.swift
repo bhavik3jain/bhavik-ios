@@ -29,6 +29,7 @@ public final class ManagedObjectFetch<Object: NSManagedObject>: ObservableObject
     private let request: NSFetchRequest<Object>
     private weak var context: NSManagedObjectContext?
     private var saveSubscription: AnyCancellable?
+    private var mergeSubscription: AnyCancellable?
 
     public init(_ request: NSFetchRequest<Object>) {
         self.request = request
@@ -46,7 +47,25 @@ public final class ManagedObjectFetch<Object: NSManagedObject>: ObservableObject
             .publisher(for: .NSManagedObjectContextDidSave, object: context)
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in self?.refresh() }
+        // What CloudKit brings in. It saves on the mirroring delegate's own
+        // background context and the view context only merges it
+        // (`automaticallyMergesChangesFromParent`) — a merge posts no
+        // did-save here. Listening for saves alone, the Mac sidebar and
+        // Overview and the phone hub's Fuel, Explore, Points and Finance
+        // rows kept showing what was in the store at launch until something
+        // was saved on this device: a partner's new fill-up never appeared,
+        // and one they deleted stayed listed as a deleted object whose
+        // attributes had gone. Throttled, because an import merges in
+        // batches — a first sync is hundreds of them, each one otherwise a
+        // refetch and a re-render of the whole hub.
+        mergeSubscription = NotificationCenter.default
+            .publisher(for: NSManagedObjectContext.didMergeChangesObjectIDsNotification, object: context)
+            .throttle(for: .milliseconds(Self.mergeThrottleMilliseconds), scheduler: DispatchQueue.main, latest: true)
+            .sink { [weak self] _ in self?.refresh() }
     }
+
+    /// How often, at most, a run of merged imports refetches.
+    nonisolated static var mergeThrottleMilliseconds: Int { 250 }
 
     private func refresh() {
         guard let context else { return }

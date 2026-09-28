@@ -3,12 +3,13 @@ import SwiftUI
 
 public extension TVTrackerModule {
     /// What long-pressing TV on the home screen shows: the backlog to catch up
-    /// on, then what airs next.
+    /// on, then what airs next. `episodes` is the unwatched episodes, fetched
+    /// in one query (`Schedule.unwatched`) — see `Schedule`.
     @MainActor
-    static func homePeek(shows: [Show], asOf now: Date = .now) -> some View {
+    static func homePeek(episodes: [Episode], asOf now: Date = .now) -> some View {
         TVHomePeek(
-            ready: Schedule.readyToWatch(shows: shows, asOf: now),
-            upcoming: Schedule.upcoming(shows: shows, asOf: now)
+            ready: Schedule.readyToWatch(episodes: episodes, asOf: now),
+            upcoming: Schedule.upcoming(episodes: episodes, asOf: now)
         )
     }
 }

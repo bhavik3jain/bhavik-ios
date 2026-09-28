@@ -34,8 +34,17 @@ public final class Episode {
         return airDate <= now
     }
 
+    /// "S01E04". Padded by hand: `String(format:)` goes through Foundation's
+    /// printf for every call, and the Up Next list and the Mac Overview's TV
+    /// card build one for each episode in the backlog on every render — the
+    /// largest cost left in the card once the sort was fixed.
     public var code: String {
-        "S\(String(format: "%02d", seasonNumber))E\(String(format: "%02d", episodeNumber))"
+        "S\(Self.twoDigits(seasonNumber))E\(Self.twoDigits(episodeNumber))"
+    }
+
+    /// `%02d`: a leading zero for 0–9, as-is otherwise (negatives included).
+    static func twoDigits(_ number: Int) -> String {
+        (0..<10).contains(number) ? "0\(number)" : String(number)
     }
 
     public func setWatched(_ watched: Bool, at date: Date = .now) {

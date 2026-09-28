@@ -18,27 +18,35 @@ struct GymOverviewCard: View {
 
     var body: some View {
         OverviewCard(accent: GymTrackerModule.accent, icon: GymTrackerModule.symbolName, open: open) {
-            VStack(alignment: .leading, spacing: 4) {
-                if let last = sessions.first {
-                    OverviewValue(last.startedAt.formatted(.relative(presentation: .named, unitsStyle: .wide)))
-                    Text("Last workout")
-                        .font(.system(size: 13))
-                        .foregroundStyle(.secondary)
-                } else {
-                    OverviewValue("No workouts")
-                    Text("Start one from Workouts")
-                        .font(.system(size: 13))
-                        .foregroundStyle(.secondary)
+            if let last = sessions.first {
+                let days = WorkoutStats.weekTrained(sessions, asOf: now)
+                let trained = days.count { $0.trained }
+                let lastWorkout = last.startedAt.formatted(.relative(presentation: .named, unitsStyle: .wide))
+                VStack(alignment: .leading, spacing: 4) {
+                    // This week's count once there is one; before that, a
+                    // bold "0" said less than how long it has been.
+                    if trained > 0 {
+                        OverviewValue(String(trained), unit: trained == 1 ? "day this week" : "days this week")
+                        OverviewCaption("Last workout \(lastWorkout)")
+                    } else {
+                        OverviewValue(lastWorkout)
+                        OverviewCaption("Last workout · none yet this week")
+                    }
+                    Spacer(minLength: 10)
+                    week(days)
                 }
-                Spacer(minLength: 10)
-                week
+            } else {
+                VStack(alignment: .leading, spacing: 4) {
+                    OverviewEmptyState("No workouts yet", message: "Start one from Workouts.")
+                    Spacer(minLength: 10)
+                    week(WorkoutStats.weekTrained(sessions, asOf: now))
+                }
             }
         }
     }
 
-    private var week: some View {
-        let days = WorkoutStats.weekTrained(sessions, asOf: now)
-        return HStack(spacing: 6) {
+    private func week(_ days: [(day: Date, trained: Bool)]) -> some View {
+        HStack(spacing: 6) {
             ForEach(days, id: \.day) { entry in
                 VStack(spacing: 4) {
                     Circle()

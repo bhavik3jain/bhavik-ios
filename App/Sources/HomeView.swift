@@ -23,6 +23,12 @@ struct HomeView: View {
     @Query(filter: #Predicate<WorkoutSession> { $0.finishedAt != nil }, sort: \WorkoutSession.startedAt, order: .reverse)
     private var sessions: [WorkoutSession]
     @Query private var shows: [Show]
+    // The unwatched episodes, in one fetch, for the TV figures below (hub
+    // row, peek, sidebar, Overview card). Reached through `show.episodes`
+    // instead, each episode was a fault that cost a SQLite round trip of its
+    // own the first time anything read it — several thousand of them, on the
+    // main thread, every launch. See `Schedule`.
+    @Query(filter: Schedule.unwatched) private var episodes: [Episode]
     @Query(filter: #Predicate<Parcel> { !$0.isArchived }) private var parcels: [Parcel]
     // Trips moved to Core Data — see BhavikApp.init()'s tripContainer, which
     // sets this environment key at the WindowGroup level the same way
@@ -259,24 +265,37 @@ struct HomeView: View {
                 MacOverview(
                     modules: layoutStore.visibleModules,
                     syncMonitor: syncMonitor,
-                    open: { selectedModule = $0 }
+                    open: { selectedModule = $0 },
+                    // Only a trip under way has a day's plan to show; with
+                    // nothing under way Trips lists what's coming up in the
+                    // same height as every other row.
+                    isTall: { module, now in
+                        module == .trips && !TripTrackerModule.sidebarTrips(trips, asOf: now).underWay.isEmpty
+                    }
                 ) { module, now in
                     overviewCard(for: module, asOf: now)
                 }
             }
         }
-        // Menu-bar shortcuts (⌘0 for Overview, ⌘1 onward per visible tracker),
-        // posted from BhavikApp's commands — a Scene's .commands can't reach
-        // into a WindowGroup's view state directly, so it goes by notification
-        // instead of a shared observable.
-        .onReceive(NotificationCenter.default.publisher(for: .selectTracker)) { note in
-            guard let raw = note.userInfo?["module"] as? String else { return }
-            if raw == SelectedModule.overviewID {
-                selectedModule = nil
-            } else if let module = SelectedModule(rawValue: raw) {
-                selectedModule = module
-            }
+        // Menu-bar shortcuts (⌘0 for Overview, ⌘1 onward per visible tracker)
+        // act on this window's selection, handed to BhavikApp's commands as
+        // the focused scene's value. They used to go by a notification every
+        // window listened for, so with a second window open (File ▸ New
+        // Window) ⌘2 switched both of them.
+        .focusedSceneValue(\.trackerSelection, $selectedModule)
+        #if DEBUG
+        // `-MacOpenTracker fuel` (or `fuel/trends`) opens a tracker, on a
+        // section, at launch: the only way to look at a tracker's Mac layout
+        // from a script, since nothing outside the app can click the sidebar
+        // without Accessibility access. Navigation only — it writes nothing.
+        .onAppear {
+            guard let raw = UserDefaults.standard.string(forKey: "MacOpenTracker") else { return }
+            let parts = raw.split(separator: "/").map(String.init)
+            guard let first = parts.first, let module = SelectedModule(rawValue: first) else { return }
+            if parts.count > 1 { macSections[module] = parts[1] }
+            selectedModule = module
         }
+        #endif
         // Hiding the open tracker (from Settings, or on another device) would
         // otherwise leave it in the detail pane with no sidebar row selected
         // and no way back to it. Overview is always there to fall back to.
@@ -389,13 +408,14 @@ struct HomeView: View {
     private func sidebarDetail(for module: SelectedModule, asOf now: Date) -> String? {
         switch module {
         case .trips: return TripTrackerModule.sidebarDetail(trips: trips, asOf: now)
-        case .explore:
-            let places = guides.reduce(0) { $0 + GuideSummary.summarize($1).placeCount }
-            return places > 0 ? String(places) : nil
+        case .explore: return ExploreTrackerModule.sidebarDetail(guides: guides)
         case .fuel: return FuelTrackerModule.sidebarDetail(vehicles: vehicles)
         case .finance: return FinanceTrackerModule.sidebarDetail(months: financeMonths, container: financePersistentContainer)
         case .tv:
-            let ready = Schedule.readyToWatch(shows: shows, asOf: now).count
+            // A count, not the list: `readyToWatch` built and sorted every
+            // backlog episode on each render of the sidebar, which is every
+            // click in it.
+            let ready = Schedule.readyCount(episodes: episodes, asOf: now)
             return ready > 0 ? String(ready) : nil
         case .parcels:
             let onTheWay = parcels.count { !$0.status.isSettled }
@@ -420,7 +440,7 @@ struct HomeView: View {
         case .fuel: FuelTrackerModule.overviewCard(vehicles: vehicles, open: open)
         case .finance: FinanceTrackerModule.overviewCard(months: financeMonths, container: financePersistentContainer, open: open)
         case .gym: GymTrackerModule.overviewCard(sessions: sessions, asOf: now, open: open)
-        case .tv: TVTrackerModule.overviewCard(shows: shows, asOf: now, open: open)
+        case .tv: TVTrackerModule.overviewCard(shows: shows, episodes: episodes, asOf: now, open: open)
         case .parcels: ParcelTrackerModule.overviewCard(parcels: parcels, open: open)
         case .points: PointsTrackerModule.overviewCard(accounts: pointsAccounts, asOf: now, open: open)
         }
@@ -505,7 +525,7 @@ struct HomeView: View {
         case .trips: TripTrackerModule.homePeek(trips: trips)
         case .explore: ExploreTrackerModule.homePeek(guides: guides)
         case .gym: GymTrackerModule.homePeek(sessions: sessions)
-        case .tv: TVTrackerModule.homePeek(shows: shows)
+        case .tv: TVTrackerModule.homePeek(episodes: episodes)
         case .parcels: ParcelTrackerModule.homePeek(parcels: parcels)
         case .fuel: FuelTrackerModule.homePeek(vehicles: vehicles)
         case .points: PointsTrackerModule.homePeek(accounts: pointsAccounts)
@@ -544,10 +564,10 @@ struct HomeView: View {
     }
 
     private var tvDetail: String {
-        let ready = Schedule.readyToWatch(shows: shows).count
+        let ready = Schedule.readyCount(episodes: episodes)
         if ready > 0 { return "\(counted(ready, "episode")) ready" }
         if shows.isEmpty { return "No shows yet" }
-        let upcoming = Schedule.upcoming(shows: shows).count
+        let upcoming = Schedule.upcoming(episodes: episodes).count
         return upcoming > 0 ? "Nothing to watch, \(upcoming) coming up" : "All caught up"
     }
 
@@ -622,19 +642,17 @@ enum SelectedModule: String, Identifiable, Hashable, CaseIterable {
         }
     }
 
-    /// What the ⌘0 command posts in place of a tracker's raw value: the Mac's
-    /// Overview, which has no case here because it isn't a tracker.
-    static let overviewID = "overview"
 }
 
-extension Notification.Name {
-    /// Posted by BhavikApp's ⌘0… menu commands; userInfo["module"] is a
-    /// `SelectedModule` raw value, or `SelectedModule.overviewID`. A
-    /// notification rather than a shared observable because a Scene's
-    /// `.commands` sits outside the WindowGroup and has no direct line to
-    /// HomeView's own state.
-    static let selectTracker = Notification.Name("com.bhavikjain.trackers.selectTracker")
+#if os(macOS)
+extension FocusedValues {
+    /// The key window's open tracker — nil is the Overview — for BhavikApp's
+    /// ⌘0… Trackers menu. A Scene's `.commands` sits outside the WindowGroup
+    /// and has no direct line to HomeView's own state; a focused value is
+    /// that line, and it reaches only the window in front.
+    @Entry var trackerSelection: Binding<SelectedModule?>?
 }
+#endif
 
 private struct ModuleRow: View {
     let accent: ModuleAccent

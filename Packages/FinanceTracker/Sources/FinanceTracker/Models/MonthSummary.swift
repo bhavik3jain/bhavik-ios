@@ -171,6 +171,24 @@ public enum FinanceHome {
         return "Net worth \(FinanceFormat.money(MonthSummary(month: latest, live: MetalPriceFeed.shared.live).netWorth))"
     }
 
+    /// How `latest`'s net worth moved on the month before it in its
+    /// household, and which month that was — the Mac Overview's "+$1,204
+    /// since August". nil when there is no earlier month.
+    ///
+    /// Adds up just those two months. The Overview card used to build a
+    /// `FinanceHistory` of every month the household has — each one walking
+    /// every card's transactions — on each render, for one subtraction.
+    public static func netWorthChange(for latest: SharedFinanceMonth, live: MetalPrices?) -> (delta: Double, previous: YearMonth)? {
+        guard let period = latest.period else { return nil }
+        // Folded first, so a period two devices both created counts as the
+        // one row `FinanceHistory` would have kept.
+        let earlier = FinanceFold.distinctMonths(Array(latest.household?.months ?? []))
+            .filter { ($0.period).map { $0 < period } ?? false }
+        guard let previous = earlier.last, let previousPeriod = previous.period else { return nil }
+        let history = FinanceHistory(months: [previous, latest], live: live)
+        return history.delta(.netWorth, at: period).map { ($0, previousPeriod) }
+    }
+
     /// The latest month of the household the module itself shows
     /// (`FinanceHouseholdResolver.forDisplay`). The app shell fetches every
     /// household's months, and taking the newest across all of them put this

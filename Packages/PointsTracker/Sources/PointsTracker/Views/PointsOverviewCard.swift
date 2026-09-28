@@ -23,20 +23,16 @@ struct PointsOverviewCard: View {
 
     var body: some View {
         OverviewCard(accent: PointsTrackerModule.accent, icon: PointsTrackerModule.symbolName, open: open) {
-            VStack(alignment: .leading, spacing: 4) {
-                if accountCount == 0 {
-                    OverviewValue("No accounts")
-                } else {
+            if accountCount == 0 {
+                OverviewEmptyState("No accounts yet", message: "Add a loyalty programme in Accounts.")
+            } else {
+                VStack(alignment: .leading, spacing: 4) {
                     OverviewValue(total.summary)
-                    Text("Household balances · \(counted(accountCount, "account"))")
-                        .font(.system(size: 13))
-                        .foregroundStyle(.secondary)
-                }
-                Spacer(minLength: 6)
-                if expiring > 0 {
-                    Text("\(counted(expiring, "account")) expiring soon")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(.orange)
+                    OverviewCaption("Household balances · \(counted(accountCount, "account"))")
+                    Spacer(minLength: 6)
+                    if expiring > 0 {
+                        OverviewFootnote("\(counted(expiring, "account")) expiring soon", symbol: "clock.badge.exclamationmark", tint: .orange)
+                    }
                 }
             }
         }

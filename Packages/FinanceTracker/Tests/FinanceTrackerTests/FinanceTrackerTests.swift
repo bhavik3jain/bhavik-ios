@@ -266,6 +266,44 @@ private func makeSeptember() throws -> (household: SharedFinanceHousehold, month
     #expect(history.series(.netWorth, last: 1).count == 1)
 }
 
+@MainActor
+@Test func theOverviewsChangeMatchesTheWholeHistorys() throws {
+    let (household, september) = try makeSeptember()
+    let october = try #require(MonthRollover.startMonth(after: september))
+    let cash = try #require(household.sortedAccounts.first { $0.category == .cash && $0.owner?.name == "Joint" })
+    october.setBalance(4_000, for: cash)
+    let november = try #require(MonthRollover.startMonth(after: october))
+    november.setBalance(2_500, for: cash)
+
+    let change = try #require(FinanceHome.netWorthChange(for: november, live: nil))
+    let full = FinanceHistory(months: Array(household.months ?? []))
+    #expect(change.previous == YearMonth(year: 2026, month: 10), "Against the month before, not the first")
+    #expect(change.delta == full.delta(.netWorth, at: YearMonth(year: 2026, month: 11)))
+    #expect(approximately(change.delta, -1_500, within: 0.01))
+    #expect(FinanceHome.netWorthChange(for: september, live: nil) == nil, "The first month has nothing to compare with")
+}
+
+@Test func assetMixIsLargestFirstAndAddsUpToTheWhole() {
+    var summary = MonthSummary()
+    summary.cash = 10
+    summary.investments = 60
+    summary.retirement = 30
+    summary.metals = 0
+    summary.fixed = -5
+    summary.cardSpend = 999
+    let mix = AssetMix(summary)
+    #expect(mix.shares.map(\.metric) == [.investments, .retirement, .cash], "Nothing empty or negative, and no liabilities")
+    #expect(abs(mix.shares.reduce(0) { $0 + $1.fraction } - 1) < 0.0001)
+    #expect(mix.legend() == "Investments 60% · Retirement 30% · Cash 10%")
+    #expect(mix.legend(limit: 1) == "Investments 60%")
+
+    var tie = MonthSummary()
+    tie.retirement = 5
+    tie.cash = 5
+    #expect(AssetMix(tie).shares.map(\.metric) == [.cash, .retirement], "A tie keeps the metrics' own order")
+    #expect(AssetMix(MonthSummary()).shares.isEmpty)
+}
+
 // MARK: - Rollover
 
 @MainActor

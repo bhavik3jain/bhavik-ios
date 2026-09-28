@@ -76,9 +76,23 @@ public final class Show {
     }
 
     public var orderedEpisodes: [Episode] {
-        (episodes ?? []).sorted {
-            ($0.seasonNumber, $0.episodeNumber) < ($1.seasonNumber, $1.episodeNumber)
-        }
+        Self.inRunningOrder(episodes ?? [])
+    }
+
+    /// `episodes` sorted by season then number, reading each one's numbers
+    /// once.
+    ///
+    /// Sorting on the model's properties directly read them through
+    /// SwiftData's backing store on every comparison — four getters each, n
+    /// log n times. With a few thousand episodes in the library that was most
+    /// of the Mac's main thread at launch: the sidebar's TV count and the
+    /// Overview's TV card re-sorted every show on each render, and a sample
+    /// of the first five seconds found 79% of it under `orderedEpisodes`.
+    static func inRunningOrder(_ episodes: [Episode]) -> [Episode] {
+        episodes
+            .map { (season: $0.seasonNumber, number: $0.episodeNumber, episode: $0) }
+            .sorted { ($0.season, $0.number) < ($1.season, $1.number) }
+            .map(\.episode)
     }
 
     public var watchedCount: Int {
@@ -101,14 +115,44 @@ public final class Show {
     }
 
     /// Episodes that have aired but haven't been watched yet.
+    /// Filtered before sorting, so only the backlog is ordered — not every
+    /// episode the show has.
     public func unwatchedAired(asOf now: Date = .now) -> [Episode] {
-        orderedEpisodes.filter { !$0.isWatched && $0.hasAired(asOf: now) }
+        Self.inRunningOrder((episodes ?? []).filter { !$0.isWatched && $0.hasAired(asOf: now) })
     }
 
-    /// The soonest episode still to air.
+    /// How many episodes have aired but haven't been watched — `unwatchedAired`
+    /// without building or sorting anything, for a count beside a row.
+    public func unwatchedAiredCount(asOf now: Date = .now) -> Int {
+        (episodes ?? []).count { !$0.isWatched && $0.hasAired(asOf: now) }
+    }
+
+    /// The soonest episode still to air. Ties on the date go to the earlier
+    /// episode in running order, as when this sorted every episode first.
+    ///
+    /// One pass, reading each episode's date and numbers once: it runs for
+    /// every show on each render of the Mac Overview's TV card, and sorting
+    /// every unaired episode first (a long-running show announces whole
+    /// seasons with no dates) was a sort through SwiftData's getters per show.
     public func nextToAir(asOf now: Date = .now) -> Episode? {
-        orderedEpisodes
-            .filter { !$0.hasAired(asOf: now) }
-            .min { ($0.airDate ?? .distantFuture) < ($1.airDate ?? .distantFuture) }
+        Self.soonestToAir(episodes ?? [], asOf: now)
+    }
+
+    /// `nextToAir` over any set of one show's episodes — `Schedule.upcoming`
+    /// hands it the ones it fetched in one go rather than walking
+    /// `episodes`.
+    static func soonestToAir(_ episodes: [Episode], asOf now: Date) -> Episode? {
+        var best: (date: Date, season: Int, number: Int, episode: Episode)?
+        for episode in episodes {
+            let airDate = episode.airDate
+            if let airDate, airDate <= now { continue }
+            let candidate = (date: airDate ?? .distantFuture, season: episode.seasonNumber, number: episode.episodeNumber, episode: episode)
+            if let current = best,
+               (current.date, current.season, current.number) <= (candidate.date, candidate.season, candidate.number) {
+                continue
+            }
+            best = candidate
+        }
+        return best?.episode
     }
 }
