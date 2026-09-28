@@ -85,7 +85,10 @@ struct BhavikApp: App {
             // A schema-initialising launch must never open the real store: the
             // point is that it's safe to run on a phone holding real data. An
             // empty in-memory container keeps SwiftUI's environment satisfied.
-            if CloudKitSchemaInitializer.isRequested {
+            // `-TripAdvisorProbe YES` takes the same path: its made-up trip
+            // lives in the in-memory Trips store, and a Mac's Debug build
+            // otherwise opens the user's real iCloud data.
+            if CloudKitSchemaInitializer.isRequested || TripAdvisorProbe.isRequested {
                 let scratch = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true, cloudKitDatabase: .none)
                 container = try ModelContainer(for: schema, configurations: [scratch])
                 // Same reasoning, for Trips' and Fuel's Core Data stores: a
@@ -121,6 +124,9 @@ struct BhavikApp: App {
                     containerID: Self.cloudContainerID,
                     inMemory: true
                 )
+                if TripAdvisorProbe.isRequested {
+                    TripAdvisorProbeRunner.start(context: tripContainer.viewContext)
+                }
                 return
             }
             #endif
@@ -258,10 +264,14 @@ struct BhavikApp: App {
                 #if DEBUG
                 if CloudKitSchemaInitializer.isRequested {
                     CloudKitSchemaInitializerView(containerID: Self.cloudContainerID)
+                } else if TripAdvisorProbe.isRequested {
+                    Text("Trips advisor probe running: the report goes to the console.")
+                        .padding()
                 } else {
                     HomeView()
                         .preferredColorScheme(Appearance.stored(appearanceRaw).colorScheme)
                         .modifier(WeatherStub())
+                        .modifier(TripAdvisorStub())
                         #if os(macOS)
                         .frame(minWidth: 900, minHeight: 600)
                         #endif
@@ -280,7 +290,13 @@ struct BhavikApp: App {
         // a new share or a partner leaving has most likely synced in. Cheap
         // when nothing changed — see SharedChangeServerAlerts.
         .onChange(of: scenePhase, initial: true) { _, phase in
-            if phase == .active { SharedChangeServerAlerts.shared.sync() }
+            guard phase == .active else { return }
+            #if DEBUG
+            // The probe runs on made-up data and must leave the account's
+            // real subscriptions alone.
+            if TripAdvisorProbe.isRequested { return }
+            #endif
+            SharedChangeServerAlerts.shared.sync()
         }
         #if os(macOS)
         // A left-over default-sized window reads as an unfinished iPhone app
@@ -426,6 +442,56 @@ private struct WeatherStub: ViewModifier {
             content.environment(\.weatherProvider, StubWeatherProvider())
         } else {
             content
+        }
+    }
+}
+
+/// `-TripAdvisorStub YES` swaps in a made-up plan reviewer and made-up places
+/// for the whole app, the way `-WeatherStub YES` swaps weather: the same
+/// answers every run, at once, offline, and on hardware with no Apple
+/// Intelligence. Set at the root so it reaches Trips' full-screen cover.
+private struct TripAdvisorStub: ViewModifier {
+    func body(content: Content) -> some View {
+        if UserDefaults.standard.bool(forKey: "TripAdvisorStub") {
+            content
+                .environment(\.tripAdvisor, StubTripAdvisor(delay: .milliseconds(250)))
+                .environment(\.placeSearcher, StubPlaceSearcher())
+        } else {
+            content
+        }
+    }
+}
+
+/// `-TripAdvisorProbe YES`: runs the Trips engine — plan check, the brief,
+/// a streamed review and a "Suggest Places" run — against the real on-device
+/// model and Apple Maps (or the stubs, with `-TripAdvisorStub YES` too) on a
+/// made-up trip in the in-memory store, printing each line as it comes.
+/// `-TripAdvisorProbeQuit YES` quits when it's done.
+///
+/// Started from `init`, not a view's `.task`: the first try hung off the
+/// window's content, and on a Mac with a saved window from a normal launch,
+/// state restoration found no window of the probe's type, opened none, and
+/// the probe never ran.
+private enum TripAdvisorProbeRunner {
+    @MainActor
+    static func start(context: NSManagedObjectContext) {
+        let stubbed = UserDefaults.standard.bool(forKey: "TripAdvisorStub")
+        let advisor: any TripAdvising = stubbed ? StubTripAdvisor() : TripAdvisors.makeDefault()
+        let searcher: any PlaceSearching = stubbed ? StubPlaceSearcher() : MapKitPlaceSearcher()
+        let model: String
+        if #available(iOS 26.0, macOS 26.0, *) {
+            model = FoundationModelsTripAdvisor.modelDescription
+        } else {
+            model = "no Foundation Models on this system"
+        }
+        Task { @MainActor in
+            _ = await TripAdvisorProbe.run(context: context, advisor: advisor, searcher: searcher, modelDescription: model) { line in
+                print(line)
+                fflush(stdout)
+            }
+            print("TripAdvisorProbe: done")
+            fflush(stdout)
+            if UserDefaults.standard.bool(forKey: "TripAdvisorProbeQuit") { exit(0) }
         }
     }
 }
