@@ -124,9 +124,10 @@ private func place(_ name: String, _ latitude: Double, _ longitude: Double, cate
 
     let lines = candidates.promptList.components(separatedBy: "\n")
     #expect(lines.count == 2)
-    #expect(lines[0].hasPrefix("1. Capitoline Museums — Museum, indoor, "))
+    #expect(lines[0].hasPrefix("1. Capitoline Museums — Museum, "))
+    #expect(!lines[0].contains("indoor"), "The word led every reason the model wrote")
     #expect(lines[0].hasSuffix(" m away"))
-    #expect(lines[1].hasPrefix("2. Parco del Colle Oppio — Park, outdoor, "))
+    #expect(lines[1].hasPrefix("2. Parco del Colle Oppio — Park, "))
 }
 
 // MARK: - Places
@@ -147,15 +148,18 @@ private func place(_ name: String, _ latitude: Double, _ longitude: Double, cate
 
 // MARK: - What to search for
 
-@Test func queriesFollowWhatTheDayLacksAndTheWeather() {
-    #expect(SuggestionRequest.queries(kinds: [.sight, .activity], isWet: true) == ["museum", "restaurant", "cafe"])
-    #expect(SuggestionRequest.queries(kinds: [.food], isWet: true) == ["museum", "gallery", "cafe"])
-    #expect(SuggestionRequest.queries(kinds: [.sight, .sight], isWet: false) == ["restaurant", "park", "viewpoint"])
-    #expect(SuggestionRequest.queries(kinds: [.sight, .food, .activity], isWet: false) == ["viewpoint", "museum", "cafe"])
-    #expect(SuggestionRequest.queries(kinds: [], isWet: false) == ["landmark", "restaurant", "park"])
-    #expect(SuggestionRequest.queries(kinds: [], isWet: false, isWholeTrip: true) == ["landmark", "museum", "restaurant"])
-    for query in SuggestionRequest.queries(kinds: [], isWet: true) {
-        #expect(query.split(separator: " ").count <= 2, "Long queries return nothing from MapKit")
+@Test func eachListSearchesForWhatTheDayLacksAndTheWeather() {
+    #expect(SuggestionRequest.queries(for: .food, kinds: [], isWet: false) == ["restaurant", "cafe", "bakery"])
+    #expect(SuggestionRequest.queries(for: .food, kinds: [.food], isWet: true) == ["restaurant", "cafe", "bakery"])
+    #expect(SuggestionRequest.queries(for: .sights, kinds: [], isWet: true) == ["museum", "gallery", "landmark"], "Indoors when it rains")
+    #expect(SuggestionRequest.queries(for: .sights, kinds: [.sight, .sight], isWet: false) == ["park", "viewpoint", "museum"])
+    #expect(SuggestionRequest.queries(for: .sights, kinds: [.food], isWet: false) == ["landmark", "park", "viewpoint"])
+    #expect(SuggestionRequest.queries(for: .sights, kinds: [.sight, .activity], isWet: false) == ["viewpoint", "museum", "landmark"])
+    #expect(SuggestionRequest.queries(for: .sights, kinds: [], isWet: false, isWholeTrip: true) == ["landmark", "museum", "park"])
+    for group in SuggestionGroup.allCases {
+        for query in SuggestionRequest.queries(for: group, kinds: [], isWet: true) {
+            #expect(query.split(separator: " ").count <= 2, "Long queries return nothing from MapKit")
+        }
     }
 }
 
@@ -174,7 +178,8 @@ private func place(_ name: String, _ latitude: Double, _ longitude: Double, cate
     #expect(request.dayIndex == 1)
     #expect(request.center == GeoCoordinate(latitude: 41.9128, longitude: 12.4852))
     #expect(request.radiusMetres == SuggestionRequest.dayRadiusMetres)
-    #expect(request.queries == ["museum", "restaurant", "cafe"])
+    #expect(request.queriesByGroup[.sights] == ["museum", "gallery", "landmark"], "Rain: indoors")
+    #expect(request.queriesByGroup[.food] == ["restaurant", "cafe", "bakery"])
     #expect(request.context.contains("Destination: Rome, Italy."))
     #expect(request.context.contains("Forecast: Rain, 19°."))
     #expect(request.context.contains("Already planned that day: Villa Borghese picnic (Activity)."))
@@ -194,7 +199,7 @@ private func place(_ name: String, _ latitude: Double, _ longitude: Double, cate
 
     let whole = try #require(SuggestionRequest(trip: trip, day: nil))
     #expect(whole.dayIndex == nil)
-    #expect(whole.queries == ["landmark", "museum", "restaurant"])
+    #expect(whole.queriesByGroup[.sights] == ["landmark", "museum", "park"])
 
     trip.latitude = nil
     trip.longitude = nil
@@ -207,33 +212,41 @@ private let request = SuggestionRequest(
     dayIndex: 1,
     center: rome,
     radiusMetres: SuggestionRequest.dayRadiusMetres,
-    queries: ["museum", "cafe", "park", "viewpoint"],
+    queries: [.food: ["restaurant", "cafe", "bakery", "bar"], .sights: ["museum", "park", "landmark", "viewpoint"]],
     context: "Destination: Rome, Italy.",
     taken: [TakenPlace(title: "Museum 1", coordinate: nil)]
 )
 
-@Test func aRunSearchesAtMostThreeTimesAndTheModelPicksFromWhatsLeft() async {
+@Test func aRunFillsAFoodListAndAPlacesListEachPickedFromWhatsLeft() async {
     let searched = Mutex<[String]>([])
     let searcher = StubPlaceSearcher(onSearch: { query in searched.withLock { $0.append(query) } })
 
     let outcome = await PlaceSuggester.suggest(for: request, searcher: searcher, advisor: StubTripAdvisor())
 
-    #expect(searched.withLock { $0.sorted() } == ["cafe", "museum", "park"])
+    #expect(searched.withLock { $0.sorted() } == ["bakery", "cafe", "landmark", "museum", "park", "restaurant"], "Three a list, never the fourth")
+    #expect(outcome.sections.map(\.group) == [.food, .sights])
     #expect(outcome.usedModel)
-    #expect(outcome.candidateCount == 11, "Twelve found, less the one already taken")
-    #expect(outcome.suggestions.count == PlaceSuggester.suggestionCount)
-    #expect(outcome.suggestions.allSatisfy { $0.why.hasPrefix("Stub pick") })
-    #expect(!outcome.suggestions.contains { $0.place.name == "Museum 1" })
+    for section in outcome.sections {
+        #expect(section.suggestions.count == PlaceSuggester.suggestionCount)
+        #expect(section.suggestions.allSatisfy { $0.why.hasPrefix("Stub pick") })
+    }
+    let food = outcome.sections[0].suggestions, sights = outcome.sections[1].suggestions
+    #expect(food.allSatisfy { $0.place.kind == .food }, "No museum among the food")
+    #expect(!sights.contains { $0.place.kind == .food }, "No restaurant among the sights")
+    #expect(!outcome.suggestions.contains { $0.place.name == "Museum 1" }, "Already on the trip")
+    #expect(Set(outcome.suggestions.map(\.id)).count == outcome.suggestions.count, "A place is on one list only")
 }
 
 @Test func withNoModelTheNearestCandidatesStandIn() async {
     let outcome = await PlaceSuggester.suggest(for: request, searcher: StubPlaceSearcher(), advisor: nil)
 
     #expect(!outcome.usedModel)
-    #expect(outcome.suggestions.count == 3)
+    #expect(outcome.sections.map(\.suggestions.count) == [PlaceSuggester.suggestionCount, PlaceSuggester.suggestionCount])
     #expect(outcome.suggestions.allSatisfy { $0.why.isEmpty })
-    let metres = outcome.suggestions.map { $0.metres ?? 0 }
-    #expect(metres == metres.sorted())
+    for section in outcome.sections {
+        let metres = section.suggestions.map { $0.metres ?? 0 }
+        #expect(metres == metres.sorted(), "Nearest first")
+    }
 }
 
 @Test func aFailingOrUnavailableModelFallsBackToTheNearest() async {
@@ -243,7 +256,7 @@ private let request = SuggestionRequest(
         advisor: StubTripAdvisor(failure: .unavailable(.notReady))
     )
     #expect(!failing.usedModel)
-    #expect(failing.suggestions.count == 3)
+    #expect(failing.suggestions.count == 2 * PlaceSuggester.suggestionCount)
 
     let notReady = await PlaceSuggester.suggest(
         for: request,
@@ -266,7 +279,7 @@ private struct WildGuesser: TripAdvising {
     let outcome = await PlaceSuggester.suggest(for: request, searcher: StubPlaceSearcher(), advisor: WildGuesser())
 
     #expect(!outcome.usedModel)
-    #expect(outcome.suggestions.count == 3)
+    #expect(outcome.suggestions.count == 2 * PlaceSuggester.suggestionCount)
     #expect(!outcome.suggestions.contains { $0.why == "Made up" })
 }
 

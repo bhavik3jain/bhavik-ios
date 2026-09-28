@@ -99,7 +99,8 @@ public protocol TripAdvising: Sendable {
     /// with `isComplete`. Ends by throwing on any failure.
     func review(_ brief: TripBrief) -> AsyncThrowingStream<TripReviewDraft, any Error>
 
-    /// Up to three of `candidates`, by number, with a one-line why each.
+    /// Up to five of `candidates`, by number, with a one-line why each — for
+    /// one list (`SuggestionGroup`), which `context` ends by naming.
     /// `context` is `SuggestionRequest.context`: the destination, the day, its
     /// weather and what's already on it.
     func pickPlaces(candidates: SuggestionCandidates, context: String) async throws -> [PlacePick]

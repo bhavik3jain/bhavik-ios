@@ -139,9 +139,15 @@ struct TripIdeasInspector: View {
                     .font(.system(size: 11.5))
                     .foregroundStyle(.secondary)
             } else {
-                VStack(spacing: 8) {
-                    ForEach(suggestions.suggestions) { suggestion in
-                        suggestionCard(suggestion)
+                ForEach(suggestions.sections) { section in
+                    Label(section.group.title, systemImage: section.group.symbolName)
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                        .padding(.top, 4)
+                    VStack(spacing: 8) {
+                        ForEach(section.suggestions) { suggestion in
+                            suggestionCard(suggestion)
+                        }
                     }
                 }
                 Text(SuggestionsNote.footer(usedModel: suggestions.usedModel, availability: availability))
@@ -221,7 +227,7 @@ struct TripIdeasInspector: View {
         let availability = advisor.availability(isEnabled: advisorEnabled)
         let byDay = TripForecast.byDay(weather, dates: trip.dates)
         guard let request = SuggestionRequest(trip: trip, day: requested, weather: byDay) else {
-            suggestions = PlaceSuggester.Outcome(suggestions: [], candidateCount: 0, usedModel: false)
+            suggestions = PlaceSuggester.Outcome(sections: [])
             return
         }
         // The model only when it can run and the setting is on; otherwise

@@ -72,17 +72,25 @@ struct PlaceSuggestionsSheet: View {
                                 .foregroundStyle(.secondary)
                         }
                     } else {
-                        Section {
-                            ForEach(outcome.suggestions) { suggestion in
-                                SuggestionRow(
-                                    suggestion: suggestion,
-                                    trip: trip,
-                                    canEdit: canEdit,
-                                    add: { add(suggestion, to: $0) }
-                                )
+                        // Food & Drink, then Places to Check Out: two lists,
+                        // each picked on its own.
+                        ForEach(outcome.sections) { section in
+                            Section {
+                                ForEach(section.suggestions) { suggestion in
+                                    SuggestionRow(
+                                        suggestion: suggestion,
+                                        trip: trip,
+                                        canEdit: canEdit,
+                                        add: { add(suggestion, to: $0) }
+                                    )
+                                }
+                            } header: {
+                                Label(section.group.title, systemImage: section.group.symbolName)
+                            } footer: {
+                                if section.id == outcome.sections.last?.id {
+                                    Text(SuggestionsNote.footer(usedModel: outcome.usedModel, availability: availability))
+                                }
                             }
-                        } footer: {
-                            Text(SuggestionsNote.footer(usedModel: outcome.usedModel, availability: availability))
                         }
                     }
                 }
