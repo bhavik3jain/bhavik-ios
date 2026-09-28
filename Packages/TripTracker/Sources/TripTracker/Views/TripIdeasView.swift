@@ -11,6 +11,8 @@ struct TripIdeasView: View {
 
     @Environment(\.managedObjectContext) private var modelContext
     @Environment(\.tripPersistentContainer) private var container
+    @Environment(\.tripAdvisor) private var advisor
+    @Environment(\.tripAdvisorEnabled) private var advisorEnabled
 
     // Fetched, not read off `trip.items`: moving an idea onto a day changes
     // the item's `dayIndex`, which the trip — the only object this screen
@@ -37,6 +39,12 @@ struct TripIdeasView: View {
         return SharingStatusResolver.canEdit(trip, in: container)
     }
 
+    /// "Suggest Places" only where the model runs or soon could, with the
+    /// setting on — and only for someone who can add what it finds.
+    private var offersSuggestions: Bool {
+        canEdit && advisor.availability(isEnabled: advisorEnabled).offersAssistant
+    }
+
     /// In kind order, the same order the editor's Kind picker lists them.
     private var groups: [(kind: ItemKind, items: [SharedItineraryItem])] {
         ItemKind.allCases.compactMap { kind in
@@ -54,6 +62,13 @@ struct TripIdeasView: View {
             } actions: {
                 if canEdit {
                     Button("Add an Idea") { present(.newItem(day: SharedItineraryItem.unassignedDayIndex)) }
+                }
+                if offersSuggestions {
+                    Button {
+                        present(.suggestions(day: nil))
+                    } label: {
+                        Label("Suggest Places", systemImage: "sparkles")
+                    }
                 }
             }
         } else {
@@ -75,6 +90,13 @@ struct TripIdeasView: View {
                         present(.newItem(day: SharedItineraryItem.unassignedDayIndex))
                     } label: {
                         Label("Add an idea", systemImage: "plus.circle")
+                    }
+                    if offersSuggestions {
+                        Button {
+                            present(.suggestions(day: nil))
+                        } label: {
+                            Label("Suggest Places", systemImage: "sparkles")
+                        }
                     }
                 } footer: {
                     Text("Not on any day yet. Move one onto a day when you decide, or see which are close by in Nearby.")

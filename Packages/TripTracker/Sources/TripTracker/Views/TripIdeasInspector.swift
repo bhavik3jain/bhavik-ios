@@ -12,20 +12,30 @@ import SwiftUI
 struct TripIdeasInspector: View {
     @ObservedObject var trip: SharedTrip
     let day: Int
+    let weather: [DayWeather]
     let canEdit: Bool
     let present: (TripSheet) -> Void
 
     @Environment(\.managedObjectContext) private var modelContext
+    @Environment(\.tripAdvisor) private var advisor
+    @Environment(\.tripAdvisorEnabled) private var advisorEnabled
+    @Environment(\.placeSearcher) private var searcher
 
     // Fetched rather than read off `trip.items` alone, so an idea added or
     // moved on another device — or dropped here — re-ranks straight away: the
     // trip never hears about a change to one of its items' `dayIndex`.
     @FetchRequest private var items: FetchedResults<SharedItineraryItem>
     @State private var isDropTargeted = false
+    /// The day "Suggest Places" was clicked for; nil until then. Searching
+    /// only on a click — MapKit throttles — and a different day selected on
+    /// the plan clears it, cancelling a run still going.
+    @State private var suggestionsDay: Int?
+    @State private var suggestions: PlaceSuggester.Outcome?
 
-    init(trip: SharedTrip, day: Int, canEdit: Bool, present: @escaping (TripSheet) -> Void) {
+    init(trip: SharedTrip, day: Int, weather: [DayWeather], canEdit: Bool, present: @escaping (TripSheet) -> Void) {
         self.trip = trip
         self.day = day
+        self.weather = weather
         self.canEdit = canEdit
         self.present = present
         _items = FetchRequest(fetchRequest: SharedItineraryItem.fetchRequest(
@@ -77,6 +87,11 @@ struct TripIdeasInspector: View {
                     }
                 }
 
+                if canEdit, advisor.availability(isEnabled: advisorEnabled).offersAssistant {
+                    suggestionsSection
+                        .padding(.top, 6)
+                }
+
                 if canEdit {
                     Text("Drag an idea onto the plan to schedule it, or drag a planned stop here to take it off its day.")
                         .font(.system(size: 11.5))
@@ -88,12 +103,144 @@ struct TripIdeasInspector: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .background(isDropTargeted ? AnyShapeStyle(TripTrackerModule.accent.color.opacity(0.08)) : AnyShapeStyle(.clear))
+        .onChange(of: day) {
+            suggestionsDay = nil
+            suggestions = nil
+        }
+        .task(id: suggestionsDay) {
+            await suggest()
+        }
         .dropDestination(for: ItineraryItemDrag.self) { drags, _ in
             guard canEdit else { return false }
             return drop(drags)
         } isTargeted: {
             isDropTargeted = canEdit && $0
         }
+    }
+
+    // MARK: - Suggestions
+
+    @ViewBuilder
+    private var suggestionsSection: some View {
+        let availability = advisor.availability(isEnabled: advisorEnabled)
+        caption("Suggestions")
+        if suggestionsDay == nil {
+            Button {
+                suggestionsDay = day
+            } label: {
+                Label("Suggest Places near \(dayName)", systemImage: "sparkles")
+                    .font(.system(size: 12, weight: .semibold))
+            }
+            .buttonStyle(.borderless)
+            .foregroundStyle(TripTrackerModule.accent.color)
+        } else if let suggestions {
+            if suggestions.suggestions.isEmpty {
+                Text("Apple Maps found nothing new near \(dayName).")
+                    .font(.system(size: 11.5))
+                    .foregroundStyle(.secondary)
+            } else {
+                VStack(spacing: 8) {
+                    ForEach(suggestions.suggestions) { suggestion in
+                        suggestionCard(suggestion)
+                    }
+                }
+                Text(SuggestionsNote.footer(usedModel: suggestions.usedModel, availability: availability))
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+            }
+        } else {
+            HStack(spacing: 8) {
+                ProgressView()
+                    .controlSize(.small)
+                Text(SuggestionsNote.progress(availability: availability))
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private func suggestionCard(_ suggestion: PlaceSuggestion) -> some View {
+        let accent = TripTrackerModule.accent.color
+        let existing = SharedItineraryItem.existing(suggestion, in: trip)
+        return VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: suggestion.place.kind.symbolName)
+                    .font(.system(size: 13))
+                    .foregroundStyle(accent)
+                    .frame(width: 18)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(suggestion.place.name)
+                        .font(.system(size: 13, weight: .semibold))
+                        .lineLimit(1)
+                    let detail = SuggestionsNote.detail(for: suggestion)
+                    if !detail.isEmpty {
+                        Text(detail)
+                            .font(.system(size: 11.5))
+                            .foregroundStyle(.secondary)
+                    }
+                    if suggestion.isModelPick {
+                        Text(suggestion.why)
+                            .font(.system(size: 11.5))
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                Spacer(minLength: 0)
+            }
+            if let existing {
+                Label(existing.isUnassigned ? "In Ideas" : "On Day \(existing.dayIndex + 1)", systemImage: "checkmark.circle.fill")
+                    .font(.system(size: 11.5))
+                    .foregroundStyle(.secondary)
+            } else {
+                HStack(spacing: 6) {
+                    suggestionButton("Add to Ideas") { add(suggestion, to: SharedItineraryItem.unassignedDayIndex) }
+                    suggestionButton("Add to Day \(day + 1)") { add(suggestion, to: day) }
+                }
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(.background, in: RoundedRectangle(cornerRadius: 10))
+        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(.separator.opacity(0.7)))
+    }
+
+    private func suggestionButton(_ title: String, action: @escaping () -> Void) -> some View {
+        let accent = TripTrackerModule.accent.color
+        return Button(title, action: action)
+            .buttonStyle(.plain)
+            .font(.system(size: 11.5, weight: .semibold))
+            .foregroundStyle(accent)
+            .padding(.horizontal, 9)
+            .frame(height: 24)
+            .background(accent.opacity(0.12), in: RoundedRectangle(cornerRadius: 6))
+    }
+
+    private func suggest() async {
+        guard let requested = suggestionsDay else { return }
+        suggestions = nil
+        let availability = advisor.availability(isEnabled: advisorEnabled)
+        let byDay = TripForecast.byDay(weather, dates: trip.dates)
+        guard let request = SuggestionRequest(trip: trip, day: requested, weather: byDay) else {
+            suggestions = PlaceSuggester.Outcome(suggestions: [], candidateCount: 0, usedModel: false)
+            return
+        }
+        // The model only when it can run and the setting is on; otherwise
+        // nothing is sent to it and these are the nearest places.
+        let outcome = await PlaceSuggester.suggest(
+            for: request,
+            searcher: searcher,
+            advisor: availability == .available ? advisor : nil
+        )
+        guard !Task.isCancelled, suggestionsDay == requested else { return }
+        suggestions = outcome
+    }
+
+    private func add(_ suggestion: PlaceSuggestion, to target: Int) {
+        withAnimation {
+            _ = SharedItineraryItem.add(suggestion, to: trip, in: modelContext, day: target)
+        }
+        try? modelContext.saveIfNeeded()
+        trip.objectWillChange.send()
     }
 
     // MARK: - Pieces

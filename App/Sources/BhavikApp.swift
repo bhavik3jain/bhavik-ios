@@ -270,6 +270,7 @@ struct BhavikApp: App {
                 } else {
                     HomeView()
                         .preferredColorScheme(Appearance.stored(appearanceRaw).colorScheme)
+                        .modifier(TripsIntelligenceSetting())
                         .modifier(WeatherStub())
                         .modifier(TripAdvisorStub())
                         #if os(macOS)
@@ -279,6 +280,7 @@ struct BhavikApp: App {
                 #else
                 HomeView()
                     .preferredColorScheme(Appearance.stored(appearanceRaw).colorScheme)
+                    .modifier(TripsIntelligenceSetting())
                     #if os(macOS)
                     .frame(minWidth: 900, minHeight: 600)
                     #endif

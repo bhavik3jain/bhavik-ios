@@ -139,6 +139,8 @@ struct AppSettingsView: View {
 
             SharedChangeNotificationsSection()
 
+            TripsIntelligenceSection()
+
             Section {
                 // Same order as the home screen, hidden trackers included —
                 // their data is still here and still syncing.

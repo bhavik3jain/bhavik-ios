@@ -20,7 +20,7 @@ public extension SharedItineraryItem {
         day: Int = unassignedDayIndex
     ) -> SharedItineraryItem {
         let place = suggestion.place
-        if let existing = (trip.items ?? []).first(where: { SuggestionCandidates.isSame(place, title: $0.title, coordinate: $0.coordinate) }) {
+        if let existing = existing(suggestion, in: trip) {
             if day >= 0, existing.isUnassigned { existing.move(toDay: day) }
             return existing
         }
@@ -35,5 +35,13 @@ public extension SharedItineraryItem {
         // day it already has.
         item.move(toDay: day)
         return item
+    }
+
+    /// What's already on the trip for this suggestion — the same place by
+    /// name or within `SuggestionCandidates.duplicateMetres` — so a
+    /// suggestion's row can say "In Ideas" or "On Day 3" instead of offering
+    /// to add it again.
+    static func existing(_ suggestion: PlaceSuggestion, in trip: SharedTrip) -> SharedItineraryItem? {
+        (trip.items ?? []).first { SuggestionCandidates.isSame(suggestion.place, title: $0.title, coordinate: $0.coordinate) }
     }
 }
