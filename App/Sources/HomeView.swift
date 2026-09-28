@@ -278,6 +278,12 @@ struct HomeView: View {
                 }
             }
         }
+        // Again on the split view itself: a screen a module pushes (an
+        // account, a month, a guide) is hosted by the split view's own
+        // navigation, not under the detail column's modifiers, so it read the
+        // phone layout and the Mac's default form style.
+        .environment(\.moduleLayout, .sidebar)
+        .formStyle(.grouped)
         // Menu-bar shortcuts (⌘0 for Overview, ⌘1 onward per visible tracker)
         // act on this window's selection, handed to BhavikApp's commands as
         // the focused scene's value. They used to go by a notification every
