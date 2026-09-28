@@ -229,7 +229,7 @@ public extension SharedFinanceMetalItem {
         set { metalRaw = newValue.rawValue }
     }
 
-    var troyOunces: Double { MetalValuation.troyOunces(grams: grams) }
+    var ounces: Double { MetalValuation.ounces(grams: grams) }
 
     /// What it's worth at `prices`: the hand-set value if there is one,
     /// otherwise its weight at the spot price for its metal.

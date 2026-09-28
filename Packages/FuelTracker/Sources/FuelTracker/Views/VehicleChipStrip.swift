@@ -28,7 +28,7 @@ struct VehicleChipStrip: View {
         // With a single vehicle there is nothing to switch between, so the strip
         // is absent entirely rather than showing one chip that does nothing.
         // On the Mac the toolbar carries the switch instead — see
-        // `vehicleSwitcherToolbar`.
+        // `vehicleSwitcher`, which is also what places this strip.
         if summaries.count > 1, layout == .tabs {
             ScrollView(.horizontal) {
                 HStack(spacing: 8) {
@@ -99,17 +99,31 @@ struct VehicleChipStrip: View {
     }
 }
 
-/// The Mac's version of the chip strip: the cars as a segmented control at the
-/// leading edge of the toolbar, where the window's title would sit.
+/// Puts the vehicle switch on a Fuel screen that shows one car: the chip strip
+/// above it on the phone, a segmented control in the toolbar on the Mac. Every
+/// screen that depends on the selected car goes through this, so they all
+/// switch the same way and share `FuelRootView`'s one selection.
 ///
-/// A strip of capsules under a desktop toolbar read as a second toolbar. The
-/// title goes when the switcher shows, since the selected segment already
-/// names the car — otherwise "My X3" sat beside a segment reading "My X3".
+/// The phone's log lost its chips once pull-to-refresh came to it: the strip
+/// sat in a VStack of its own inside `.refreshesFromCloud()`, which reaches
+/// every scroll view below it, so the strip's horizontal ScrollView became a
+/// pull-to-refresh view too and never showed under the large title. The only
+/// way left to change car was the strip on Trends, which has no refresh (the
+/// user's report: "I have to go to Trends to change a car"). Apply this *after* any
+/// `.refreshesFromCloud()`, so the refresh covers the content and not the
+/// strip.
 ///
-/// `badge` ("Shared with Priya") goes beside the switcher. Removing the title
-/// took `.moduleSubtitle` with it, so a shared car said so nowhere on the Mac
-/// exactly when there were several to tell apart.
-private struct VehicleSwitcherToolbar: ViewModifier {
+/// On the Mac the cars go at the leading edge of the toolbar, where the
+/// window's title would sit. A strip of capsules under a desktop toolbar read
+/// as a second toolbar. The title goes when the switcher shows, since the
+/// selected segment already names the car — otherwise "My X3" sat beside a
+/// segment reading "My X3".
+///
+/// `badge` ("Shared with Priya") goes under the chips on the phone and beside
+/// the switcher on the Mac. Removing the title took `.moduleSubtitle` with it,
+/// so a shared car said so nowhere on the Mac exactly when there were several
+/// to tell apart.
+private struct VehicleSwitcher: ViewModifier {
     let summaries: [VehicleSummary]
     let selectedID: NSManagedObjectID?
     let badge: String?
@@ -128,42 +142,58 @@ private struct VehicleSwitcherToolbar: ViewModifier {
     }
 
     func body(content: Content) -> some View {
-        if layout == .sidebar, summaries.count > 1 {
-            content
-                .toolbar(removing: .title)
-                .toolbar {
-                    ToolbarItem(placement: .navigation) {
-                        Picker("Vehicle", selection: selection) {
-                            ForEach(summaries) { summary in
-                                Text(summary.name).tag(Optional(summary.id))
+        if layout == .sidebar {
+            if summaries.count > 1 {
+                content
+                    .toolbar(removing: .title)
+                    .toolbar {
+                        ToolbarItem(placement: .navigation) {
+                            Picker("Vehicle", selection: selection) {
+                                ForEach(summaries) { summary in
+                                    Text(summary.name).tag(Optional(summary.id))
+                                }
+                            }
+                            .pickerStyle(.segmented)
+                            .labelsHidden()
+                            .fixedSize()
+                        }
+                        if let badge {
+                            ToolbarItem(placement: .navigation) {
+                                Text(badge)
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(.secondary)
+                                    .fixedSize()
                             }
                         }
-                        .pickerStyle(.segmented)
-                        .labelsHidden()
-                        .fixedSize()
                     }
-                    if let badge {
-                        ToolbarItem(placement: .navigation) {
-                            Text(badge)
-                                .font(.system(size: 11))
-                                .foregroundStyle(.secondary)
-                                .fixedSize()
-                        }
-                    }
-                }
+            } else {
+                content
+            }
         } else {
-            content
+            VStack(spacing: 0) {
+                VehicleChipStrip(summaries: summaries, selectedID: selectedID, perform: perform)
+
+                if let badge {
+                    Label(badge, systemImage: "person.2.fill")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal)
+                        .padding(.bottom, 4)
+                }
+
+                content
+            }
         }
     }
 }
 
 extension View {
-    func vehicleSwitcherToolbar(
+    func vehicleSwitcher(
         summaries: [VehicleSummary],
         selectedID: NSManagedObjectID?,
         badge: String? = nil,
         perform: @escaping (VehicleChipAction, VehicleSummary) -> Void
     ) -> some View {
-        modifier(VehicleSwitcherToolbar(summaries: summaries, selectedID: selectedID, badge: badge, perform: perform))
+        modifier(VehicleSwitcher(summaries: summaries, selectedID: selectedID, badge: badge, perform: perform))
     }
 }

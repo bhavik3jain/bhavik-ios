@@ -222,8 +222,8 @@ struct HoldingsView: View {
         }
 
         Section {
-            LabeledContent("Gold", value: "\(FinanceFormat.cents(prices.gold)) / oz t")
-            LabeledContent("Silver", value: "\(FinanceFormat.cents(prices.silver)) / oz t")
+            LabeledContent("Gold", value: "\(FinanceFormat.cents(prices.gold)) / oz")
+            LabeledContent("Silver", value: "\(FinanceFormat.cents(prices.silver)) / oz")
         } header: {
             Text(snapshot.latestMonth.map { "\($0.title) prices" } ?? "Prices")
         } footer: {

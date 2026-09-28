@@ -16,8 +16,10 @@ it, Weight (oz) = CONVERT(Weight (g),"g","ozm") and Current Value = Metal Price 
 its own metal, unless the item has a set value (the engagement ring, or any value that isn't
 price × weight).
 
---troy-fix writes Weight (oz) as grams ÷ 31.1035 instead of the CONVERT(…,"g","ozm") formula,
-which uses the 28.35 g avoirdupois ounce and overstates metals by ~9.7%.
+CONVERT(…,"g","ozm") uses the 28.35 g avoirdupois ounce, as the app does, so the sheet and the app
+agree on every metal (both ~9.7% above market, since prices are per troy ounce). --troy-fix writes
+Weight (oz) as grams ÷ 31.1035 instead, valuing metals in troy ounces: nearer the market, but the
+sheet then DISAGREES with the app by ~9.7% on every metal.
 
 The two pivot tables aren't refreshed: Numbers' scripting can't, and Numbers doesn't on open or save.
 """
@@ -260,7 +262,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("json_file", help="a month exported by the app, e.g. 'Finance 2026-09.json'")
     parser.add_argument("--template", required=True, help="the .numbers template to copy")
     parser.add_argument("-o", "--output", help="output .numbers (default: 'Finance <month>.numbers')")
-    parser.add_argument("--troy-fix", action="store_true", help="write Weight (oz) in troy ounces")
+    parser.add_argument("--troy-fix", action="store_true", help="write Weight (oz) in troy ounces; the sheet then disagrees with the app by ~9.7%% on metals")
     args = parser.parse_args(argv)
     with open(args.json_file, encoding="utf-8") as f:
         document = json.load(f)

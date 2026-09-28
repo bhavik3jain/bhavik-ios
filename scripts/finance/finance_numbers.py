@@ -26,8 +26,10 @@ import warnings
 warnings.filterwarnings("ignore", message="Not modifying pivot table")
 
 TROY_OUNCE_GRAMS = 31.1035
-# What the template's own CONVERT(…,"g","ozm") uses: the avoirdupois ounce. Gold and silver are
-# priced per troy ounce, so the sheet overstates metals by ~9.7%; --troy-fix corrects it.
+# What the template's own CONVERT(…,"g","ozm") uses: the avoirdupois ounce, and what the app values
+# metals in too (MetalValuation.gramsPerOunce), so the sheet and the app agree. Gold and silver are
+# priced per troy ounce, so both come out ~9.7% above market, on purpose; --troy-fix values the
+# sheet in troy ounces instead, which then DISAGREES with the app by that much.
 AVOIRDUPOIS_OUNCE_GRAMS = 28.349523125
 
 ACCOUNT_TABLES = {"Cash": "cash", "Investments": "investments", "Retirement": "retirement"}

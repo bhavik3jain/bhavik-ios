@@ -73,12 +73,19 @@ struct FuelRootView: View {
             // it waits until that store has caught up with iCloud — otherwise
             // a second device re-copies what the first already exported. See
             // CloudKitImportGate.
+            #if DEBUG
+            // Asked before the migration, not after: the migration marks
+            // itself run even with nothing to migrate, and `isRequested`
+            // refuses a store it has run against, so asking afterwards made
+            // -FuelSeedCSV a no-op on every device, a fresh simulator included.
+            let seedRequested = FuelDebugSeed.isRequested
+            #endif
             if !FuelLegacyMigration.hasRun {
                 guard await CloudKitImportGate.waitForFirstImport(of: container) else { return }
             }
             FuelLegacyMigration.runIfNeeded(from: legacyContext, into: context)
             #if DEBUG
-            guard FuelDebugSeed.isRequested else { return }
+            guard seedRequested else { return }
             FuelDebugSeed.run(context: context)
             #endif
         }

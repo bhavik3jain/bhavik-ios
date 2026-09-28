@@ -40,9 +40,9 @@ struct MonthEntryView: View {
                 Text("Metal prices")
             } footer: {
                 if feed.isLive(month) {
-                    Text("Live, per troy ounce, from gold and silver futures (\(MetalQuoteClient.goldSymbol) and \(MetalQuoteClient.silverSymbol))\(updated(feed.fetchedAt)). Closing \(month.monthName) saves the prices with it.")
+                    Text("Live, per ounce, from gold and silver futures (\(MetalQuoteClient.goldSymbol) and \(MetalQuoteClient.silverSymbol))\(updated(feed.fetchedAt)). Weights are in regular ounces, as in the Numbers sheet. Closing \(month.monthName) saves the prices with it.")
                 } else {
-                    Text("Per troy ounce. Gold & silver are valued at these.")
+                    Text("Per ounce. Gold & silver are valued at these, by weight in regular ounces as in the Numbers sheet.")
                 }
             }
 
@@ -155,7 +155,7 @@ struct MonthEntryView: View {
     private func priceRow(_ title: String, value: Double, isEditable: Bool, set: @escaping (Double) -> Void) -> some View {
         LabeledContent(title) {
             if isEditable {
-                AmountField(title: "Price per oz t", value: value, commit: set, endEditing: save)
+                AmountField(title: "Price per oz", value: value, commit: set, endEditing: save)
             } else {
                 Text(FinanceFormat.cents(value))
                     .monospacedDigit()

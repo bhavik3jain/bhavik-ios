@@ -1,7 +1,8 @@
 import Foundation
 
 /// Gold and silver prices per troy ounce, from the COMEX front-month
-/// futures GC=F and SI=F — the tickers the Stocks app shows.
+/// futures GC=F and SI=F — the tickers the Stocks app shows. They're kept as
+/// quoted and applied per regular ounce, on purpose (see `MetalValuation`).
 ///
 /// There's no API into the Stocks app itself. This reads the same quotes from
 /// Yahoo Finance's chart endpoint, which is what the Stocks app has long been
