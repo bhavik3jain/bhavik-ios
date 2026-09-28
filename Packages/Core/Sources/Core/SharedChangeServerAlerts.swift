@@ -115,17 +115,25 @@ public final class SharedChangeServerAlerts {
     private func perform(_ job: Job) async {
         guard let containerID, !sources.isEmpty else { return }
 
-        let mode: SharedChangeServerAlertPlan.Mode
+        var mode: SharedChangeServerAlertPlan.Mode
+        let enabled = UserDefaults.standard.object(forKey: SharedChangeNotifications.enabledKey) as? Bool ?? true
         if job == .removeAll {
             mode = .removeAll
         } else {
-            let enabled = UserDefaults.standard.object(forKey: SharedChangeNotifications.enabledKey) as? Bool ?? true
             let authorized = await SharedChangeNotifications.isAuthorized()
             mode = enabled && authorized ? .reconcile : .maintain
         }
 
         let inputs = await Self.gatherInputs(from: sources)
         UserDefaults.standard.set(inputs.participatingModuleIDs.sorted(), forKey: Self.participatingDefaultsKey)
+
+        // See `shouldAskForPermission`. Asked once: after an answer the
+        // status is no longer undetermined.
+        if mode == .maintain,
+           inputs.shouldAskForPermission(switchOn: enabled, neverAsked: await SharedChangeNotifications.isUndetermined()) {
+            await SharedChangeNotifications.requestAuthorizationIfUndetermined()
+            if await SharedChangeNotifications.isAuthorized() { mode = .reconcile }
+        }
 
         if job == .sync(force: false), let lastApplied, lastApplied.mode == mode, lastApplied.inputs == inputs,
            Date.now.timeIntervalSince(lastApplied.at) < Self.recheckInterval {

@@ -210,3 +210,13 @@ private func event(_ root: String, _ alertID: String?, _ author: SharedChangeAut
     coalescer.add(event("rome", nil, .named("Saloni")), at: start)
     #expect(coalescer.due(asOf: start.addingTimeInterval(2)).map(\.serverAlertID) == [alert])
 }
+
+@Test func permissionIsAskedForOnlyWhenSomethingIsSharedAndItWasNeverAsked() {
+    let participating = SharedChangeServerAlertInputs(participatingModuleIDs: ["fuel"])
+    #expect(participating.shouldAskForPermission(switchOn: true, neverAsked: true))
+    #expect(!participating.shouldAskForPermission(switchOn: false, neverAsked: true))
+    #expect(!participating.shouldAskForPermission(switchOn: true, neverAsked: false))
+    // The owner of a shared car is asked too, not only whoever accepted it.
+    #expect(SharedChangeServerAlertInputs(ownedZones: [car]).shouldAskForPermission(switchOn: true, neverAsked: true))
+    #expect(!SharedChangeServerAlertInputs().shouldAskForPermission(switchOn: true, neverAsked: true))
+}
