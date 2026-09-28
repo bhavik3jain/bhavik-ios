@@ -158,6 +158,9 @@ targets:
       path: App/Resources/Info-macOS.plist
       properties:
         CFBundleDisplayName: Multitrack
+        # Required by the Mac App Store: an upload without a category fails
+        # validation.
+        LSApplicationCategoryType: public.app-category.productivity
         # Stops the Mac app launching on a system too old to run it, where it
         # would only get as far as a dyld crash.
         LSMinimumSystemVersion: $(MACOSX_DEPLOYMENT_TARGET)
