@@ -7,47 +7,19 @@ import SwiftUI
 /// plan and the ideas around it to show, where every other card has a number.
 ///
 /// The cards themselves come from the modules (`overviewCard(…)`), fed by
-/// `HomeView`'s queries; this only lays them out.
+/// `HomeView`'s queries; this only lays them out, where Core's `OverviewGrid`
+/// says — the arithmetic lives there so it can be tested.
 struct MacOverview<Card: View>: View {
     let modules: [SelectedModule]
     let syncMonitor: CloudSyncMonitor?
     let open: (SelectedModule) -> Void
+    /// Whether a module's card needs the taller row as of the given moment —
+    /// Trips while one is under way. Every other row is one height.
+    let isTall: (SelectedModule, Date) -> Bool
     /// A module's card as of the given moment — see the TimelineView below.
     @ViewBuilder let card: (SelectedModule, Date) -> Card
 
-    private static var spacing: CGFloat { 14 }
-    private static var padding: CGFloat { 24 }
-    /// The narrowest a card can be and still hold its headline and detail.
-    private static var minimumColumn: CGFloat { 200 }
-
-    /// Three columns where they fit, two where they don't. A fixed three with
-    /// a 200pt floor under each overflowed the pane by 16pt at the window's
-    /// minimum width and clipped the third card.
-    private static func columns(for width: CGFloat) -> Int {
-        let three = (width - padding * 2 - spacing * 2) / 3
-        return three >= minimumColumn ? 3 : 2
-    }
-
-    /// Rows of (module, columns it spans), filled left to right. A wide card
-    /// that doesn't fit what's left of a row starts the next one rather than
-    /// being squeezed to one column.
-    private func rows(columns: Int) -> [[(module: SelectedModule, span: Int)]] {
-        var rows: [[(module: SelectedModule, span: Int)]] = []
-        var row: [(module: SelectedModule, span: Int)] = []
-        var used = 0
-        for module in modules {
-            let span = module == .trips ? 2 : 1
-            if used + span > columns {
-                rows.append(row)
-                row = []
-                used = 0
-            }
-            row.append((module, span))
-            used += span
-        }
-        if !row.isEmpty { rows.append(row) }
-        return rows
-    }
+    private typealias Grid = OverviewGrid<SelectedModule>
 
     var body: some View {
         // Re-read once a minute. The cards read `.now` only when HomeView
@@ -56,26 +28,24 @@ struct MacOverview<Card: View>: View {
         // yesterday's.
         TimelineView(.everyMinute) { context in
             GeometryReader { proxy in
-                let columns = Self.columns(for: proxy.size.width)
-                let column = (proxy.size.width - Self.padding * 2 - Self.spacing * CGFloat(columns - 1)) / CGFloat(columns)
+                let grid = Grid(
+                    width: proxy.size.width,
+                    ids: modules,
+                    span: { $0 == .trips ? 2 : 1 },
+                    isTall: { isTall($0, context.date) }
+                )
                 ScrollView {
-                    VStack(alignment: .leading, spacing: Self.spacing) {
-                        ForEach(Array(rows(columns: columns).enumerated()), id: \.offset) { _, row in
-                            // Taller where Trips is: its plan needs four lines
-                            // and a caption, the others a headline and a detail.
-                            let height: CGFloat = row.contains { $0.span > 1 } ? 250 : 190
-                            HStack(alignment: .top, spacing: Self.spacing) {
-                                ForEach(row, id: \.module) { cell in
-                                    card(cell.module, context.date)
-                                        .frame(
-                                            width: max(0, column * CGFloat(cell.span) + Self.spacing * CGFloat(cell.span - 1)),
-                                            height: height
-                                        )
+                    VStack(alignment: .leading, spacing: Grid.spacing) {
+                        ForEach(Array(grid.rows.enumerated()), id: \.offset) { _, row in
+                            HStack(alignment: .top, spacing: Grid.spacing) {
+                                ForEach(row.cells, id: \.id) { cell in
+                                    card(cell.id, context.date)
+                                        .frame(width: max(0, cell.width), height: row.height)
                                 }
                             }
                         }
                     }
-                    .padding(Self.padding)
+                    .padding(Grid.padding)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }

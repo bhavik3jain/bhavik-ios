@@ -4,11 +4,18 @@ import SwiftUI
 public extension TVTrackerModule {
     /// The Mac Overview's TV card: the backlog, with the posters of what to
     /// watch next.
+    ///
+    /// `episodes` is the unwatched episodes, fetched in one query
+    /// (`Schedule.unwatched`) — see `Schedule` for why not `show.episodes`.
     @MainActor
-    static func overviewCard(shows: [Show], asOf now: Date = .now, open: @escaping () -> Void) -> some View {
-        TVOverviewCard(
-            ready: Schedule.readyToWatch(shows: shows, asOf: now),
-            upcoming: Schedule.upcoming(shows: shows, asOf: now),
+    static func overviewCard(shows: [Show], episodes: [Episode], asOf now: Date = .now, open: @escaping () -> Void) -> some View {
+        // Counted per show, not listed per episode: the list cost over half
+        // the main thread at launch — see `Schedule.backlog`. Both halves in
+        // one pass — see `Schedule.glance`.
+        let glance = Schedule.glance(episodes: episodes, asOf: now)
+        return TVOverviewCard(
+            backlog: glance.backlog,
+            upcoming: glance.upcoming,
             hasShows: !shows.isEmpty,
             open: open
         )
@@ -16,38 +23,52 @@ public extension TVTrackerModule {
 }
 
 struct TVOverviewCard: View {
-    let ready: [ScheduledEpisode]
+    let backlog: Backlog
     let upcoming: [ScheduledEpisode]
     let hasShows: Bool
     let open: () -> Void
 
-    private var headline: String {
-        if !ready.isEmpty { return "\(counted(ready.count, "episode")) ready" }
-        return hasShows ? "All caught up" : "No shows yet"
+    /// One poster per show, oldest-waiting first, so three episodes of the same
+    /// show don't fill the row with the same artwork. Caught up, the shows
+    /// airing next instead.
+    private var posters: [(name: String, path: String)] {
+        if !backlog.isEmpty { return backlog.shows.map { ($0.showName, $0.posterPath) } }
+        var seen = Set<String>()
+        return upcoming.filter { seen.insert($0.showName).inserted }.map { ($0.showName, $0.posterPath) }
     }
 
-    /// One poster per show, oldest-waiting first, so three episodes of the same
-    /// show don't fill the row with the same artwork.
-    private var posters: [ScheduledEpisode] {
-        var seen = Set<String>()
-        return (ready.isEmpty ? upcoming : ready).filter { seen.insert($0.showName).inserted }
+    /// "From 6 shows", or — caught up — what airs next.
+    private var caption: String {
+        if !backlog.isEmpty {
+            return "From \(counted(backlog.shows.count, "show"))"
+        }
+        guard let next = upcoming.first else { return "Nothing new on the schedule" }
+        let when = next.airDate.map { " · \($0.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated)))" } ?? ""
+        return "Next: \(next.showName)\(when)"
     }
 
     var body: some View {
         OverviewCard(accent: TVTrackerModule.accent, icon: TVTrackerModule.symbolName, open: open) {
-            VStack(alignment: .leading, spacing: 8) {
-                OverviewValue(headline)
-                if ready.isEmpty, let next = upcoming.first {
-                    Text("Next: \(next.showName)")
-                        .font(.system(size: 13))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-                Spacer(minLength: 6)
-                HStack(spacing: 8) {
-                    ForEach(posters.prefix(4)) { episode in
-                        PosterView(path: episode.posterPath, width: 44)
-                            .accessibilityLabel(episode.showName)
+            if !hasShows {
+                OverviewEmptyState("No shows yet", message: "Add one from Watching.")
+            } else {
+                VStack(alignment: .leading, spacing: 4) {
+                    if backlog.isEmpty {
+                        OverviewValue("All caught up")
+                    } else {
+                        OverviewValue(
+                            String(backlog.episodeCount),
+                            unit: backlog.episodeCount == 1 ? "episode ready" : "episodes ready"
+                        )
+                    }
+                    OverviewCaption(caption)
+                    Spacer(minLength: 8)
+                    HStack(spacing: 8) {
+                        ForEach(posters.prefix(5), id: \.name) { poster in
+                            PosterView(path: poster.path, width: 40)
+                                .accessibilityLabel(poster.name)
+                                .help(poster.name)
+                        }
                     }
                 }
             }

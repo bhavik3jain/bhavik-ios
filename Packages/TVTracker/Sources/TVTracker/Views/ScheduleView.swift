@@ -2,10 +2,13 @@ import SwiftData
 import SwiftUI
 
 struct ScheduleView: View {
-    @Query private var shows: [Show]
+    // The unwatched episodes in one fetch rather than each show's
+    // `episodes`, whose faults cost a SQLite round trip apiece — see
+    // `Schedule`.
+    @Query(filter: Schedule.unwatched) private var episodes: [Episode]
 
-    private var ready: [ScheduledEpisode] { Schedule.readyToWatch(shows: shows) }
-    private var upcoming: [ScheduledEpisode] { Schedule.upcoming(shows: shows) }
+    private var ready: [ScheduledEpisode] { Schedule.readyToWatch(episodes: episodes) }
+    private var upcoming: [ScheduledEpisode] { Schedule.upcoming(episodes: episodes) }
 
     var body: some View {
         NavigationStack {

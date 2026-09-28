@@ -162,8 +162,9 @@ hub list + `fullScreenCover`; macOS gets a `NavigationSplitView` whose sidebar i
 visible trackers, with the selected one's sections (only when it has more than one) or Trips' trips
 + "Past trips" nested under it, and an iCloud footer with Refresh. It lands on the Overview — one
 `overviewCard(…)` per module, fed from `HomeView`'s queries like the peeks. Settings is its own
-scene (⌘,). A `⌘0`–`⌘9` Trackers menu reaches `HomeView`'s selection via a `Notification.Name` (a
-Scene's `.commands` sits outside the `WindowGroup` and has no other way in). The Mac never shows a
+scene (⌘,). A `⌘0`–`⌘9` Trackers menu reaches the key window's `HomeView` selection through
+`.focusedSceneValue(\.trackerSelection, …)` / `@FocusedBinding` (a Scene's `.commands` sits outside
+the `WindowGroup`; the notification it used before switched every open window). The Mac never shows a
 module's Home tab. Don't move this into Core — it's the two platforms genuinely wanting different
 navigation, and it belongs where the hub itself lives.
 

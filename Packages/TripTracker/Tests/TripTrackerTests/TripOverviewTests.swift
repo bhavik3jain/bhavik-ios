@@ -66,6 +66,26 @@ private func trips(in context: NSManagedObjectContext) -> (rome: SharedTrip, tok
     #expect(TripOverview.homeDetail(trips: [all.reykjavik], asOf: day(6, 8)) == "Nothing coming up")
 }
 
+@Test func countdownHeadlineSplitsTheFigureFromTheWords() {
+    #expect(TripOverview.countdownHeadline(days: 0) == ("Today", ""))
+    #expect(TripOverview.countdownHeadline(days: 1) == ("1", "day to go"))
+    #expect(TripOverview.countdownHeadline(days: 44) == ("44", "days to go"))
+}
+
+@Test func planProgressCountsDaysStopsAndIdeas() {
+    // Day 0 twice, day 2, two ideas (any negative day), and a stop left past
+    // the last day by an old build.
+    let plan = TripOverview.planProgress(dayIndices: [0, 0, 2, -1, -5, 9], flightCount: 2, dayCount: 7)
+    #expect(plan.daysPlanned == 2)
+    #expect(plan.stops == 4)
+    #expect(plan.ideas == 2)
+    #expect(plan.flights == 2)
+    #expect(abs(plan.fractionPlanned - 2.0 / 7.0) < 0.0001)
+
+    let empty = TripOverview.planProgress(dayIndices: [], flightCount: 0, dayCount: 0)
+    #expect(empty.fractionPlanned == 0, "A trip with no days doesn't divide by zero")
+}
+
 @Test func countdownWords() {
     #expect(TripOverview.countdown(days: 0) == "today")
     #expect(TripOverview.countdown(days: 1) == "tomorrow")

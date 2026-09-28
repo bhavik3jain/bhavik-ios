@@ -354,24 +354,29 @@ private extension Scene {
 /// tracker, numbered in the sidebar's own order and skipping hidden ones, so
 /// ⌘1 is always the top row.
 /// A Scene's `.commands` sits outside the WindowGroup's view hierarchy, so it
-/// can't reach into HomeView's own `@State` — it posts a notification instead,
-/// which `HomeView.macBody` listens for.
+/// can't reach into HomeView's own `@State` — the key window's HomeView hands
+/// its selection over as a focused scene value (`FocusedValues.trackerSelection`)
+/// instead. It used to post a notification, which every open window obeyed.
 private struct TrackerCommands: Commands {
     @ObservedObject private var layoutStore = TrackerLayoutStore.shared
+    /// nil with no window open; `.some(nil)` is the Overview.
+    @FocusedBinding(\.trackerSelection) private var selection: SelectedModule??
 
     var body: some Commands {
         CommandMenu("Trackers") {
             Button("Overview") {
-                NotificationCenter.default.post(name: .selectTracker, object: nil, userInfo: ["module": SelectedModule.overviewID])
+                selection = .some(nil)
             }
             .keyboardShortcut("0", modifiers: .command)
+            .disabled(selection == nil)
             Divider()
             // Nine at most: ⌘0 and beyond aren't single keystrokes.
             ForEach(Array(layoutStore.visibleModules.prefix(9).enumerated()), id: \.element) { index, module in
                 Button(module.accent.name) {
-                    NotificationCenter.default.post(name: .selectTracker, object: nil, userInfo: ["module": module.rawValue])
+                    selection = .some(module)
                 }
                 .keyboardShortcut(KeyEquivalent(Character(String(index + 1))), modifiers: .command)
+                .disabled(selection == nil)
             }
         }
     }

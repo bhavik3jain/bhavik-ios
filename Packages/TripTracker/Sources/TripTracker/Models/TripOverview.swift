@@ -30,6 +30,52 @@ public enum TripOverview {
         dates.dayNumber(asOf: now).map { "Day \($0) of \(dates.dayCount)" }
     }
 
+    /// The Mac Overview's headline for the next trip: the figure and the
+    /// words after it — ("44", "days to go"), ("1", "day to go"), or
+    /// ("Today", "") when it starts today.
+    public static func countdownHeadline(days: Int) -> (value: String, unit: String) {
+        switch days {
+        case ..<1: ("Today", "")
+        case 1: ("1", "day to go")
+        default: (String(days), "days to go")
+        }
+    }
+
+    /// How far the next trip's plan has got, for the Mac Overview's Trips
+    /// card: with nothing under way and one trip coming up, the two-column
+    /// card held a countdown and a date and was otherwise blank, the emptiest
+    /// card on the page.
+    ///
+    /// Takes each itinerary item's `dayIndex` rather than the items, so it
+    /// reads one attribute per item and can be tested without a store. Any
+    /// negative day is an idea (`SharedItineraryItem.isUnassigned`); a day
+    /// past the trip's last — left by a build from before
+    /// `clampPlanToDates()` — still counts as a stop but not as a day planned.
+    public static func planProgress(dayIndices: [Int], flightCount: Int, dayCount: Int) -> PlanProgress {
+        let planned = dayIndices.filter { $0 >= 0 }
+        return PlanProgress(
+            dayCount: dayCount,
+            daysPlanned: Set(planned.filter { $0 < dayCount }).count,
+            stops: planned.count,
+            ideas: dayIndices.count - planned.count,
+            flights: flightCount
+        )
+    }
+
+    public struct PlanProgress: Equatable, Sendable {
+        public let dayCount: Int
+        /// Days with at least one stop on them.
+        public let daysPlanned: Int
+        public let stops: Int
+        public let ideas: Int
+        public let flights: Int
+
+        /// 0…1, for a bar: the share of days with something planned.
+        public var fractionPlanned: Double {
+            dayCount > 0 ? min(1, Double(daysPlanned) / Double(dayCount)) : 0
+        }
+    }
+
     /// "today", "tomorrow", "in 12 days".
     public static func countdown(days: Int) -> String {
         switch days {
