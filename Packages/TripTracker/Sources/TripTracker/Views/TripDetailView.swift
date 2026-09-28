@@ -36,6 +36,10 @@ enum TripSheet: Identifiable {
     case newBooking
     case booking(SharedBooking)
     case editTrip
+    /// Review Plan: the plan check, and the model's verdict when it's on.
+    case review
+    /// Suggest Places around a day's stops, or the whole trip when nil.
+    case suggestions(day: Int?)
 
     var id: String {
         switch self {
@@ -46,6 +50,8 @@ enum TripSheet: Identifiable {
         case .newBooking: "new-booking"
         case .booking(let booking): "booking-\(booking.objectID.hashValue)"
         case .editTrip: "edit-trip"
+        case .review: "review"
+        case .suggestions(let day): "suggestions-\(day ?? -1)"
         }
     }
 }
@@ -74,6 +80,8 @@ struct TripDetailView: View {
     @Environment(\.tripPersistentContainer) private var container
     @Environment(\.presentShareSheet) private var presentShareSheet
     @Environment(\.moduleLayout) private var layout
+    @Environment(\.tripAdvisor) private var advisor
+    @Environment(\.tripAdvisorEnabled) private var advisorEnabled
     /// The Mac's Ideas inspector beside Plan. On by default — the plan and
     /// what could still go on it are the two halves of deciding a day — and
     /// remembered once hidden with ⌥⌘I.
@@ -153,7 +161,7 @@ struct TripDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .modifier(TripTitleChrome(subtitle: subtitle))
         .modifier(IdeasInspectorChrome(isPresented: inspectorPresented) {
-            TripIdeasInspector(trip: trip, day: selectedDay, canEdit: canEdit) { sheet = $0 }
+            TripIdeasInspector(trip: trip, day: selectedDay, weather: weather, canEdit: canEdit) { sheet = $0 }
                 .inspectorColumnWidth(min: 280, ideal: 320, max: 420)
         })
         .toolbar {
@@ -169,6 +177,10 @@ struct TripDetailView: View {
                     .fixedSize()
                 }
                 if section == .plan {
+                    ToolbarItem(placement: .primaryAction) {
+                        reviewButton
+                            .help("Check this trip's plan for overlaps, tight walks and busy days")
+                    }
                     ToolbarItem(placement: .primaryAction) {
                         Button {
                             withAnimation { showsIdeas.toggle() }
@@ -199,8 +211,19 @@ struct TripDetailView: View {
                 .disabled(container == nil)
                 .accessibilityLabel("Share trip")
 
+                // The phone keeps Review Plan in the add menu, beside the
+                // other things done to the plan; someone who can only view the
+                // trip has no add menu, so it gets a button of its own.
+                if layout == .tabs, section == .plan, !canEdit {
+                    reviewButton
+                }
+
                 if canEdit {
                     Menu {
+                        if layout == .tabs, section == .plan {
+                            reviewButton
+                            Divider()
+                        }
                         Button {
                             sheet = .newItem(day: selectedDay)
                         } label: {
@@ -250,6 +273,19 @@ struct TripDetailView: View {
                 BookingEditorView(trip: trip, booking: booking)
             case .editTrip:
                 TripEditorView(trip: trip)
+            case .review:
+                TripReviewSheet(trip: trip, weather: weather, focusDay: selectedDay, canEdit: canEdit)
+            case .suggestions(let day):
+                PlaceSuggestionsSheet(trip: trip, weather: weather, canEdit: canEdit, scope: day.map(SuggestionScope.day) ?? .trip)
+            }
+        }
+        // Loads the model while the plan is being read, so a Review Plan tap
+        // gets its first words sooner (the research spike: first text in 1.4 s
+        // prewarmed against 3.4 s cold). Only when the setting is on and the
+        // model can run — off means nothing reaches the model at all.
+        .task(id: section == .plan && advisor.availability(isEnabled: advisorEnabled) == .available) {
+            if section == .plan, advisor.availability(isEnabled: advisorEnabled) == .available {
+                advisor.prewarm()
             }
         }
         .loadsWeather(for: trip, into: $weather)
@@ -257,6 +293,21 @@ struct TripDetailView: View {
             // A shortened trip must not leave the strip pointing past its end.
             selectedDay = min(selectedDay, count - 1)
         }
+    }
+
+    /// Sparkles only when the model is part of it: with the setting off, or
+    /// no Apple Intelligence here, Review Plan is the plain check and says so
+    /// with a plain checklist.
+    private var reviewButton: some View {
+        Button {
+            sheet = .review
+        } label: {
+            Label(
+                "Review Plan",
+                systemImage: advisor.availability(isEnabled: advisorEnabled).offersAssistant ? "sparkles" : "checklist"
+            )
+        }
+        .accessibilityLabel("Review Plan")
     }
 
     /// "Italy · 6–14 Jun · Day 3 of 9 · Shared with Saloni" — what the phone's

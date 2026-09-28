@@ -13,6 +13,8 @@ struct TripNearbyView: View {
     @Environment(\.locationProvider) private var locationProvider
     @Environment(\.openURL) private var openURL
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.tripAdvisor) private var advisor
+    @Environment(\.tripAdvisorEnabled) private var advisorEnabled
 
     // All of the trip's items, not just its ideas: a day's stops are what
     // "Near Day N" measures from. Fetched rather than read off `trip.items` so
@@ -38,6 +40,12 @@ struct TripNearbyView: View {
     private var canEdit: Bool {
         guard let container else { return true }
         return SharingStatusResolver.canEdit(trip, in: container)
+    }
+
+    /// "Find more around Day N" only where the model runs or soon could, with
+    /// the setting on — and only for someone who can add what it finds.
+    private var offersSuggestions: Bool {
+        canEdit && advisor.availability(isEnabled: advisorEnabled).offersAssistant
     }
 
     private var location: GeoCoordinate? {
@@ -66,6 +74,13 @@ struct TripNearbyView: View {
                 } actions: {
                     if canEdit {
                         Button("Add an Idea") { present(.newItem(day: SharedItineraryItem.unassignedDayIndex)) }
+                    }
+                    if offersSuggestions {
+                        Button {
+                            present(.suggestions(day: nil))
+                        } label: {
+                            Label("Suggest Places", systemImage: "sparkles")
+                        }
                     }
                 }
             } else {
@@ -110,6 +125,19 @@ struct TripNearbyView: View {
                 originPicker(origin: origin, days: days)
             } footer: {
                 locationNote(origin: origin)
+            }
+
+            // Around the day being measured from — or today, measuring from
+            // the person mid-trip. Measuring from the person any other time
+            // has no day, so it looks around the whole trip.
+            if offersSuggestions {
+                Section {
+                    Button {
+                        present(.suggestions(day: target))
+                    } label: {
+                        Label(target.map { "Find More Around Day \($0 + 1)" } ?? "Find More Places", systemImage: "sparkles")
+                    }
+                }
             }
 
             if let nearby {

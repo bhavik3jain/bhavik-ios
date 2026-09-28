@@ -52,6 +52,12 @@ struct TripRootView: View {
         }
         .tint(TripTrackerModule.accent.color)
         .task {
+            #if DEBUG
+            // Read before the migration below, which marks even an empty
+            // store as migrated: asked afterwards, `-TripSeed YES` on a fresh
+            // simulator found the flag it had just set and never seeded.
+            let seedRequested = TripDebugSeed.isRequested
+            #endif
             // The importer de-duplicates against this device's store only, so
             // it waits until that store has caught up with iCloud — otherwise
             // a second device re-copies what the first already exported. See
@@ -61,7 +67,7 @@ struct TripRootView: View {
             }
             TripLegacyMigration.runIfNeeded(from: legacyContext, into: context)
             #if DEBUG
-            guard TripDebugSeed.isRequested else { return }
+            guard seedRequested else { return }
             TripDebugSeed.run(context: context)
             #endif
         }
