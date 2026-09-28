@@ -705,3 +705,32 @@ private func makeSeptember() throws -> (household: SharedFinanceHousehold, month
     #expect(longDomain.lowerBound == YearMonth(year: 2025, month: 1).start)
     #expect(FinanceHistory.chartDomain([]) == nil)
 }
+
+@MainActor
+@Test func theCategoryBreakdownSplitsEachCategoryByExpense() {
+    let household = makeHousehold()
+    func spend(_ cost: Double, _ category: String, _ expense: String) -> SharedFinanceTransaction {
+        let transaction = SharedFinanceTransaction(date: day(2026, 9, 3), cost: cost, merchant: "M", household: household)
+        transaction.category = category
+        transaction.expense = expense
+        return transaction
+    }
+    let all = [
+        spend(60, "Groceries", "Weekly"),
+        spend(20, "groceries ", "Pantry"),
+        spend(20, "Groceries", "weekly"),
+        spend(100, "Food", ""),
+        spend(-10, "Travel", "Refund"),
+    ]
+    let breakdown = SpendingSummary.breakdown(all)
+
+    #expect(breakdown.map(\.name) == ["Food", "Groceries", "Travel"])
+    let groceries = breakdown[1]
+    #expect(groceries.total == 100)
+    #expect(groceries.count == 3, "Typed \"groceries \" is the same category")
+    #expect(groceries.share == 0.5, "Of the 200 spent; the refund takes nothing away")
+    #expect(groceries.expenses == [SpendingTotal(name: "Weekly", total: 80), SpendingTotal(name: "Pantry", total: 20)])
+    #expect(breakdown[0].expenses == [SpendingTotal(name: "Other", total: 100)])
+    #expect(breakdown[2].share == 0)
+    #expect(SpendingSummary.transactions(all, inCategory: "Groceries").count == 3)
+}

@@ -12,11 +12,13 @@ struct SpendingView: View {
 
     private enum Mode: String, CaseIterable, Identifiable {
         case transactions = "Transactions"
+        case categories = "Categories"
         case budget = "Budget"
         var id: String { rawValue }
     }
 
-    @State private var mode = Mode.transactions
+    /// Remembered, so Spending reopens on the view last used.
+    @AppStorage("finance.spendingMode") private var mode = Mode.transactions
     /// nil follows the latest month.
     @State private var chosenPeriod: YearMonth?
     @State private var cardFilter: SharedFinanceAccount?
@@ -56,7 +58,7 @@ struct SpendingView: View {
                 if isEditable {
                     ToolbarItem(placement: .primaryAction) {
                         switch mode {
-                        case .transactions:
+                        case .transactions, .categories:
                             Button {
                                 adding = true
                             } label: {
@@ -108,10 +110,50 @@ struct SpendingView: View {
             switch mode {
             case .transactions:
                 transactionSections(snapshot, period: period, isEditable: isEditable)
+            case .categories:
+                categorySections(snapshot, period: period)
             case .budget:
                 budgetSections(snapshot, period: period, isEditable: isEditable)
             }
         }
+        // Categories on the Mac: a donut and a bar per category read better
+        // held to a width than stretched across the window.
+        .frame(maxWidth: layout == .sidebar && mode == .categories ? 900 : .infinity)
+        .frame(maxWidth: .infinity)
+    }
+
+    /// A chip per card, filtering Transactions and Categories alike.
+    private func cardChips(_ snapshot: FinanceSnapshot, period: YearMonth, monthTransactions: [SharedFinanceTransaction]) -> some View {
+        ChipRow {
+            FinanceChip(
+                title: "All",
+                detail: FinanceFormat.money(SpendingSummary.total(monthTransactions)),
+                isSelected: cardFilter == nil
+            ) { cardFilter = nil }
+            ForEach(snapshot.cards.filter { !$0.isArchived || $0.spend(in: period) != 0 }) { card in
+                FinanceChip(
+                    title: card.name.isEmpty ? card.displayName : card.name,
+                    detail: FinanceFormat.money(card.spend(in: period)),
+                    isSelected: cardFilter == card
+                ) { cardFilter = card }
+            }
+        }
+        .listRowBackground(Color.clear)
+        .listRowInsets(EdgeInsets())
+    }
+
+    // MARK: - Categories
+
+    @ViewBuilder
+    private func categorySections(_ snapshot: FinanceSnapshot, period: YearMonth) -> some View {
+        let monthTransactions = SpendingSummary.transactions(snapshot.transactions, in: period)
+        let shown = cardFilter.map { card in monthTransactions.filter { $0.card == card } } ?? monthTransactions
+        if snapshot.cards.count > 1 {
+            Section {
+                cardChips(snapshot, period: period, monthTransactions: monthTransactions)
+            }
+        }
+        CategoryBreakdownSections(transactions: shown, periodTitle: period.title)
     }
 
     /// The Mac's transactions: a table, with the card filter in the toolbar
@@ -163,22 +205,7 @@ struct SpendingView: View {
             }
         } else {
             Section {
-                ChipRow {
-                    FinanceChip(
-                        title: "All",
-                        detail: FinanceFormat.money(SpendingSummary.total(monthTransactions)),
-                        isSelected: cardFilter == nil
-                    ) { cardFilter = nil }
-                    ForEach(snapshot.cards.filter { !$0.isArchived || $0.spend(in: period) != 0 }) { card in
-                        FinanceChip(
-                            title: card.name.isEmpty ? card.displayName : card.name,
-                            detail: FinanceFormat.money(card.spend(in: period)),
-                            isSelected: cardFilter == card
-                        ) { cardFilter = card }
-                    }
-                }
-                .listRowBackground(Color.clear)
-                .listRowInsets(EdgeInsets())
+                cardChips(snapshot, period: period, monthTransactions: monthTransactions)
 
                 let categories = SpendingSummary.byCategory(shown)
                 if !categories.isEmpty {
@@ -336,7 +363,7 @@ struct SpendingView: View {
     }
 }
 
-private struct TransactionRow: View {
+struct TransactionRow: View {
     @ObservedObject var transaction: SharedFinanceTransaction
 
     var body: some View {
@@ -375,10 +402,12 @@ struct CategoryBar: View {
 
     var body: some View {
         let positive = totals.filter { $0.total > 0 }
+        let domain = CategoryPalette.domain(totals.map(\.name))
         Chart(positive) { total in
             BarMark(x: .value("Spent", total.total))
                 .foregroundStyle(by: .value("Category", total.name))
         }
+        .chartForegroundStyleScale(domain: domain, range: CategoryPalette.range(for: domain))
         .chartXAxis(.hidden)
         .chartLegend(position: .bottom, alignment: .leading)
         .frame(height: positive.count > 4 ? 90 : 64)

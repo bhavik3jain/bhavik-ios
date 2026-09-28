@@ -13,6 +13,22 @@ public struct SpendingTotal: Identifiable, Equatable, Sendable {
     public var id: String { name }
 }
 
+/// One category's slice of a month: its total, how many transactions made
+/// it, its share of everything spent, and the same split by expense (the
+/// sub-category typed under it: "Groceries · Weekly").
+public struct CategoryBreakdown: Identifiable, Equatable, Sendable {
+    public let name: String
+    public let total: Double
+    public let count: Int
+    /// Of the month's positive spending, 0...1. A category that nets to a
+    /// refund has none.
+    public let share: Double
+    /// Biggest first; "Other" for transactions with no expense typed.
+    public let expenses: [SpendingTotal]
+
+    public var id: String { name }
+}
+
 /// One day's transactions, for the list's sections.
 public struct SpendingDay: Identifiable {
     public let day: Date
@@ -76,6 +92,45 @@ public enum SpendingSummary {
         return totals
             .map { SpendingTotal(name: names[$0.key] ?? $0.key, total: $0.value) }
             .sorted { $0.total != $1.total ? $0.total > $1.total : $0.name < $1.name }
+    }
+
+    /// Every category of `transactions`, biggest first, with its share and
+    /// its split by expense. Categories and expenses group the way budgets do
+    /// ("food " and "Food" are one), each named as it was first typed.
+    public static func breakdown(_ transactions: [SharedFinanceTransaction]) -> [CategoryBreakdown] {
+        let categories = byCategory(transactions)
+        let spent = categories.reduce(0) { $0 + max($1.total, 0) }
+        return categories.map { category in
+            let members = self.transactions(transactions, inCategory: category.name)
+            var totals: [String: Double] = [:]
+            var names: [String: String] = [:]
+            for transaction in members {
+                let trimmed = transaction.expense.trimmingCharacters(in: .whitespaces)
+                let expenseKey = key(trimmed)
+                totals[expenseKey, default: 0] += transaction.actualCost
+                if names[expenseKey] == nil { names[expenseKey] = trimmed.isEmpty ? uncategorised : trimmed }
+            }
+            let expenses = totals
+                .map { SpendingTotal(name: names[$0.key] ?? $0.key, total: $0.value) }
+                .sorted { $0.total != $1.total ? $0.total > $1.total : $0.name < $1.name }
+            return CategoryBreakdown(
+                name: category.name,
+                total: category.total,
+                count: members.count,
+                share: spent > 0 ? max(category.total, 0) / spent : 0,
+                expenses: expenses
+            )
+        }
+    }
+
+    /// The transactions filed under `category`, compared the way budgets are;
+    /// "Other" also takes those with no category typed.
+    public static func transactions(_ transactions: [SharedFinanceTransaction], inCategory category: String) -> [SharedFinanceTransaction] {
+        let wanted = category == uncategorised ? "" : key(category)
+        return transactions.filter { transaction in
+            let own = key(transaction.category)
+            return own == wanted || (category == uncategorised && own == key(uncategorised))
+        }
     }
 
     /// Newest day first; within a day, newest first.
