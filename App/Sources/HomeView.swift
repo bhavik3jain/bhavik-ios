@@ -288,12 +288,21 @@ struct HomeView: View {
         // `-MacOpenTracker fuel` (or `fuel/trends`) opens a tracker, on a
         // section, at launch: the only way to look at a tracker's Mac layout
         // from a script, since nothing outside the app can click the sidebar
-        // without Accessibility access. Navigation only — it writes nothing.
+        // without Accessibility access. `trips/next[/map]` opens the nearest
+        // trip not yet over, on a face. Navigation only — it writes nothing.
         .onAppear {
             guard let raw = UserDefaults.standard.string(forKey: "MacOpenTracker") else { return }
             let parts = raw.split(separator: "/").map(String.init)
             guard let first = parts.first, let module = SelectedModule(rawValue: first) else { return }
-            if parts.count > 1 { macSections[module] = parts[1] }
+            if module == .trips, parts.count > 1, parts[1] == "next" {
+                openTripID = trips
+                    .filter { !$0.isArchived && $0.endDate >= .now }
+                    .min { $0.startDate < $1.startDate }?
+                    .objectID
+                if parts.count > 2, let section = TripSection(rawValue: parts[2]) { tripSection = section }
+            } else if parts.count > 1 {
+                macSections[module] = parts[1]
+            }
             selectedModule = module
         }
         #endif
