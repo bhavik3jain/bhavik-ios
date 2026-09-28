@@ -248,29 +248,11 @@ the API key. A new Mac entitlement therefore needs no workflow change, but a new
 file needs adding to the job's `sed`. The Mac App Store also needs `LSApplicationCategoryType` and a full
 Mac icon set (`mac-*.png` in `AppIcon`).
 
-`mac-release.yml` is the Mac equivalent, manual-only (`workflow_dispatch`), producing a notarized
-`.dmg` as a run artifact rather than shipping anywhere. **Cloud-managed signing does not cover
-Developer ID** — that was the first thing tried, and it fails with `Cloud signing permission error` /
-`No profiles for 'com.bhavikjain.trackers' were found`, because Apple never holds a Developer ID
-private key on your behalf the way it does for App Store distribution; the whole point of Developer
-ID is that you hold it. So the workflow imports a real certificate (exported from Xcode once, stored
-as `MAC_DEVELOPER_ID_P12` + `MAC_DEVELOPER_ID_P12_PASSWORD` in the `testflight` environment) into a
-disposable keychain each run; the existing App Store Connect key still handles matching it to a
-Developer ID provisioning profile and authorizing notarization. A Developer ID export is **signed but
-not notarized** on its own; Gatekeeper refuses to launch it on any Mac but the one that built it until
-the notary step staples a ticket to it, which is why that step exists and can't be skipped for "just
-testing."
-
-The Developer ID provisioning profile is **made fresh on every Mac Release run** by
-`.github/scripts/developer_id_profile.py`, through the App Store Connect API (which, unlike cloud-managed
-signing, can create Developer ID profiles). It deletes the profile named `Multitrack Developer ID` and
-creates a new one for `com.bhavikjain.trackers` and the imported certificate, so it always carries the
-App ID's current capabilities. It used to be a hand-downloaded profile in a `MAC_DEVELOPER_ID_PROFILE`
-secret, and **a profile's entitlements are frozen when it's generated**: adding
-`com.apple.developer.aps-environment` (CloudKit pushes) broke it. A new capability now only has to be on
-the App ID. If that step fails with HTTP 401/403, the API key's role can't manage profiles: give it
-Admin in App Store Connect › Users and Access › Integrations. The name `Multitrack Developer ID` is
-load-bearing: the archive's `PROVISIONING_PROFILE_SPECIFIER` and the export options look it up by name.
+**The Developer ID `.dmg` route (`mac-release.yml`) is retired** — TestFlight replaced it. If it's ever
+revived from git history: cloud-managed signing does **not** cover Developer ID (it fails with `Cloud
+signing permission error`), so it needs an exported certificate as a secret, a notary step (a Developer
+ID export is signed but not notarized, and Gatekeeper refuses it elsewhere), and a provisioning profile
+made fresh each run, because a profile's entitlements freeze when it's generated.
 
 ## Conventions
 

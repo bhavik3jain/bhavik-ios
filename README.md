@@ -308,28 +308,21 @@ those shims must `import Core`.
 
 ### Installing it
 
-There's no App Store listing, so `gh workflow run "Mac Release"` (or a manual dispatch from the
-Actions tab) is how you get a build: it archives `bhavik-macOS`, signs it with a Developer ID
-certificate, notarizes it with Apple's notary service, and uploads a `Multitrack.dmg` as the run's
-artifact. Download it, open it, drag Multitrack into Applications. It's signed for **Production**
-CloudKit — the same real data as your phone — unlike a debug build run from Xcode, which always
-talks to Development regardless of what account is signed in.
+The Mac app is the macOS platform of the same App Store Connect app as the iPhone one (Universal
+Purchase: one bundle id), so it installs through **TestFlight**, like the phone: every TestFlight run
+uploads both (`testflight.yml`'s `mac` job). Install the TestFlight app from the Mac App Store, sign
+in, and install Multitrack. It's signed for **Production** CloudKit, the same real data as your
+phone, unlike a debug build run from Xcode, which always talks to Development.
 
-The workflow reuses the `testflight` environment, plus two secrets of its own, `MAC_DEVELOPER_ID_P12`
-and `MAC_DEVELOPER_ID_P12_PASSWORD`, imported into a disposable keychain for the run. Cloud-managed
-signing (what the App Store Connect key does for iOS) only covers App Store distribution; Apple never
-holds a Developer ID private key for you, by design, so this genuinely needed a real certificate
-exported from Xcode once and stored as a secret, not something the API key alone could mint. The same
-key still authorizes notarization, and creates the Developer ID provisioning profile: each run deletes
-`Multitrack Developer ID` and makes a fresh one through the App Store Connect API
-(`.github/scripts/developer_id_profile.py`), so it always carries the App ID's current capabilities.
-
-**After adding a capability to `App-macOS.entitlements`,** turn it on for the App ID in
+No certificate is stored for it. The job archives unsigned, signs the app ad hoc with
+`App-macOS.entitlements` resolved by hand so the archive carries them, and the App Store export
+re-signs it through the App Store Connect key (cloud-managed). A capability added to
+`App-macOS.entitlements` only needs turning on for the App ID in
 [Certificates, Identifiers & Profiles](https://developer.apple.com/account/resources/identifiers/list)
-→ Identifiers → `com.bhavikjain.trackers` if it isn't already (a signed debug build with automatic
-signing usually does this). The next Mac Release makes a profile that includes it. If the profile
-step fails with HTTP 401 or 403, give the App Store Connect key the Admin role (Users and Access →
-Integrations). The old `MAC_DEVELOPER_ID_PROFILE` secret is no longer read and can be deleted.
+→ Identifiers → `com.bhavikjain.trackers` (a signed debug build with automatic signing usually does
+this); the export fetches a current App Store profile every time.
 
-TestFlight should need none of this: its archive runs with `-allowProvisioningUpdates` and fetches a current
-App Store profile every time.
+A notarized `.dmg` outside the App Store (Developer ID) was the route until TestFlight took over. It
+needed an exported Developer ID certificate as a secret, since Apple never holds that key for you, plus
+a notary step and a profile script. It was retired; `git log -- .github/workflows/mac-release.yml` has
+it if it's ever needed again.

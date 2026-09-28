@@ -22,11 +22,9 @@
 	<!-- CloudKit's silent pushes, the Mac spelling of iOS's aps-environment.
 	     Without it a partner's change only appeared when the app was next
 	     activated or relaunched, minutes later. "development" is right for a
-	     local build; the Developer ID profile supplies "production" at export,
-	     which is why that profile has to carry push. Mac Release makes a
-	     fresh one every run (.github/scripts/developer_id_profile.py); the
-	     hand-downloaded profile it used to install predated push, and the
-	     export failed on the mismatch. -->
+	     local build; TestFlight's App Store export takes "production" from the
+	     App Store profile it fetches. (The retired Developer ID route once
+	     failed here: a hand-downloaded profile predated push.) -->
 	<key>com.apple.developer.aps-environment</key>
 	<string>development</string>
 	<!-- CloudKit refuses to hand a Mac app its private database unless the app
@@ -49,8 +47,9 @@
 	     event unless the target is listed here, and the hardened runtime
 	     blocks them unless the second key is set; missing either, the export
 	     fails with -1743 and macOS never asks for Automation permission. The
-	     temporary exception is fine for Developer ID; the Mac App Store would
-	     want a scripting-targets entitlement Numbers doesn't offer. -->
+	     temporary exception passes upload and internal TestFlight, which has
+	     no review; App Review may question it on submission, since Numbers
+	     offers no scripting-targets entitlement to use instead. -->
 	<key>com.apple.security.temporary-exception.apple-events</key>
 	<array>
 		<string>com.apple.Numbers</string>
