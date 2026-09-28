@@ -112,13 +112,11 @@ enum CloudSharingPresenter {
             // hold different versions of it.
             guard ShareAcceptRouter.stamp(existing, for: sharedObject),
                   let store = sharedObject.objectID.persistentStore else {
-                nonisolated(unsafe) let existing = existing
                 Task { @MainActor in show(object: sharedObject, container: container, existing: existing, title: title) }
                 return
             }
-            nonisolated(unsafe) let stamped = existing
-            container.persistUpdatedShareInBackground(stamped, in: store) { saved, _ in
-                nonisolated(unsafe) let share = saved ?? stamped
+            container.persistUpdatedShareInBackground(existing, in: store) { saved, _ in
+                let share = saved ?? existing
                 Task { @MainActor in show(object: sharedObject, container: container, existing: share, title: title) }
             }
         }
@@ -394,7 +392,6 @@ private final class ShareCoordinator: ObservableObject {
         let objectID = request.object.objectID
         let existingShare: CKShare? = await withCheckedContinuation { continuation in
             request.container.fetchShareInBackground(for: objectID) { share in
-                nonisolated(unsafe) let share = share
                 continuation.resume(returning: share)
             }
         }

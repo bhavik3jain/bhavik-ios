@@ -11,7 +11,10 @@ import CoreData
 /// button, `persistUpdatedShare` blocked the main thread until iOS killed the
 /// app: TestFlight build 16 hung on Share, then died with watchdog 0x8BADF00D
 /// ("Failed to terminate gracefully after 5.0s") once it was sent to the
-/// background, its main thread still parked in that wait.
+/// background, its main thread still parked in that wait. It was a deadlock,
+/// not a slow call: the export holding the executor was itself waiting for the
+/// main thread to run `CloudSyncMonitor`'s event observer, which is now
+/// delivered asynchronously (see its init).
 ///
 /// Every call here returns at once; the completion still runs on whatever
 /// queue CloudKit chooses, exactly as before, so callers hop to the main actor
@@ -27,9 +30,8 @@ public extension NSPersistentCloudKitContainer {
         for objectID: NSManagedObjectID,
         completion: @escaping @Sendable (CKShare?) -> Void
     ) {
-        nonisolated(unsafe) let container = self
         Self.shareQueue.async {
-            completion((try? container.fetchShares(matching: [objectID]))?[objectID])
+            completion((try? self.fetchShares(matching: [objectID]))?[objectID])
         }
     }
 
@@ -39,10 +41,9 @@ public extension NSPersistentCloudKitContainer {
     ) {
         // Only the object's ID and entity are read off the main thread, and
         // both are immutable once the object has been saved.
-        nonisolated(unsafe) let container = self
         nonisolated(unsafe) let object = object
         Self.shareQueue.async {
-            container.share([object], to: nil) { _, share, ckContainer, error in
+            self.share([object], to: nil) { _, share, ckContainer, error in
                 completion(share, ckContainer, error)
             }
         }
@@ -53,11 +54,9 @@ public extension NSPersistentCloudKitContainer {
         in store: NSPersistentStore,
         completion: @escaping @Sendable (CKShare?, (any Error)?) -> Void = { _, _ in }
     ) {
-        nonisolated(unsafe) let container = self
-        nonisolated(unsafe) let share = share
         nonisolated(unsafe) let store = store
         Self.shareQueue.async {
-            container.persistUpdatedShare(share, in: store) { saved, error in
+            self.persistUpdatedShare(share, in: store) { saved, error in
                 completion(saved, error)
             }
         }
@@ -68,11 +67,9 @@ public extension NSPersistentCloudKitContainer {
         into store: NSPersistentStore,
         completion: @escaping @Sendable ([CKShare.Participant]?, (any Error)?) -> Void
     ) {
-        nonisolated(unsafe) let container = self
         nonisolated(unsafe) let store = store
-        nonisolated(unsafe) let lookupInfos = lookupInfos
         Self.shareQueue.async {
-            container.fetchParticipants(matching: lookupInfos, into: store) { participants, error in
+            self.fetchParticipants(matching: lookupInfos, into: store) { participants, error in
                 completion(participants, error)
             }
         }
@@ -83,11 +80,9 @@ public extension NSPersistentCloudKitContainer {
         into store: NSPersistentStore,
         completion: @escaping @Sendable ((any Error)?) -> Void
     ) {
-        nonisolated(unsafe) let container = self
-        nonisolated(unsafe) let metadata = metadata
         nonisolated(unsafe) let store = store
         Self.shareQueue.async {
-            container.acceptShareInvitations(from: [metadata], into: store) { _, error in
+            self.acceptShareInvitations(from: [metadata], into: store) { _, error in
                 completion(error)
             }
         }
