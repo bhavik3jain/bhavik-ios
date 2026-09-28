@@ -126,12 +126,35 @@ public final class SharingStatusCache {
         return now.timeIntervalSince(checkedAt) >= maxAge
     }
 
+    /// Objects waiting for a lookup, per container, gathered over one pass of
+    /// the run loop — every badge a screen draws asks in the same body pass.
+    @ObservationIgnored private var pending: [ObjectIdentifier: (container: NSPersistentCloudKitContainer, ids: [NSManagedObjectID])] = [:]
+
+    /// Asks for `objectID` in the next batch. One `fetchShares(matching:)`
+    /// per container per batch, not one per badge: a Mac Overview and
+    /// sidebar showing twenty trips, cars and guides made twenty calls, each
+    /// waiting its turn on the container's executor.
     private func lookUp(_ objectID: NSManagedObjectID, in container: NSPersistentCloudKitContainer) {
         inFlight.insert(objectID)
-        container.fetchShareInBackground(for: objectID) { share in
-            let status = SharingStatusResolver.status(of: share)
-            Task { @MainActor in
-                self.record(status, for: objectID)
+        let key = ObjectIdentifier(container)
+        let isFirst = pending.isEmpty
+        pending[key, default: (container, [])].ids.append(objectID)
+        guard isFirst else { return }
+        Task { @MainActor in self.flush() }
+    }
+
+    private func flush() {
+        let batches = pending
+        pending.removeAll()
+        for (_, batch) in batches {
+            let ids = batch.ids
+            batch.container.fetchSharesInBackground(for: ids) { shares in
+                let statuses = ids.map { ($0, SharingStatusResolver.status(of: shares[$0])) }
+                Task { @MainActor in
+                    for (id, status) in statuses {
+                        self.record(status, for: id)
+                    }
+                }
             }
         }
     }

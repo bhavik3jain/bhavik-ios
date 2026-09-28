@@ -23,7 +23,7 @@ private func makeLegacyContext() throws -> ModelContext {
 private let completedDefaultsKey = "TripLegacyMigrationCompleted"
 
 private func resetMigrationFlag() {
-    UserDefaults.standard.removeObject(forKey: completedDefaultsKey)
+    LegacyMigrationLedger.reset(completedDefaultsKey)
 }
 
 @MainActor
@@ -114,7 +114,10 @@ private func addLegacyTrip(
 }
 
 @MainActor
-@Test func newLegacyTripsAddedAfterAFirstImportAreStillPickedUp() throws {
+/// A reinstall wipes the local flag; the import used to copy again whatever
+/// didn't match by title and dates — a trip renamed or re-dated since came
+/// back twice. A store that already holds trips is never copied into again.
+@Test func aStoreThatAlreadyHoldsTripsIsNeverCopiedIntoAgain() throws {
     resetMigrationFlag()
     let legacyContext = try makeLegacyContext()
     let context = try makeContext()
@@ -130,7 +133,8 @@ private func addLegacyTrip(
     TripLegacyMigration.runIfNeeded(from: legacyContext, into: context)
 
     let titles = Set(try context.fetch(SharedTrip.fetchRequest()).map(\.title))
-    #expect(titles == ["Rome & Amalfi", "Lisbon long weekend"])
+    #expect(titles == ["Rome & Amalfi"], "Nothing is copied into a store that has trips")
+    #expect(TripLegacyMigration.hasRun)
 }
 
 /// Two trips can legitimately share a title ("Weekend trip" booked twice in

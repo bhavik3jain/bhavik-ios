@@ -62,10 +62,12 @@ struct TripRootView: View {
             // it waits until that store has caught up with iCloud — otherwise
             // a second device re-copies what the first already exported. See
             // CloudKitImportGate.
+            var outcome = CloudKitImportGate.Outcome.nothingToImport
             if !TripLegacyMigration.hasRun {
-                guard await CloudKitImportGate.waitForFirstImport(of: container) else { return }
+                outcome = await CloudKitImportGate.waitForFirstImportOutcome(of: container)
+                guard outcome != .cancelled else { return }
             }
-            TripLegacyMigration.runIfNeeded(from: legacyContext, into: context)
+            TripLegacyMigration.runIfNeeded(from: legacyContext, into: context, importOutcome: outcome)
             #if DEBUG
             guard seedRequested else { return }
             TripDebugSeed.run(context: context)

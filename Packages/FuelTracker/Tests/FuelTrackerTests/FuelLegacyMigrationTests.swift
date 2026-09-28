@@ -42,7 +42,7 @@ private func makeLegacyContext() throws -> ModelContext {
 private let completedDefaultsKey = "FuelLegacyMigrationCompleted"
 
 private func resetMigrationFlag() {
-    UserDefaults.standard.removeObject(forKey: completedDefaultsKey)
+    LegacyMigrationLedger.reset(completedDefaultsKey)
 }
 
 @MainActor
@@ -122,26 +122,49 @@ private func addLegacyVehicle(_ name: String, fills: [(odometer: Int, date: Date
     #expect(try context.count(for: SharedFuelEntry.fetchRequest()) == 2, "...or duplicate its fuel entries")
 }
 
+/// The duplicate-cars bug: a reinstall wipes the local flag, and the import
+/// matched only by name against what iCloud had synced so far — a car renamed
+/// since (or not yet downloaded) came back as a second car. A store that
+/// already holds any car has been through the import on this account, and is
+/// never copied into again.
 @MainActor
-@Test func newLegacyVehiclesAddedAfterAFirstImportAreStillPickedUp() throws {
+@Test func aStoreThatAlreadyHoldsCarsIsNeverCopiedIntoAgain() throws {
+    resetMigrationFlag()
+    let legacyContext = try makeLegacyContext()
+    let context = try makeContext()
+    addLegacyVehicle("My Q5", fills: [(1000, .now)], to: legacyContext)
+    addLegacyVehicle("My X3", fills: [(2000, .now)], to: legacyContext)
+    try legacyContext.save()
+    FuelLegacyMigration.runIfNeeded(from: legacyContext, into: context)
+
+    // Renamed in the new store, then the app is reinstalled.
+    let q5 = try #require(try context.fetch(SharedVehicle.fetchRequest()).first { $0.name == "My Q5" })
+    q5.name = "Audi"
+    try context.save()
+    resetMigrationFlag()
+    FuelLegacyMigration.runIfNeeded(from: legacyContext, into: context, importOutcome: .imported)
+
+    #expect(try context.count(for: SharedVehicle.fetchRequest()) == 2, "The renamed car isn't copied back")
+    #expect(FuelLegacyMigration.hasRun)
+}
+
+/// After the gate's minute runs out this device can't tell "iCloud has no
+/// cars" from "they haven't arrived yet": copying then re-created every car a
+/// fresh install hadn't downloaded. It waits for the next launch instead.
+@MainActor
+@Test func nothingIsCopiedWhenICloudHasNotCaughtUp() throws {
     resetMigrationFlag()
     let legacyContext = try makeLegacyContext()
     let context = try makeContext()
     addLegacyVehicle("My Q5", fills: [(1000, .now)], to: legacyContext)
     try legacyContext.save()
 
-    FuelLegacyMigration.runIfNeeded(from: legacyContext, into: context)
+    FuelLegacyMigration.runIfNeeded(from: legacyContext, into: context, importOutcome: .timedOut)
+    #expect(try context.count(for: SharedVehicle.fetchRequest()) == 0)
+    #expect(!FuelLegacyMigration.hasRun, "Tried again next launch")
+
+    FuelLegacyMigration.runIfNeeded(from: legacyContext, into: context, importOutcome: .imported)
     #expect(try context.count(for: SharedVehicle.fetchRequest()) == 1)
-
-    // A second legacy vehicle only appears later — the dedup check must add
-    // it without touching the one already copied.
-    resetMigrationFlag()
-    addLegacyVehicle("My X3", fills: [(2000, .now)], to: legacyContext)
-    try legacyContext.save()
-    FuelLegacyMigration.runIfNeeded(from: legacyContext, into: context)
-
-    let names = Set(try context.fetch(SharedVehicle.fetchRequest()).map(\.name))
-    #expect(names == ["My Q5", "My X3"])
 }
 
 @MainActor
@@ -154,4 +177,65 @@ private func addLegacyVehicle(_ name: String, fills: [(odometer: Int, date: Date
 
     #expect(try context.count(for: SharedVehicle.fetchRequest()) == 0)
     #expect(FuelLegacyMigration.hasRun)
+}
+
+// MARK: - Merging duplicates
+
+@MainActor
+private func car(_ name: String, created: Date, fills: [(odometer: Int, gallons: Double, cost: Double)], in context: NSManagedObjectContext) -> SharedVehicle {
+    let vehicle = SharedVehicle(context: context, name: name)
+    vehicle.createdAt = created
+    for fill in fills {
+        // A fill-up's date is its own, not the car's: a copy carries the
+        // original's dates however much later the copy was made.
+        let date = Date(timeIntervalSinceReferenceDate: 780_000_000 + Double(fill.odometer) * 3_600)
+        let entry = SharedFuelEntry(context: context, date: date, odometer: fill.odometer, gallons: fill.gallons, totalCost: fill.cost)
+        entry.vehicle = vehicle
+    }
+    return vehicle
+}
+
+@MainActor
+@Test func duplicateCarsMergeIntoTheOldestKeepingEveryFillUpOnce() throws {
+    let context = try makeContext()
+    let t0 = Date(timeIntervalSinceReferenceDate: 780_000_000)
+    let original = car("My X3", created: t0, fills: [(1000, 12, 48), (1300, 11.5, 46)], in: context)
+    // The reinstall's copy: the same log, plus one fill-up only it has.
+    _ = car("my x3 ", created: t0.addingTimeInterval(86_400 * 90), fills: [(1000, 12, 48), (1300, 11.5, 46), (1600, 12.2, 50)], in: context)
+    _ = car("My Q5", created: t0, fills: [(500, 10, 40)], in: context)
+    try context.save()
+
+    let duplicates = FuelDuplicates(vehicles: try context.fetch(SharedVehicle.fetchRequest()), isOwn: { _ in true }, isShared: { _ in false })
+    #expect(duplicates.groups.count == 1, "Names match ignoring case and spaces; My Q5 is alone")
+    #expect(duplicates.groups.first?.keep == original, "The oldest is kept")
+    #expect(duplicates.groups.first?.entriesToMove == 1)
+
+    let result = duplicates.merge()
+    try context.save()
+    #expect(result.carsRemoved == 1 && result.entriesMoved == 1)
+    #expect(try context.count(for: SharedVehicle.fetchRequest()) == 2)
+    #expect(original.orderedFillUps.map(\.odometer) == [1000, 1300, 1600])
+    #expect(try context.count(for: SharedFuelEntry.fetchRequest()) == 4, "The copy's duplicate fill-ups are gone with it")
+}
+
+@MainActor
+@Test func aSharedCopyIsTheOneKeptAndPartnersCarsAreNeverTouched() throws {
+    let context = try makeContext()
+    let t0 = Date(timeIntervalSinceReferenceDate: 780_000_000)
+    let old = car("My X3", created: t0, fills: [(1000, 12, 48)], in: context)
+    let shared = car("My X3", created: t0.addingTimeInterval(60), fills: [(1000, 12, 48)], in: context)
+    let partners = car("Their Civic", created: t0, fills: [], in: context)
+    let partnersCopy = car("Their Civic", created: t0, fills: [], in: context)
+    try context.save()
+
+    let duplicates = FuelDuplicates(
+        vehicles: try context.fetch(SharedVehicle.fetchRequest()),
+        isOwn: { $0 != partners && $0 != partnersCopy },
+        isShared: { $0 == shared }
+    )
+    #expect(duplicates.groups.map(\.keep) == [shared], "Deleting the shared one would delete it for the partner")
+    #expect(duplicates.groups.first?.extras == [old])
+
+    let twoShared = FuelDuplicates(vehicles: [old, shared], isOwn: { _ in true }, isShared: { _ in true })
+    #expect(twoShared.isEmpty, "Two shared copies: no safe pick")
 }

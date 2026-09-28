@@ -80,10 +80,12 @@ struct FuelRootView: View {
             // -FuelSeedCSV a no-op on every device, a fresh simulator included.
             let seedRequested = FuelDebugSeed.isRequested
             #endif
+            var outcome = CloudKitImportGate.Outcome.nothingToImport
             if !FuelLegacyMigration.hasRun {
-                guard await CloudKitImportGate.waitForFirstImport(of: container) else { return }
+                outcome = await CloudKitImportGate.waitForFirstImportOutcome(of: container)
+                guard outcome != .cancelled else { return }
             }
-            FuelLegacyMigration.runIfNeeded(from: legacyContext, into: context)
+            FuelLegacyMigration.runIfNeeded(from: legacyContext, into: context, importOutcome: outcome)
             #if DEBUG
             guard seedRequested else { return }
             FuelDebugSeed.run(context: context)

@@ -42,7 +42,7 @@ private func makeLegacyContext() throws -> ModelContext {
 private let completedDefaultsKey = "ExploreLegacyMigrationCompleted"
 
 private func resetMigrationFlag() {
-    UserDefaults.standard.removeObject(forKey: completedDefaultsKey)
+    LegacyMigrationLedger.reset(completedDefaultsKey)
 }
 
 @MainActor
@@ -122,7 +122,10 @@ private func addLegacyGuide(_ name: String, areaLabel: String = "", to legacyCon
 }
 
 @MainActor
-@Test func newLegacyGuidesAddedAfterAFirstImportAreStillPickedUp() throws {
+/// A reinstall wipes the local flag; the import used to copy again whatever
+/// didn't match by name and area — a guide renamed since came back twice. A
+/// store that already holds guides is never copied into again.
+@Test func aStoreThatAlreadyHoldsGuidesIsNeverCopiedIntoAgain() throws {
     resetMigrationFlag()
     let legacyContext = try makeLegacyContext()
     let context = try makeContext()
@@ -138,7 +141,8 @@ private func addLegacyGuide(_ name: String, areaLabel: String = "", to legacyCon
     ExploreLegacyMigration.runIfNeeded(from: legacyContext, into: context)
 
     let names = Set(try context.fetch(SharedGuide.fetchRequest()).map(\.name))
-    #expect(names == ["Kyoto", "SoMa"])
+    #expect(names == ["Kyoto"], "Nothing is copied into a store that has guides")
+    #expect(ExploreLegacyMigration.hasRun)
 }
 
 /// Two guides can legitimately share a name in different areas ("Downtown"
