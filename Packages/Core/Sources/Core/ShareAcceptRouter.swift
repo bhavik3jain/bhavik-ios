@@ -69,7 +69,10 @@ public final class ShareAcceptRouter: ObservableObject {
             outcome = Outcome(title: "Couldn't Open This Share", message: "The app's shared storage isn't available.")
             return
         }
-        container.acceptShareInvitations(from: [metadata], into: sharedStore) { _, error in
+        // From a background queue: this runs as the app launches from a
+        // tapped invitation, and the call waits synchronously on the same
+        // executor as `persistUpdatedShare` — see CloudShareCalls.swift.
+        container.acceptShareInvitationsInBackground(from: metadata, into: sharedStore) { error in
             let message = error?.localizedDescription
             Task { @MainActor in
                 if let message {

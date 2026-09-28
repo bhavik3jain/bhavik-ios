@@ -110,15 +110,35 @@ public final class CloudSyncMonitor {
         // SwiftData never exposes, so it can only be heard this way. Built
         // before any container, so no store's launch import goes unseen. The
         // token is dropped on purpose — the monitor lives as long as the app.
+        //
+        // Observed on the posting queue and handed to the main queue
+        // *asynchronously*, never with `queue: .main`. Posted from a
+        // background thread, a `queue: .main` observer makes the post wait
+        // until the main thread has run it, so the container's CloudKit queue
+        // sat inside its export, holding the request executor, waiting on the
+        // main thread. With the main thread waiting on that same executor (a
+        // Share button's `persistUpdatedShare`), neither moved: TestFlight
+        // build 16 froze on Share and was killed by the watchdog (0x8BADF00D,
+        // "Failed to terminate gracefully after 5.0s") with thread
+        // `com.apple.coredata.cloudkit.queue` parked in
+        // `-[NSOperation waitUntilFinished]` under `eventUpdated:`. The share
+        // calls moved off the main thread too (CloudShareCalls.swift); this
+        // takes the other half of the cycle away, so the main thread's
+        // remaining synchronous container calls (`canUpdateRecord`, and
+        // Finance's rare owned-share check) can wait, but never deadlock.
+        // "Shared" badges moved off the main thread (`SharingStatusCache`). `DispatchQueue.main` runs the blocks in the order they
+        // were posted, which the ledger relies on.
         _ = center.addObserver(
             forName: NSPersistentCloudKitContainer.eventChangedNotification,
             object: nil,
-            queue: .main
+            queue: nil
         ) { [weak self] notification in
             guard let event = notification.userInfo?[NSPersistentCloudKitContainer.eventNotificationUserInfoKey]
                     as? NSPersistentCloudKitContainer.Event else { return }
             let snapshot = CloudSyncEvent(event)
-            MainActor.assumeIsolated { self?.ingest(snapshot) }
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated { self?.ingest(snapshot) }
+            }
         }
     }
 

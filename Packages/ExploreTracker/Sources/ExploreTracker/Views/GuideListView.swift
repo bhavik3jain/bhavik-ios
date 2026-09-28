@@ -163,7 +163,7 @@ struct GuideCard: View {
     @Environment(\.explorePersistentContainer) private var container
     private var sharingLabel: String? {
         guard let container else { return nil }
-        return SharingStatusResolver.status(for: guide, in: container).guideBadgeLabel
+        return SharingStatusResolver.badgeStatus(for: guide, in: container).guideBadgeLabel
     }
 
     var body: some View {

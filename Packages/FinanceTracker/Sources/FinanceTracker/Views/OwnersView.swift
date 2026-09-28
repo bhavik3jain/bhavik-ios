@@ -97,7 +97,7 @@ struct OwnersView: View {
 
     private func sharingLabel(_ household: SharedFinanceHousehold?) -> String? {
         guard let household, let container else { return nil }
-        return SharingStatusResolver.status(for: household, in: container).householdBadgeLabel
+        return SharingStatusResolver.badgeStatus(for: household, in: container).householdBadgeLabel
     }
 
     private func startEditing(_ owner: SharedFinanceOwner?) {

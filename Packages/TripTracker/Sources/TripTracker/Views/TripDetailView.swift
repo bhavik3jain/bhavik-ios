@@ -78,13 +78,13 @@ struct TripDetailView: View {
     /// what could still go on it are the two halves of deciding a day — and
     /// remembered once hidden with ⌥⌘I.
     @AppStorage("trips.showsIdeasInspector") private var showsIdeas = true
-    // Sharing status is a cheap, synchronous CloudKit cache lookup (see
-    // `SharingStatusResolver`'s own doc comment), not something worth a
-    // round trip through `@State` plus a `.task` — read fresh on every body
-    // evaluation, the same as `trip.dates` above.
+    // Read through `badgeStatus`: this device's last known answer at once,
+    // looked up again off the main thread (`SharingStatusCache`). It was a
+    // synchronous `fetchShares` on every body evaluation, thought cheap, but it
+    // waits on the container's executor — the wait that deadlocked Share.
     private var sharingStatus: SharingStatus {
         guard let container else { return .notShared }
-        return SharingStatusResolver.status(for: trip, in: container)
+        return SharingStatusResolver.badgeStatus(for: trip, in: container)
     }
     private var canEdit: Bool {
         guard let container else { return true }

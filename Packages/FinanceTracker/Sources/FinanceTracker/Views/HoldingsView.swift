@@ -170,7 +170,7 @@ struct HoldingsView: View {
 
     private func sharingLabel(_ household: SharedFinanceHousehold?) -> String? {
         guard let household, let container else { return nil }
-        return SharingStatusResolver.status(for: household, in: container).householdBadgeLabel
+        return SharingStatusResolver.badgeStatus(for: household, in: container).householdBadgeLabel
     }
 
     private func deleteMessage(for account: SharedFinanceAccount?) -> String {

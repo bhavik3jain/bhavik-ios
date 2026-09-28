@@ -25,7 +25,7 @@ struct OwnersListView: View {
     /// else can see all this.
     private var sharingLabels: [String] {
         guard let container else { return [] }
-        return householdResults.compactMap { SharingStatusResolver.status(for: $0, in: container).householdBadgeLabel }
+        return householdResults.compactMap { SharingStatusResolver.badgeStatus(for: $0, in: container).householdBadgeLabel }
     }
 
     private var unassigned: [SharedPointsAccount] { accounts.filter { $0.owner == nil } }

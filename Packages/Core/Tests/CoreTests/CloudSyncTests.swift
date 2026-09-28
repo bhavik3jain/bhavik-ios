@@ -1,3 +1,4 @@
+import CoreData
 import Foundation
 import Testing
 @testable import Core
@@ -126,6 +127,24 @@ private func makeMonitor(
     )
     box.monitor = monitor
     return (monitor, box)
+}
+
+/// The container posts its events from its own CloudKit queue, sometimes while
+/// holding the request executor that the main thread may be waiting on. When the
+/// monitor observed with `queue: .main`, that post waited for the main thread,
+/// and TestFlight build 16 deadlocked on Share. The main thread here is blocked
+/// the same way, and the post must still return.
+@MainActor
+@Test func aCloudKitEventPostedInTheBackgroundNeverWaitsForTheMainThread() {
+    let center = NotificationCenter()
+    let monitor = CloudSyncMonitor(containerID: nil, nudge: {}, center: center)
+    let posted = DispatchSemaphore(value: 0)
+    DispatchQueue.global().async {
+        center.post(name: NSPersistentCloudKitContainer.eventChangedNotification, object: nil)
+        posted.signal()
+    }
+    #expect(posted.wait(timeout: .now() + 2) == .success)
+    withExtendedLifetime(monitor) {}
 }
 
 @MainActor
