@@ -88,8 +88,16 @@ enum CloudSharingPresenter {
     /// state, so one shared instance keeps it alive.
     private static let delegate = Delegate()
 
+    /// Set from a tap on Share until its controller is presented. The lookup
+    /// below queues behind any sync holding the container's executor, which
+    /// can take seconds, and the button stays live meanwhile: without this,
+    /// every extra tap queued another lookup and stacked another sharing
+    /// sheet on top of the first once they finished.
+    private static var isPreparing = false
+
     static func present(_ request: ShareSheetRequest) {
-        guard topViewController() != nil else { return }
+        guard !isPreparing, topViewController() != nil else { return }
+        isPreparing = true
         let object = request.object
         let container = request.container
         let title = displayTitle(of: object)
@@ -128,9 +136,11 @@ enum CloudSharingPresenter {
         existing: CKShare?,
         title: String?
     ) {
+        isPreparing = false
         // Looked up again: the lookup took a moment, and whatever was on top
-        // when Share was tapped may have gone.
-        guard let presenter = topViewController() else { return }
+        // when Share was tapped may have gone. Never a second sharing sheet
+        // over one that's already up.
+        guard let presenter = topViewController(), !(presenter is UICloudSharingController) else { return }
         let controller: UICloudSharingController
         if let existing,
            let identifier = container.persistentStoreDescriptions.first?.cloudKitContainerOptions?.containerIdentifier {

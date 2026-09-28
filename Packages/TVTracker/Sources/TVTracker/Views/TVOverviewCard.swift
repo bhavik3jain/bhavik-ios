@@ -31,10 +31,18 @@ struct TVOverviewCard: View {
     /// One poster per show, oldest-waiting first, so three episodes of the same
     /// show don't fill the row with the same artwork. Caught up, the shows
     /// airing next instead.
+    ///
+    /// De-duplicated by name in both cases, since the ForEach below is keyed
+    /// on it: the backlog is grouped per `Show` record, and with no unique
+    /// constraint under CloudKit two devices adding the same show make two
+    /// records of one name — a duplicate ForEach ID, which SwiftUI draws
+    /// unpredictably.
     private var posters: [(name: String, path: String)] {
-        if !backlog.isEmpty { return backlog.shows.map { ($0.showName, $0.posterPath) } }
+        let all = backlog.isEmpty
+            ? upcoming.map { (name: $0.showName, path: $0.posterPath) }
+            : backlog.shows.map { (name: $0.showName, path: $0.posterPath) }
         var seen = Set<String>()
-        return upcoming.filter { seen.insert($0.showName).inserted }.map { ($0.showName, $0.posterPath) }
+        return all.filter { seen.insert($0.name).inserted }
     }
 
     /// "From 6 shows", or — caught up — what airs next.
