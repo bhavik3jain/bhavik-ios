@@ -104,7 +104,9 @@ struct TripsIntelligenceSection: View {
     }
 
     private func footer(availability: TripAdvisorAvailability) -> String {
-        let about = "Reviews your plan and suggests places, on this device. Nothing leaves your \(Self.deviceName)."
+        // Not "nothing leaves": the model's work stays on the device, but
+        // Suggest Places sends a word ("museum") and a map area to Apple Maps.
+        let about = "Reviews your plan and suggests places with Apple Intelligence, on this \(Self.deviceName). Your trip isn't sent anywhere; place searches use Apple Maps."
         guard store.isEnabled else { return about }
         switch availability {
         case .notEnabled: return "\(about) Turn on Apple Intelligence in Settings to use it."
