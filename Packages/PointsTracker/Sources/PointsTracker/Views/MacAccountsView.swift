@@ -75,7 +75,7 @@ struct MacAccountsView: View {
                 .width(min: 90, ideal: 110)
             }
             // No blank striped rows filling the space under the last one.
-            .alternatingRowBackgrounds(.disabled)
+            .tableRowBackgroundsPlain()
             .contextMenu(forSelectionType: SharedPointsAccount.ID.self) { _ in
             } primaryAction: { ids in
                 if let id = ids.first, let account = accounts.first(where: { $0.id == id }) { open(account) }

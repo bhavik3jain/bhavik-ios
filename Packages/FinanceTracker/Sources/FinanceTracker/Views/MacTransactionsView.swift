@@ -85,7 +85,7 @@ struct MacTransactionsView<Filter: View>: View {
                 .width(min: 80, ideal: 100)
                 .alignment(.numeric)
             }
-            .alternatingRowBackgrounds(.disabled)
+            .tableRowBackgroundsPlain()
             .contextMenu(forSelectionType: NSManagedObjectID.self) { ids in
                 if isEditable, let transaction = transaction(for: ids) {
                     Button("Edit…", systemImage: "pencil") { edit(transaction) }

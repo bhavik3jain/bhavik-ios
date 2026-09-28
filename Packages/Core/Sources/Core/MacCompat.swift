@@ -131,3 +131,20 @@ public struct EditButton: View {
     public var body: some View { EmptyView() }
 }
 #endif
+
+// Outside the macOS-only block above: both platforms call this.
+import SwiftUI
+
+public extension View {
+    /// A Mac table with no zebra stripes, which otherwise run on as blank
+    /// rows below the last real one. `alternatingRowBackgrounds` is
+    /// macOS-only: called directly in a module it compiled on the Mac and
+    /// broke the iOS build.
+    func tableRowBackgroundsPlain() -> some View {
+        #if os(macOS)
+        alternatingRowBackgrounds(.disabled)
+        #else
+        self
+        #endif
+    }
+}

@@ -74,7 +74,7 @@ struct MacMonthsView: View {
                     .alignment(.numeric)
                 }
             }
-            .alternatingRowBackgrounds(.disabled)
+            .tableRowBackgroundsPlain()
             .contextMenu(forSelectionType: FinanceHistory.Point.ID.self) { ids in
                 if let month = month(for: ids) {
                     Button("Open", systemImage: "arrow.up.forward.square") { open(month) }

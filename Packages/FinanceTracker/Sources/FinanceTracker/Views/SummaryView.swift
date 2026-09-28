@@ -277,7 +277,7 @@ private struct MacFinanceDashboard: View {
             .frame(maxWidth: 1_100, alignment: .leading)
             .frame(maxWidth: .infinity)
         }
-        .navigationSubtitle(latest.title)
+        .moduleSubtitle(latest.title)
     }
 
     private func hero(summary: MonthSummary, delta: Double?, series: [FinanceHistory.Value]) -> some View {

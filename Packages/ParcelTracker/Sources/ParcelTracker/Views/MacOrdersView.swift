@@ -79,7 +79,7 @@ struct MacOrdersView: View {
                 .width(min: 80, ideal: 100)
             }
             // No blank striped rows filling the space under the last one.
-            .alternatingRowBackgrounds(.disabled)
+            .tableRowBackgroundsPlain()
             .contextMenu(forSelectionType: Parcel.ID.self) { ids in
                 if let parcel = parcel(for: ids) {
                     Button("Open", systemImage: "arrow.up.forward.app") { open(parcel) }

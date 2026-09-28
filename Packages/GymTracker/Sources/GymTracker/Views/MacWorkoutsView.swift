@@ -86,7 +86,7 @@ struct MacWorkoutsView: View {
                     .alignment(.numeric)
                 }
                 // No blank striped rows filling the space under the last one.
-            .alternatingRowBackgrounds(.disabled)
+            .tableRowBackgroundsPlain()
             .contextMenu(forSelectionType: PersistentIdentifier.self) { _ in
                 } primaryAction: { ids in
                     if let id = ids.first, let session = sessions.first(where: { $0.id == id }) { open(session) }
