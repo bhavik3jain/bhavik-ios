@@ -69,7 +69,7 @@ jobs:
         # API" development certificate every run, until the account hit its
         # certificate limit and archives failed with "Choose a certificate to
         # revoke". Importing one fixed certificate lets Xcode reuse it.
-        # A disposable keychain, as in mac-release.yml; the partition list is
+        # A disposable keychain, deleted in the last step; the partition list is
         # what lets codesign use the key without a prompt that would hang CI.
         env:
           IOS_DEV_P12: ${{ secrets.IOS_DEV_P12 }}

@@ -105,7 +105,7 @@ targets:
   bhavik-macOS:
     type: application
     platform: macOS
-    # See bhavik-ios: generated so CI and Mac Release never depend on Xcode
+    # See bhavik-ios: generated so CI and TestFlight never depend on Xcode
     # making a default scheme.
     scheme: {}
     # Lives on the target, not in options.deploymentTarget, so that adding the
@@ -135,12 +135,12 @@ targets:
         MARKETING_VERSION: "1.0"
         CURRENT_PROJECT_VERSION: "1"
         SWIFT_VERSION: "6.0"
-        # Apple's notary service refuses anything built without this —
-        # "The executable does not have the hardened runtime enabled." — so
-        # it has to be a real project setting, not something bolted on only
-        # for the release build. Xcode adds the debugging entitlement itself
-        # for a Debug, Automatic-signed build, so local development is
-        # unaffected.
+        # Kept from the retired Developer ID route, whose notary service
+        # refused anything without it ("The executable does not have the
+        # hardened runtime enabled"). The App Store doesn't require it, but the
+        # Apple-events entitlement in App-macOS.entitlements is written for it.
+        # Xcode adds the debugging entitlement itself for a Debug,
+        # Automatic-signed build, so local development is unaffected.
         ENABLE_HARDENED_RUNTIME: "YES"
         # A separate entitlements file, because CloudKit on macOS only works
         # from a sandboxed app and the sandbox then has to be opened back up
