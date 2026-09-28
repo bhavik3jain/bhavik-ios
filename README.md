@@ -5,7 +5,7 @@ through TestFlight; also builds for the Mac.
 
 | Module | What it does |
 | --- | --- |
-| Trips | Plan a trip day by day — itinerary, flights, bookings and door codes — with a map, the forecast, and a PDF itinerary to share; undecided ideas wait off the calendar, ranked by how far they are from you or a day's plan |
+| Trips | Plan a trip day by day — itinerary, flights, bookings and door codes — with a map, the forecast, and a PDF itinerary to share; undecided ideas wait off the calendar, ranked by how far they are from you or a day's plan; Review Plan flags overlaps, tight walks, busy days and rain on outdoor plans with one-tap fixes, and on Apple Intelligence devices writes a short review and suggests real nearby places, on the device |
 | Explore | Keep guides of places to eat, see and do in an area, mark them tried and rated, and see how far away they are |
 | Gym | Log workouts as weight × reps, save routines, track per-exercise progress |
 | TV | Track shows, episodes and films, with a catch-up backlog and an upcoming-episode schedule |
@@ -220,6 +220,16 @@ request throws and both modules quietly show no weather — no card, no spinner.
 A simulator build that isn't signed with the team may get no weather; launch a debug build with
 `-WeatherStub YES` to swap in made-up but deterministic weather for the whole app.
 
+## Apple Intelligence in Trips
+
+On iOS 26 / macOS 26 with Apple Intelligence, Trips' Review Plan adds a one-line written review, and
+Ideas, Nearby and the Mac's Ideas inspector can suggest places from Apple Maps. The on-device model
+picks them and says why. Swift works out every problem, fix and candidate place; the model only
+words and ranks them, and nothing is sent off the device except the Apple Maps search. **Settings →
+Apple Intelligence in Trips** turns it off everywhere, and the setting syncs across your devices. Off,
+or on a device without Apple Intelligence, Review Plan is the plain plan check. The switch is hidden
+where the model can never run.
+
 ## Debug launch arguments
 
 All debug-only, and inert unless passed (Product → Scheme → Edit Scheme → Run → Arguments):
@@ -235,6 +245,8 @@ All debug-only, and inert unless passed (Product → Scheme → Edit Scheme → 
 | `-PointsSeed YES` | Adds a sample household with people and points accounts (does nothing if any account exists) |
 | `-FinanceSeed YES` | Adds a sample household with accounts, cards, metals, three months and budgets (does nothing if any household has data) |
 | `-WeatherStub YES` | Made-up weather in place of WeatherKit |
+| `-TripAdvisorStub YES` | A made-up plan reviewer and made-up places in place of Apple Intelligence and Apple Maps, for Trips on a simulator |
+| `-TripAdvisorProbe YES` | Runs Trips' plan check, the real on-device model and an Apple Maps search on a made-up trip in memory only, and prints it all; add `-TripAdvisorProbeQuit YES` to quit after |
 | `-CloudSyncRefreshAfter <seconds>` | Runs a Refresh from iCloud that long after launch and prints how it ended |
 
 The module seeders run when their module is first opened, not at launch.

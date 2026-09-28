@@ -267,6 +267,33 @@ Explore's map asks for location only when it opens. That needs `NSLocationWhenIn
 in **both** targets' `info.properties`, plus `com.apple.security.personal-information.location` in
 `App-macOS.entitlements` — without either, the request is dropped and no blue dot ever appears.
 
+## Trips' Apple Intelligence: Swift decides, the model only words
+
+It all lives in `Packages/TripTracker`: `Models/PlanCheck.swift` (the plain review, with fixes),
+`TripBrief`, `PlanReview`, `SuggestionCandidates`, `AdvisorPresentation`, and `Intelligence/` (the
+`TripAdvising`/`PlaceSearching` protocols, `FoundationModelsTripAdvisor`, the stubs, the probe). The
+UI is Review Plan (`TripReviewSheet`: the phone's + menu on Plan, a toolbar button on the Mac), Suggest
+Places (`PlaceSuggestionsSheet`, from Ideas and from Nearby's "Find More Around Day N") and the Mac
+inspector's Suggestions section.
+
+**Swift computes every fact and every fix; the model only ranks and phrases them, and picks places
+by number from Swift's MapKit list.** Each rule is a failure seen on the real model: left to judge, it
+answered six real problems with "No change needed", turned a 30-minute overlap into two stops "on Day
+1", suggested places on another continent, and looped ~70 tool calls. `PlanReview.isFaithful` still
+throws out any note that loses a figure or a place, falling back to the check's own words. Views never
+show an error: every failure falls back to the plain check or the nearest places.
+
+- FoundationModels is weak-linked; every use is behind `@available`/`#available(iOS 26.0, macOS 26.0, *)`.
+  Views see only `TripAdvising`, which has no FoundationModels types.
+- The **"Apple Intelligence in Trips"** switch (Settings, default on) is `App/Sources/TripsIntelligenceStore.swift`,
+  synced through `NSUbiquitousKeyValueStore` like `TrackerLayoutStore`, and reaches Trips only as
+  `\.tripAdvisorEnabled`, set at the app root. Views go by `advisor.availability(isEnabled:)`; off is
+  `.turnedOff`, which means no model UI, no prewarm and nothing sent to the model. The plain plan
+  check stays. The switch is hidden where the model can never run (`showsSetting`: below 26, or
+  ineligible hardware).
+- On a simulator use `-TripAdvisorStub YES`. `-TripAdvisorProbe YES` exercises the real model without
+  touching real data (see Tests above).
+
 ## Known-stale things in the tree
 
 Don't trust these comments, and don't "fix" the code they describe.
