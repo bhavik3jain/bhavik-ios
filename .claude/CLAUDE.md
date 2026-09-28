@@ -205,6 +205,9 @@ engine run on a made-up Rome trip: `PlanCheck`, the brief the model sees, a stre
 real on-device model, and a "Suggest Places" run against Apple Maps. It's the way to check the real
 model on a Mac without touching real iCloud data (it answers on the iOS 27 simulator too): run the built binary directly
 (`…/Multitrack.app/Contents/MacOS/Multitrack -TripAdvisorProbe YES -TripAdvisorProbeQuit YES`) and read stdout.
+`-MacOpenTracker <module>[/<section>]` (Mac, e.g. `fuel/trends`) opens a tracker at launch,
+navigation only: the one way to reach a tracker's Mac layout from a script without Accessibility access.
+On the Mac a debug build reads your **real** iCloud data, so never pair it with a seeder there.
 
 ## CI and release — what README doesn't say
 
