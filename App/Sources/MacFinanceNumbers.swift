@@ -39,6 +39,7 @@ enum MacFinanceNumbers {
         case missingResource(String)
         case numbersNotInstalled
         case notAllowed
+        case timedOut
         case script(String)
 
         var errorDescription: String? {
@@ -49,6 +50,8 @@ enum MacFinanceNumbers {
                 "Numbers isn’t installed. Get it from the App Store, then try again."
             case .notAllowed:
                 "Multitrack isn’t allowed to control Numbers. Turn it on in System Settings › Privacy & Security › Automation › Multitrack, then try again."
+            case .timedOut:
+                "Numbers took too long to answer. If it's busy with another document, wait for it and export again."
             case .script(let message):
                 message
             }
@@ -83,6 +86,14 @@ enum MacFinanceNumbers {
             configuration.activates = false
             _ = try await NSWorkspace.shared.open([output], withApplicationAt: numbers, configuration: configuration)
 
+            // Asked for here, and waited for as long as the person takes: the
+            // Automation prompt used to appear only when the script's first
+            // Apple event reached Numbers, and that event gave up after about
+            // a minute — the first export from a new build ended in a Numbers
+            // timeout while the "Multitrack wants to control Numbers" prompt
+            // was still waiting (or had opened behind other windows).
+            try await askPermissionToControlNumbers()
+
             try await run(source, argument: specURL.path)
             try? FileManager.default.removeItem(at: specURL)
             return output
@@ -90,6 +101,40 @@ enum MacFinanceNumbers {
             // A half-filled copy is worse than none.
             try? FileManager.default.removeItem(at: folder)
             throw error
+        }
+    }
+
+    /// macOS's Automation permission for Numbers, asking if it hasn't been
+    /// asked: blocks until the person answers, so on a thread of its own.
+    /// Numbers must be running, which opening the copy above sees to.
+    private static func askPermissionToControlNumbers() async throws {
+        let status: OSStatus = await withCheckedContinuation { continuation in
+            let thread = Thread {
+                var target = AEAddressDesc()
+                let created = numbersBundleID.withCString { bytes in
+                    AECreateDesc(DescType(typeApplicationBundleID), bytes, strlen(bytes), &target)
+                }
+                guard created == noErr else {
+                    continuation.resume(returning: OSStatus(created))
+                    return
+                }
+                defer { AEDisposeDesc(&target) }
+                continuation.resume(returning: AEDeterminePermissionToAutomateTarget(
+                    &target, AEEventClass(typeWildCard), AEEventID(typeWildCard), true
+                ))
+            }
+            thread.name = "Finance Numbers permission"
+            thread.start()
+        }
+        switch status {
+        case noErr:
+            return
+        case OSStatus(errAEEventNotPermitted):
+            throw ExportError.notAllowed
+        default:
+            // -600 (Numbers not running yet) and anything unexpected: carry
+            // on, and let the script's own first event ask, as before.
+            return
         }
     }
 
@@ -119,22 +164,29 @@ enum MacFinanceNumbers {
         if number == -1743 || message.contains("Not authorized") {
             return .notAllowed
         }
+        // -1712: an Apple event Numbers didn't answer in time. Said plainly;
+        // the raw "AppleEvent timed out" meant nothing to the person exporting.
+        if number == -1712 || message.contains("timed out") {
+            return .timedOut
+        }
         return .script(message.replacingOccurrences(of: "Error: ", with: ""))
     }
 
     #if DEBUG
     /// `-FinanceNumbersExportProbe YES` fills the template with a made-up
-    /// month at launch and prints where the result went: the whole sandboxed
+    /// month at launch and prints where the result went (`big` instead of
+    /// `YES`: a made-up month the size of a real one — 30 accounts, 15 cards,
+    /// 33 metals, 116 transactions — the size that timed out): the whole sandboxed
     /// path (Launch Services, Automation, OSAKit) without clicking through
     /// Finance or touching real data. Made up here because nothing outside
     /// the sandbox can put a file where the app could read it.
     @MainActor
     static func runProbeIfRequested() {
-        guard UserDefaults.standard.bool(forKey: "FinanceNumbersExportProbe") else { return }
+        guard let size = UserDefaults.standard.string(forKey: "FinanceNumbersExportProbe"), size != "NO" else { return }
         Task {
             do {
                 let started = Date.now
-                let output = try await fill(probeDocument)
+                let output = try await fill(size == "big" ? bigProbeDocument : probeDocument)
                 print("FinanceNumbersExportProbe: wrote \(output.path) in \(Int(Date.now.timeIntervalSince(started)))s")
                 // Left open in Numbers: nothing outside the sandbox can read
                 // the container's tmp folder to check the result any other way.
@@ -143,6 +195,38 @@ enum MacFinanceNumbers {
                 print("FinanceNumbersExportProbe: failed: \(error.localizedDescription)")
             }
         }
+    }
+
+    /// Made up, at the size of the user's real month.
+    private static var bigProbeDocument: FinanceMonthDocument {
+        typealias D = FinanceMonthDocument
+        let owners = ["Alex", "Sam", ""]
+        let categories = ["cash", "cash", "investments", "retirement", "cash", "fixed", "loan"]
+        let cards = (1...15).map { index in
+            D.CardEntry(institution: "Card Co \(index)", name: "Card \(index)", owner: owners[index % 3], limit: Double(1_000 * index), annualFee: index.isMultiple(of: 3) ? 95 : 0)
+        }
+        return D(
+            month: "2026-09",
+            metalPrices: D.Prices(gold: 4_300, silver: 65),
+            owners: ["Alex", "Sam", "Joint"],
+            accounts: (1...30).map { index in
+                D.AccountEntry(category: categories[index % categories.count], institution: "Bank \(index % 6)", name: "Account \(index)",
+                               owner: owners[index % 3], balance: Double(100 * index) + 0.25)
+            },
+            cards: cards,
+            metals: (1...33).map { index in
+                D.MetalEntry(name: "Item \(index)", metal: index <= 28 ? "gold" : "silver", grams: Double(index) * 2.5,
+                             pricePaidPerOz: index.isMultiple(of: 4) ? 1_800 : 0, purchaseValue: 0,
+                             manualValue: index.isMultiple(of: 16) ? 500 : nil, location: index.isMultiple(of: 2) ? "Safe" : "Box", owner: "")
+            },
+            transactions: (1...116).map { index in
+                D.TransactionEntry(
+                    date: String(format: "2026-09-%02d", 1 + index % 28), cost: Double(5 + index % 40), actualCost: Double(5 + index % 40),
+                    merchant: "Shop \(index)", category: ["Food", "Travel", "Home"][index % 3], expense: "Expense \(index % 7)", breakDown: "",
+                    card: "Card Co \(1 + index % 15) - Card \(1 + index % 15)"
+                )
+            }
+        )
     }
 
     private static var probeDocument: FinanceMonthDocument {
