@@ -143,10 +143,9 @@ private func makeMonitor(
         center.post(name: NSPersistentCloudKitContainer.eventChangedNotification, object: nil)
         posted.signal()
     }
-    // Ten seconds, not two: a starved CI runner (its simulator service hub
-    // dropping) took over two to schedule the background post at all, and
-    // failed main. A `queue: .main` observer never returns while the main
-    // thread waits, so any bound still catches the deadlock this is about.
+    // Ten seconds, not two: on a starved CI runner (its simulator service
+    // hub dropping) the background post took over two seconds to finish and
+    // failed main's run, with the observer unchanged and correct.
     #expect(posted.wait(timeout: .now() + 10) == .success)
     withExtendedLifetime(monitor) {}
 }
