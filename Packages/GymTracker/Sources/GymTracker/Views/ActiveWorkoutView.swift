@@ -25,7 +25,7 @@ struct ActiveWorkoutView: View {
     }
 
     var body: some View {
-        NavigationStack {
+        SheetStack {
             List {
                 ForEach(groupedSets, id: \.exercise.persistentModelID) { group in
                     Section {

@@ -45,7 +45,7 @@ struct TransactionEditorView: View {
         let snapshot = data.snapshot
         let cards = SpendingSummary.cardsByRecentUse(snapshot.cards)
         let categories = SpendingSummary.knownCategories(snapshot.transactions)
-        NavigationStack {
+        SheetStack {
             Form {
                 Section {
                     TextField("Cost", text: $costText)
@@ -121,13 +121,9 @@ struct TransactionEditorView: View {
                         .disabled(!canSave)
                 }
             }
-            .alert("New Category", isPresented: $addingCategory) {
-                TextField("Name", text: $newCategory)
-                Button("Cancel", role: .cancel) {}
-                Button("Add") {
-                    let trimmed = newCategory.trimmingCharacters(in: .whitespaces)
-                    if !trimmed.isEmpty { category = trimmed }
-                }
+            .textPrompt("New Category", isPresented: $addingCategory, text: $newCategory, prompt: "Name") {
+                let trimmed = newCategory.trimmingCharacters(in: .whitespaces)
+                if !trimmed.isEmpty { category = trimmed }
             }
             .onAppear { load(cards: cards) }
         }

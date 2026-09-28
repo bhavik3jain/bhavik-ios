@@ -12,6 +12,8 @@ struct ParcelListView: View {
 
     @State private var showingAdd = false
     @State private var isRefreshing = false
+    @State private var opened: Parcel?
+    @Environment(\.moduleLayout) private var layout
 
     private var active: [Parcel] { parcels.filter { !$0.status.isSettled } }
     private var delivered: [Parcel] { parcels.filter { $0.status.isSettled } }
@@ -28,6 +30,8 @@ struct ParcelListView: View {
                         Button("Add Order") { showingAdd = true }
                             .primaryActionStyle(tint: ParcelTrackerModule.accent.color)
                     }
+                } else if layout == .sidebar {
+                    MacOrdersView(parcels: parcels, open: { opened = $0 }, delete: { modelContext.delete($0) })
                 } else {
                     List {
                         if !active.isEmpty {
@@ -51,7 +55,23 @@ struct ParcelListView: View {
                 }
             }
             .navigationTitle("Orders")
+            .navigationDestination(item: $opened) { parcel in
+                ParcelDetailView(parcel: parcel, router: router)
+            }
+            .debugOpensFirstItem { opened = parcels.first }
             .toolbar {
+                // Pull-to-refresh has no Mac equivalent; the toolbar does.
+                if layout == .sidebar {
+                    ToolbarItem(placement: .primaryAction) {
+                        Button {
+                            Task { await refreshAll() }
+                        } label: {
+                            Label("Refresh Tracking", systemImage: "arrow.clockwise")
+                        }
+                        .disabled(isRefreshing)
+                        .help("Check every carrier for updates")
+                    }
+                }
                 ToolbarItem(placement: .primaryAction) {
                     Button {
                         showingAdd = true

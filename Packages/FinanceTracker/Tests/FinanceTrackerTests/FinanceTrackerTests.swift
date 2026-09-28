@@ -691,3 +691,46 @@ private func makeSeptember() throws -> (household: SharedFinanceHousehold, month
     #expect(month.silverPricePerOz == 52)
     #expect(household.sortedMetals.first?.owner?.name == "Saloni")
 }
+
+@Test func monthsChartSpansAYearEvenWithOneMonth() throws {
+    let september = YearMonth(year: 2026, month: 9)
+    let one = [FinanceHistory.Value(period: september, value: 1)]
+    let domain = try #require(FinanceHistory.chartDomain(one))
+    #expect(domain.lowerBound == YearMonth(year: 2025, month: 10).start)
+    #expect(domain.upperBound == september.end)
+
+    // Longer histories keep all of their months.
+    let long = (0..<20).map { FinanceHistory.Value(period: YearMonth(year: 2025, month: 1 + $0), value: 1) }
+    let longDomain = try #require(FinanceHistory.chartDomain(long))
+    #expect(longDomain.lowerBound == YearMonth(year: 2025, month: 1).start)
+    #expect(FinanceHistory.chartDomain([]) == nil)
+}
+
+@MainActor
+@Test func theCategoryBreakdownSplitsEachCategoryByExpense() {
+    let household = makeHousehold()
+    func spend(_ cost: Double, _ category: String, _ expense: String) -> SharedFinanceTransaction {
+        let transaction = SharedFinanceTransaction(date: day(2026, 9, 3), cost: cost, merchant: "M", household: household)
+        transaction.category = category
+        transaction.expense = expense
+        return transaction
+    }
+    let all = [
+        spend(60, "Groceries", "Weekly"),
+        spend(20, "groceries ", "Pantry"),
+        spend(20, "Groceries", "weekly"),
+        spend(100, "Food", ""),
+        spend(-10, "Travel", "Refund"),
+    ]
+    let breakdown = SpendingSummary.breakdown(all)
+
+    #expect(breakdown.map(\.name) == ["Food", "Groceries", "Travel"])
+    let groceries = breakdown[1]
+    #expect(groceries.total == 100)
+    #expect(groceries.count == 3, "Typed \"groceries \" is the same category")
+    #expect(groceries.share == 0.5, "Of the 200 spent; the refund takes nothing away")
+    #expect(groceries.expenses == [SpendingTotal(name: "Weekly", total: 80), SpendingTotal(name: "Pantry", total: 20)])
+    #expect(breakdown[0].expenses == [SpendingTotal(name: "Other", total: 100)])
+    #expect(breakdown[2].share == 0)
+    #expect(SpendingSummary.transactions(all, inCategory: "Groceries").count == 3)
+}

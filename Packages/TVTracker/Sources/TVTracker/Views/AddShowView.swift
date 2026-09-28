@@ -15,7 +15,7 @@ struct AddShowView: View {
     @State private var showingSettings = false
 
     var body: some View {
-        NavigationStack {
+        SheetStack {
             List {
                 if apiKey.isEmpty {
                     Section {
@@ -95,7 +95,7 @@ struct AddShowView: View {
                 }
             }
             .sheet(isPresented: $showingSettings) {
-                NavigationStack { TVSettingsView() }
+                SheetStack { TVSettingsView() }
             }
         }
     }

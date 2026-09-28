@@ -10,12 +10,24 @@ struct WorkoutsListView: View {
 
     @State private var activeSession: WorkoutSession?
     @State private var showingNewRoutine = false
+    @State private var openedSession: WorkoutSession?
+    @Environment(\.moduleLayout) private var layout
 
     var body: some View {
         NavigationStack {
             // Starting a workout sits above the list rather than in it: it is
             // the reason for the screen, and a list row would put a grouped
             // background behind a control that is meant to float.
+            Group {
+            if layout == .sidebar {
+                MacWorkoutsView(
+                    routines: routines,
+                    sessions: pastSessions,
+                    start: startSession(from:),
+                    open: { openedSession = $0 },
+                    deleteRoutine: { modelContext.delete($0) }
+                )
+            } else {
             VStack(spacing: 12) {
                 Button {
                     startEmptyWorkout()
@@ -72,7 +84,27 @@ struct WorkoutsListView: View {
                 }
                 }
             }
+            }
+            }
             .navigationTitle("Workouts")
+            .navigationDestination(item: $openedSession) { SessionSummaryView(session: $0) }
+            .toolbar {
+                if layout == .sidebar {
+                    ToolbarItem(placement: .primaryAction) {
+                        Button("New Routine", systemImage: "list.bullet.rectangle") { showingNewRoutine = true }
+                    }
+                    ToolbarItem(placement: .primaryAction) {
+                        Button {
+                            startEmptyWorkout()
+                        } label: {
+                            Label("Start Workout", systemImage: "play.fill")
+                                .labelStyle(.titleAndIcon)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(GymTrackerModule.accent.color)
+                    }
+                }
+            }
             .sheet(isPresented: $showingNewRoutine) {
                 RoutineEditorView()
             }

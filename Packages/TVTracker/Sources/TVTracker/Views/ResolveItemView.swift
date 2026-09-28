@@ -44,7 +44,7 @@ struct ResolveItemView: View {
     }
 
     var body: some View {
-        NavigationStack {
+        SheetStack {
             Form {
                 Section {
                     Text(item.displayName).font(.headline)

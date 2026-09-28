@@ -153,6 +153,16 @@ public struct FinanceHistory {
         return Array(values.suffix(count))
     }
 
+    /// The months a chart of `series` spans: at least `minimumMonths`,
+    /// ending with the latest. Left to itself Swift Charts fits the axis to
+    /// the data, so a household's first month was one bar the width of the
+    /// window.
+    public static func chartDomain(_ series: [Value], minimumMonths: Int = 12) -> ClosedRange<Date>? {
+        guard let first = series.map(\.period).min(), let last = series.map(\.period).max() else { return nil }
+        let earliest = YearMonth(year: last.year, month: last.month - (minimumMonths - 1))
+        return min(first, earliest).start...last.end
+    }
+
     /// Change from the month before; nil for the first month.
     public func delta(_ metric: FinanceMetric, at period: YearMonth) -> Double? {
         guard let current = points.first(where: { $0.period == period }),

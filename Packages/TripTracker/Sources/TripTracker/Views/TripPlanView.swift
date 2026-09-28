@@ -39,7 +39,117 @@ struct TripPlanView: View {
         .refreshesFromCloud()
     }
 
+    @ViewBuilder
     private func content(now: Date) -> some View {
+        if layout == .sidebar {
+            agenda(now: now)
+        } else {
+            singleDay(now: now)
+        }
+    }
+
+    /// The Mac's plan: every day in one scrolling list, the strip above it
+    /// jumping between them. One day at a time left most of a desktop window
+    /// empty, and every look at tomorrow was a click.
+    private func agenda(now: Date) -> some View {
+        let dates = trip.dates
+        let forecast = TripForecast.byDay(weather, dates: dates, asOf: now)
+        let showsWeather = forecast.contains { $0 != nil }
+        let day = min(max(selectedDay, 0), dates.dayCount - 1)
+
+        return ScrollViewReader { proxy in
+            List {
+                ForEach(0..<dates.dayCount, id: \.self) { index in
+                    let plan = DayPlan(trip: trip, dayIndex: index)
+                    let upNext = plan.upNext(asOf: now)
+                    let nowLine = plan.nowLineIndex(asOf: now)
+                    Section {
+                        if plan.isEmpty {
+                            Button {
+                                present(.newItem(day: index))
+                            } label: {
+                                Label("Plan something", systemImage: "plus.circle")
+                                    .foregroundStyle(.secondary)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        ForEach(Array(plan.timed.enumerated()), id: \.element.id) { position, entry in
+                            if nowLine == position {
+                                NowLine()
+                            }
+                            row(for: entry, in: plan, isUpNext: entry.id == upNext?.id)
+                        }
+                        if let nowLine, nowLine == plan.timed.count, !plan.timed.isEmpty {
+                            NowLine()
+                        }
+                        if !plan.untimed.isEmpty {
+                            if !plan.timed.isEmpty {
+                                Text("Anytime")
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(.secondary)
+                            }
+                            ForEach(plan.untimed) { entry in
+                                row(for: entry, in: plan, isUpNext: entry.id == upNext?.id)
+                            }
+                        }
+                        if isDropTargeted, index == day {
+                            DropHintRow(dayName: plan.isToday(asOf: now) ? "today" : "Day \(index + 1)")
+                        }
+                    } header: {
+                        DayHeader(dates: dates, day: index, weather: forecast[safe: index] ?? nil, now: now)
+                    }
+                    .id(index)
+                }
+
+                if showsWeather {
+                    Section {
+                    } footer: {
+                        WeatherAttributionView()
+                    }
+                }
+            }
+            .safeAreaInset(edge: .top, spacing: 0) {
+                VStack(spacing: 0) {
+                    DayStrip(dates: dates, forecast: forecast, selectedDay: $selectedDay, now: now)
+                        .padding(.vertical, 8)
+                    Divider()
+                }
+                .background(.bar)
+            }
+            .onAppear { proxy.scrollTo(day, anchor: .top) }
+            .onChange(of: selectedDay) { _, newDay in
+                withAnimation { proxy.scrollTo(newDay, anchor: .top) }
+            }
+            // A dragged idea lands on the day picked in the strip, the way
+            // the phone's single day takes it.
+            .modifier(PlanDropTarget(enabled: canEdit, isTargeted: $isDropTargeted) { drags in
+                let moved = withAnimation { ItineraryDrop.move(drags, toDay: day, in: trip) }
+                guard moved else { return false }
+                try? modelContext.saveIfNeeded()
+                trip.objectWillChange.send()
+                return true
+            })
+            .confirmationDialog(
+                "Move \(moving?.title ?? "") to…",
+                isPresented: Binding { moving != nil } set: { if !$0 { moving = nil } },
+                titleVisibility: .visible,
+                presenting: moving
+            ) { entry in
+                moveButtons(for: entry, from: Self.dayIndex(of: entry), dates: dates, now: now)
+            }
+        }
+    }
+
+    /// The day an entry sits on, for the agenda's "Move to…" dialog, which
+    /// has no single selected day to take it from.
+    private static func dayIndex(of entry: DayPlan.Entry) -> Int {
+        switch entry {
+        case .item(let item): item.dayIndex
+        case .flight(let flight): flight.dayIndex
+        }
+    }
+
+    private func singleDay(now: Date) -> some View {
         let dates = trip.dates
         let day = min(max(selectedDay, 0), dates.dayCount - 1)
         let plan = DayPlan(trip: trip, dayIndex: day)

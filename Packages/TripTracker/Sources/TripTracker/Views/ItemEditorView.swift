@@ -54,7 +54,7 @@ struct ItemEditorView: View {
     private var canSave: Bool { !title.trimmingCharacters(in: .whitespaces).isEmpty && canEditShare }
 
     var body: some View {
-        NavigationStack {
+        SheetStack {
             Form {
                 Section {
                     Picker("Kind", selection: $kind) {

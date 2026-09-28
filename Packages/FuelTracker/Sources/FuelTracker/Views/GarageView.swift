@@ -4,6 +4,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 struct GarageView: View {
+    @Environment(\.moduleLayout) private var layout
     @Environment(\.managedObjectContext) private var modelContext
     @Environment(\.fuelPersistentContainer) private var container
     @FetchRequest(sortDescriptors: [NSSortDescriptor(keyPath: \SharedVehicle.createdAt, ascending: true)])
@@ -15,6 +16,8 @@ struct GarageView: View {
     @State private var importResult: ImportResult?
     @State private var confirmingMerge = false
     @State private var mergeResult: String?
+    /// The Mac's context-menu delete, confirmed: a car takes every fill-up with it.
+    @State private var pendingDelete: SharedVehicle?
 
     private enum ImportResult: Identifiable {
         case success(ImportSummary)
@@ -30,53 +33,49 @@ struct GarageView: View {
 
     var body: some View {
         NavigationStack {
-            List {
-                if !duplicates.isEmpty {
-                    Section {
-                        Button("Merge Duplicate Cars…", systemImage: "rectangle.stack.badge.minus") {
-                            confirmingMerge = true
-                        }
-                    } footer: {
-                        Text("\(duplicateSummary) — most likely copied again when the app was reinstalled. Merging keeps one of each, with every fill-up, and removes the copies.")
-                    }
-                }
-
-                Section("Vehicles") {
-                    ForEach(vehicles) { vehicle in
-                        HStack {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(vehicle.name)
-                                if let label = sharingLabel(for: vehicle) {
-                                    Label(label, systemImage: "person.2.fill")
-                                        .font(.caption2)
-                                        .foregroundStyle(.secondary)
-                                        .labelStyle(.titleAndIcon)
-                                }
+            Group {
+                if layout == .sidebar {
+                    MacGarageView(
+                        vehicles: Array(vehicles),
+                        duplicateSummary: duplicates.isEmpty ? nil : duplicateSummary,
+                        sharingLabel: sharingLabel(for:),
+                        canEdit: canEdit,
+                        merge: { confirmingMerge = true },
+                        delete: { pendingDelete = $0 }
+                    )
+                    .toolbar {
+                        ToolbarItem(placement: .primaryAction) {
+                            Button {
+                                showingImporter = true
+                            } label: {
+                                Label("Import from Fuelly", systemImage: "square.and.arrow.down")
                             }
-                            Spacer()
-                            Text("\(vehicle.orderedFillUps.count) fill-ups")
-                                .font(.footnote)
-                                .foregroundStyle(.secondary)
+                            .help("Import a CSV exported from Fuelly")
+                        }
+                        ToolbarItem(placement: .primaryAction) {
+                            Button {
+                                newVehicleName = ""
+                                showingAddVehicle = true
+                            } label: {
+                                Label("Add Vehicle", systemImage: "plus")
+                            }
                         }
                     }
-                    .onDelete(perform: deleteVehicles)
-
-                    Button {
-                        newVehicleName = ""
-                        showingAddVehicle = true
-                    } label: {
-                        Label("Add Vehicle", systemImage: "plus")
+                    .confirmationDialog(
+                        "Delete \(pendingDelete?.name ?? "car")?",
+                        isPresented: Binding(get: { pendingDelete != nil }, set: { if !$0 { pendingDelete = nil } }),
+                        titleVisibility: .visible
+                    ) {
+                        Button("Delete Car", role: .destructive) {
+                            if let pendingDelete { modelContext.delete(pendingDelete) }
+                            pendingDelete = nil
+                            try? modelContext.saveIfNeeded()
+                        }
+                    } message: {
+                        Text("Every fill-up and service record for it is deleted too, on every device.")
                     }
-                }
-
-                Section {
-                    Button {
-                        showingImporter = true
-                    } label: {
-                        Label("Import from Fuelly", systemImage: "square.and.arrow.down")
-                    }
-                } footer: {
-                    Text("Import a CSV exported from Fuelly. Fill-ups and service records are added for every vehicle in the file, and anything already imported is skipped.")
+                } else {
+                    list
                 }
             }
             .refreshesFromCloud()
@@ -88,15 +87,11 @@ struct GarageView: View {
             ) { result in
                 handleImport(result)
             }
-            .alert("Add Vehicle", isPresented: $showingAddVehicle) {
-                TextField("Name", text: $newVehicleName)
-                Button("Cancel", role: .cancel) {}
-                Button("Add") {
-                    let trimmed = newVehicleName.trimmingCharacters(in: .whitespaces)
-                    guard !trimmed.isEmpty else { return }
-                    _ = SharedVehicle(context: modelContext, name: trimmed)
-                    try? modelContext.saveIfNeeded()
-                }
+            .textPrompt("Add Vehicle", isPresented: $showingAddVehicle, text: $newVehicleName, prompt: "Name") {
+                let trimmed = newVehicleName.trimmingCharacters(in: .whitespaces)
+                guard !trimmed.isEmpty else { return }
+                _ = SharedVehicle(context: modelContext, name: trimmed)
+                try? modelContext.saveIfNeeded()
             }
             .confirmationDialog("Merge Duplicate Cars?", isPresented: $confirmingMerge, titleVisibility: .visible) {
                 Button("Merge \(counted(duplicates.extraCount, "Copy", plural: "Copies"))", role: .destructive, action: mergeDuplicates)
@@ -126,6 +121,58 @@ struct GarageView: View {
                         dismissButton: .default(Text("OK"))
                     )
                 }
+            }
+        }
+    }
+
+    private var list: some View {
+        List {
+            if !duplicates.isEmpty {
+                Section {
+                    Button("Merge Duplicate Cars…", systemImage: "rectangle.stack.badge.minus") {
+                        confirmingMerge = true
+                    }
+                } footer: {
+                    Text("\(duplicateSummary) — most likely copied again when the app was reinstalled. Merging keeps one of each, with every fill-up, and removes the copies.")
+                }
+            }
+
+            Section("Vehicles") {
+                ForEach(vehicles) { vehicle in
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(vehicle.name)
+                            if let label = sharingLabel(for: vehicle) {
+                                Label(label, systemImage: "person.2.fill")
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                                    .labelStyle(.titleAndIcon)
+                            }
+                        }
+                        Spacer()
+                        Text("\(vehicle.orderedFillUps.count) fill-ups")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .onDelete(perform: deleteVehicles)
+
+                Button {
+                    newVehicleName = ""
+                    showingAddVehicle = true
+                } label: {
+                    Label("Add Vehicle", systemImage: "plus")
+                }
+            }
+
+            Section {
+                Button {
+                    showingImporter = true
+                } label: {
+                    Label("Import from Fuelly", systemImage: "square.and.arrow.down")
+                }
+            } footer: {
+                Text("Import a CSV exported from Fuelly. Fill-ups and service records are added for every vehicle in the file, and anything already imported is skipped.")
             }
         }
     }

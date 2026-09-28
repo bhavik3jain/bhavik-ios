@@ -39,11 +39,18 @@ struct MonthEntryView: View {
             } header: {
                 Text("Metal prices")
             } footer: {
-                if feed.isLive(month) {
-                    Text("Live, per ounce, from gold and silver futures (\(MetalQuoteClient.goldSymbol) and \(MetalQuoteClient.silverSymbol))\(updated(feed.fetchedAt)). Weights are in regular ounces, as in the Numbers sheet. Closing \(month.monthName) saves the prices with it.")
-                } else {
-                    Text("Per ounce. Gold & silver are valued at these, by weight in regular ounces as in the Numbers sheet.")
+                Group {
+                    if feed.isLive(month) {
+                        Text("Live, per ounce, from gold and silver futures (\(MetalQuoteClient.goldSymbol) and \(MetalQuoteClient.silverSymbol))\(updated(feed.fetchedAt)). Weights are in regular ounces, as in the Numbers sheet. Closing \(month.monthName) saves the prices with it.")
+                    } else {
+                        Text("Per ounce. Gold & silver are valued at these, by weight in regular ounces as in the Numbers sheet.")
+                    }
                 }
+                // A Mac list footer is one line unless told otherwise, and cut
+                // this one off mid-word.
+                .lineLimit(nil)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .fixedSize(horizontal: false, vertical: true)
             }
 
             ForEach(AccountCategory.monthlyCases) { category in
@@ -126,6 +133,7 @@ struct MonthEntryView: View {
                 }
             }
         }
+        .readableWidthInSidebar()
         .navigationTitle(month.title)
         .navigationBarTitleDisplayMode(.inline)
         .onDisappear(perform: save)

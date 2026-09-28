@@ -12,6 +12,7 @@ struct SummaryView: View {
 
     @State private var filter = OwnerFilter.all
     @State private var showingExchange = false
+    @Environment(\.moduleLayout) private var layout
 
     var body: some View {
         let snapshot = data.snapshot
@@ -38,6 +39,24 @@ struct SummaryView: View {
             .refreshesFromCloud()
             .navigationTitle("Finance")
             .toolbar {
+                // On the Mac, whose figures these are is a toolbar menu, not a
+                // segmented row inside the list — a filter reads as a filter
+                // there, the way Photos or Mail filter.
+                if layout == .sidebar, snapshot.owners.count > 1 {
+                    ToolbarItem(placement: .primaryAction) {
+                        Picker(selection: $filter) {
+                            Text("Everyone").tag(OwnerFilter.all)
+                            Divider()
+                            ForEach(snapshot.owners) { owner in
+                                Text(owner.name).tag(OwnerFilter.owner(owner))
+                            }
+                        } label: {
+                            Label("Whose", systemImage: "person.2")
+                        }
+                        .pickerStyle(.menu)
+                        .help("Show everyone's figures, or one person's")
+                    }
+                }
                 ToolbarItem(placement: .primaryAction) {
                     Button {
                         showingExchange = true
@@ -45,7 +64,9 @@ struct SummaryView: View {
                         Label("Export", systemImage: "square.and.arrow.up")
                     }
                 }
-                ToolbarItem(placement: .secondaryAction) {
+                // Beside Export on the Mac: as a secondary action it sat on its
+                // own beside the section switcher.
+                ToolbarItem(placement: layout.secondaryToolbarPlacement) {
                     ShareHouseholdButton()
                 }
             }
@@ -62,7 +83,16 @@ struct SummaryView: View {
         }
     }
 
+    @ViewBuilder
     private func content(_ snapshot: FinanceSnapshot, latest: SharedFinanceMonth) -> some View {
+        if layout == .sidebar {
+            MacFinanceDashboard(snapshot: snapshot, latest: latest, filter: filter)
+        } else {
+            phoneList(snapshot, latest: latest)
+        }
+    }
+
+    private func phoneList(_ snapshot: FinanceSnapshot, latest: SharedFinanceMonth) -> some View {
         let history = snapshot.history(filter: filter)
         let summary = snapshot.summary(for: latest, filter: filter)
         let period = latest.period ?? YearMonth(containing: .now)
@@ -200,5 +230,200 @@ struct MonthProgressRow: View {
                 .tint(FinanceTrackerModule.accent.color)
         }
         .padding(.vertical, 4)
+    }
+}
+
+// MARK: - Mac
+
+/// The Mac's Summary: a dashboard sized for a window, not the phone's list
+/// stretched across one. The phone's layout on a desktop was a segmented
+/// "Whose" row, six flat grey bars and half a window of nothing — "looks like
+/// something from 2001". Here: net worth over its year, how far this month is
+/// filled in, and the balance sheet as cards on an adaptive grid, each with
+/// its share of what's owned.
+private struct MacFinanceDashboard: View {
+    let snapshot: FinanceSnapshot
+    let latest: SharedFinanceMonth
+    let filter: OwnerFilter
+
+    private var accent: Color { FinanceTrackerModule.accent.color }
+
+    var body: some View {
+        let history = snapshot.history(filter: filter)
+        let summary = snapshot.summary(for: latest, filter: filter)
+        let period = latest.period ?? YearMonth(containing: .now)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                hero(summary: summary, delta: history.delta(.netWorth, at: period), series: history.series(.netWorth, last: 12))
+
+                if !latest.isClosed {
+                    progressCard(snapshot.progress(of: latest))
+                }
+
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Balance sheet")
+                        .font(.title3.weight(.semibold))
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 220), spacing: 14)], spacing: 14) {
+                        ForEach(tiles(summary)) { tile in
+                            MacBalanceTile(tile: tile, accent: accent)
+                        }
+                    }
+                    Text("Owed is this month's card spend plus what's left on the loans.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .padding(24)
+            .frame(maxWidth: 1_100, alignment: .leading)
+            .frame(maxWidth: .infinity)
+        }
+        .moduleSubtitle(latest.title)
+    }
+
+    private func hero(summary: MonthSummary, delta: Double?, series: [FinanceHistory.Value]) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Net worth")
+                .font(.headline)
+                .foregroundStyle(.secondary)
+            HStack(alignment: .firstTextBaseline, spacing: 12) {
+                Text(FinanceFormat.money(summary.netWorth))
+                    .font(.system(size: 44, weight: .bold, design: .rounded))
+                    .monospacedDigit()
+                    .contentTransition(.numericText())
+                if let delta {
+                    HStack(spacing: 4) {
+                        DeltaText(delta: delta)
+                        Text(delta.rounded() == 0 ? "no change on last month" : "on last month")
+                            .foregroundStyle(.secondary)
+                    }
+                    .font(.callout)
+                }
+            }
+            if series.count > 1 {
+                Chart(series) { point in
+                    AreaMark(
+                        x: .value("Month", point.period.start, unit: .month),
+                        y: .value("Net worth", point.value)
+                    )
+                    .interpolationMethod(.monotone)
+                    .foregroundStyle(LinearGradient(colors: [accent.opacity(0.28), accent.opacity(0.02)], startPoint: .top, endPoint: .bottom))
+                    LineMark(
+                        x: .value("Month", point.period.start, unit: .month),
+                        y: .value("Net worth", point.value)
+                    )
+                    .interpolationMethod(.monotone)
+                    .lineStyle(StrokeStyle(lineWidth: 2.5))
+                    .foregroundStyle(accent)
+                }
+                .chartYScale(domain: .automatic(includesZero: false))
+                .chartYAxis {
+                    AxisMarks(position: .trailing) { value in
+                        AxisGridLine().foregroundStyle(.quaternary)
+                        AxisValueLabel {
+                            if let amount = value.as(Double.self) { Text(FinanceFormat.compactMoney(amount)) }
+                        }
+                    }
+                }
+                .chartXAxis {
+                    AxisMarks(values: .stride(by: .month)) { _ in
+                        AxisValueLabel(format: .dateTime.month(.abbreviated))
+                    }
+                }
+                .frame(height: 200)
+                .padding(.top, 12)
+            }
+        }
+        .padding(20)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.background.secondary, in: .rect(cornerRadius: 18))
+    }
+
+    private func progressCard(_ progress: MonthProgress) -> some View {
+        HStack(spacing: 16) {
+            Gauge(value: progress.fraction) {
+                EmptyView()
+            } currentValueLabel: {
+                Text(progress.fraction, format: .percent.precision(.fractionLength(0)))
+                    .font(.caption2.weight(.semibold))
+            }
+            .gaugeStyle(.accessoryCircularCapacity)
+            .tint(accent)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Finish \(latest.monthName)")
+                    .font(.headline)
+                Text(progress.label)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+            }
+            Spacer()
+            NavigationLink {
+                MonthEntryView(month: latest)
+            } label: {
+                Text("Continue")
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(accent)
+        }
+        .padding(16)
+        .background(.background.secondary, in: .rect(cornerRadius: 18))
+    }
+
+    private func tiles(_ summary: MonthSummary) -> [MacBalanceTile.Tile] {
+        let assets = max(summary.totalAssets, 1)
+        func tile(_ title: String, _ value: Double, _ symbol: String, share: Bool = true) -> MacBalanceTile.Tile {
+            MacBalanceTile.Tile(title: title, value: value, symbol: symbol, share: share ? value / assets : nil)
+        }
+        return [
+            tile("Cash", summary.cash, AccountCategory.cash.symbolName),
+            tile("Investments", summary.investments, AccountCategory.investments.symbolName),
+            tile("Retirement", summary.retirement, AccountCategory.retirement.symbolName),
+            tile("Gold & silver", summary.metals, "circle.hexagongrid"),
+            tile("Cars & property", summary.fixed, AccountCategory.fixed.symbolName),
+            tile("Owed", summary.owed, AccountCategory.card.symbolName, share: false),
+        ]
+    }
+}
+
+/// One line of the balance sheet on the Mac: what, how much, and — for an
+/// asset — its share of everything owned, as a thin bar.
+private struct MacBalanceTile: View {
+    struct Tile: Identifiable {
+        let title: String
+        let value: Double
+        let symbol: String
+        /// 0…1 of total assets; nil for what's owed.
+        let share: Double?
+        var id: String { title }
+    }
+
+    let tile: Tile
+    let accent: Color
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label(tile.title, systemImage: tile.symbol)
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(.secondary)
+            Text(FinanceFormat.money(tile.value))
+                .font(.title2.weight(.semibold))
+                .monospacedDigit()
+            if let share = tile.share {
+                ProgressView(value: min(max(share, 0), 1)) {
+                    EmptyView()
+                } currentValueLabel: {
+                    Text("\(share, format: .percent.precision(.fractionLength(0))) of assets")
+                }
+                .tint(accent)
+                .font(.caption)
+            } else {
+                Text("This month's cards and loans")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(16)
+        // One height for every tile, whatever its last line says.
+        .frame(maxWidth: .infinity, minHeight: 120, alignment: .topLeading)
+        .background(.background.secondary, in: .rect(cornerRadius: 14))
     }
 }

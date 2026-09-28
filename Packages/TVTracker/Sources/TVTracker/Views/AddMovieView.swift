@@ -14,7 +14,7 @@ struct AddMovieView: View {
     @State private var importingID: Int?
 
     var body: some View {
-        NavigationStack {
+        SheetStack {
             List {
                 if apiKey.isEmpty {
                     Section {

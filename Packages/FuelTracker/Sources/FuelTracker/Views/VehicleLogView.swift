@@ -251,15 +251,19 @@ private struct VehicleDesktopLog: View {
             TableColumn("Odometer") { row in
                 Text("\(row.odometer.formatted()) mi").monospacedDigit()
             }
+            .alignment(.numeric)
             TableColumn("Gallons") { row in
                 figure(row.gallons.map { $0.formatted(.number.precision(.fractionLength(2))) })
             }
+            .alignment(.numeric)
             TableColumn("Price per gal") { row in
                 figure(row.pricePerGallon.map { VehicleSummary.pricePerGallonText($0) })
             }
+            .alignment(.numeric)
             TableColumn("Total") { row in
                 figure(row.total.formatted(.currency(code: "USD")))
             }
+            .alignment(.numeric)
             TableColumn("MPG") { row in
                 if let mpg = row.mpg {
                     Text(mpg.formatted(.number.precision(.fractionLength(1))))
@@ -270,7 +274,10 @@ private struct VehicleDesktopLog: View {
                     figure(nil)
                 }
             }
+            .alignment(.numeric)
         }
+        // No blank striped rows filling the space under the last fill-up.
+        .tableRowBackgroundsPlain()
     }
 
     private func figure(_ text: String?) -> some View {

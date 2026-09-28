@@ -12,33 +12,38 @@ public enum ModuleTab {
     public static let home = "module.home"
 }
 
-/// One of a module's own screens: a tab on iOS, a row nested under the
-/// tracker in the Mac sidebar.
+/// One of a module's own screens: a tab on iOS, a segment in the window's
+/// toolbar on the Mac.
 ///
 /// Declared once per module (`<Module>TrackerModule.sections`) and read by
-/// both, so a tab and its sidebar row can't drift apart in name, symbol or
-/// value.
+/// both, so a tab and its segment can't drift apart in name, symbol or value.
 public struct ModuleSection: Identifiable, Hashable, Sendable {
     /// The tab's selection value. Stored nowhere, so renaming one only moves
     /// which screen a module opens on.
     public let id: String
     public let title: String
     public let systemImage: String
+    /// A tracker's settings: a tab on the phone, where there is nowhere else
+    /// for them, but on the Mac a tab of the Settings window (⌘,) — not a
+    /// segment beside the tracker's own screens, where "Settings" sat next to
+    /// "Up Next" as if it were something to watch.
+    public let isSettings: Bool
 
-    public init(_ id: String, title: String, systemImage: String) {
+    public init(_ id: String, title: String, systemImage: String, isSettings: Bool = false) {
         self.id = id
         self.title = title
         self.systemImage = systemImage
+        self.isSettings = isSettings
     }
 }
 
 /// How a module is being shown, set by whoever embeds it.
 ///
 /// On the phone a module is a full-screen cover with its own tab bar and a
-/// Home tab to leave by. On the Mac it sits in a split view's detail pane and
-/// the sidebar already lists its sections, so a second row of tabs would be a
-/// duplicate way to do the same thing — and its Home tab, whose whole job is
-/// dismissing a cover, had nothing to dismiss and just bounced back.
+/// Home tab to leave by. On the Mac it sits in a split view's detail pane,
+/// with its sections as a segmented control in the window's toolbar — its
+/// Home tab, whose whole job is dismissing a cover, would have nothing to
+/// dismiss there and just bounce back.
 ///
 /// An environment value rather than `#if os(macOS)` so the feature packages
 /// stay free of platform conditionals: they ask how they are being shown, not
@@ -46,8 +51,19 @@ public struct ModuleSection: Identifiable, Hashable, Sendable {
 public enum ModuleLayout: Sendable {
     /// A tab bar with a Home tab — the iPhone and iPad hub.
     case tabs
-    /// No tab bar; a sidebar outside the module picks the section. The Mac.
+    /// No tab bar; the sidebar picks the module and the toolbar its section.
+    /// The Mac.
     case sidebar
+}
+
+public extension ModuleLayout {
+    /// Where a module's lesser toolbar buttons go (Share, Rename): the phone's
+    /// overflow on iOS, but beside the primary buttons on the Mac. As
+    /// `.secondaryAction` there they sat on their own beside the section
+    /// switcher in the middle of the toolbar.
+    var secondaryToolbarPlacement: ToolbarItemPlacement {
+        self == .sidebar ? .primaryAction : .secondaryAction
+    }
 }
 
 public extension EnvironmentValues {
@@ -83,7 +99,16 @@ public struct ModuleTabView<Content: View>: View {
     }
 
     private var current: ModuleSection {
-        sections.first { $0.id == selection } ?? sections[0]
+        let shown = layout == .sidebar ? macSections : sections
+        return shown.first { $0.id == selection } ?? shown[0]
+    }
+
+    /// The sections the Mac's toolbar switches between: not settings, which
+    /// are in the Settings window there. Never empty — a module whose only
+    /// section were settings would keep it.
+    private var macSections: [ModuleSection] {
+        let screens = sections.filter { !$0.isSettings }
+        return screens.isEmpty ? sections : screens
     }
 
     public var body: some View {
@@ -94,6 +119,25 @@ public struct ModuleTabView<Content: View>: View {
                 // tab its own, so one screen's scroll position and pushed
                 // detail don't carry over into the next.
                 .id(current.id)
+                .toolbar {
+                    // The sections live in the tracker, centred in the window's
+                    // toolbar the way Apple's own apps switch views. They used
+                    // to be rows nested under the tracker in the sidebar, which
+                    // grew and shrank the sidebar with every tracker picked and
+                    // read as a second level of navigation.
+                    if macSections.count > 1 {
+                        ToolbarItem(placement: .principal) {
+                            Picker("Section", selection: $selection) {
+                                ForEach(macSections) { section in
+                                    Text(section.title).tag(section.id)
+                                }
+                            }
+                            .pickerStyle(.segmented)
+                            .labelsHidden()
+                            .fixedSize()
+                        }
+                    }
+                }
         case .tabs:
             TabView(selection: $selection) {
                 Tab("Home", systemImage: "house", value: ModuleTab.home) {

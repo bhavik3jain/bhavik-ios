@@ -61,7 +61,7 @@ struct FlightEditorView: View {
     }
 
     var body: some View {
-        NavigationStack {
+        SheetStack {
             Form {
                 Section("Flight") {
                     HStack {

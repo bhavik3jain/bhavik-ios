@@ -12,6 +12,8 @@ struct AccountsListView: View {
 
     @AppStorage("points.grouping") private var groupingRaw = PointsGrouping.owner.rawValue
     @State private var showingAdd = false
+    @State private var opened: SharedPointsAccount?
+    @Environment(\.moduleLayout) private var layout
 
     private var grouping: PointsGrouping { PointsGrouping(rawValue: groupingRaw) ?? .owner }
     private var sections: [PointsSection] { PointsSummary.sections(accounts, by: grouping) }
@@ -30,6 +32,8 @@ struct AccountsListView: View {
                             .primaryActionStyle(tint: PointsTrackerModule.accent.color)
                     }
                     .scrollsForRefresh()
+                } else if layout == .sidebar {
+                    MacAccountsView(accounts: accounts) { opened = $0 }
                 } else {
                     List {
                         Section {
@@ -71,6 +75,10 @@ struct AccountsListView: View {
             }
             .refreshesFromCloud()
             .navigationTitle("Points")
+            .navigationDestination(item: $opened) { account in
+                AccountDetailView(account: account)
+            }
+            .debugOpensFirstItem { opened = accounts.first }
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
                     Button {
@@ -80,7 +88,7 @@ struct AccountsListView: View {
                     }
                     .accessibilityLabel("Add Account")
                 }
-                ToolbarItem(placement: .secondaryAction) {
+                ToolbarItem(placement: layout.secondaryToolbarPlacement) {
                     ShareHouseholdButton()
                 }
             }

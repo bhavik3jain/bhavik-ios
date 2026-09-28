@@ -5,6 +5,7 @@ import SwiftUI
 /// The people in the household. Each shows what they hold across every
 /// programme; deleting one keeps their accounts, unassigned.
 struct OwnersListView: View {
+    @Environment(\.moduleLayout) private var layout
     @Environment(\.managedObjectContext) private var context
     @Environment(\.pointsPersistentContainer) private var container
     @FetchRequest(sortDescriptors: [NSSortDescriptor(keyPath: \SharedPointsOwner.name, ascending: true)])
@@ -89,15 +90,18 @@ struct OwnersListView: View {
                     }
                     .accessibilityLabel("Add Person")
                 }
-                ToolbarItem(placement: .secondaryAction) {
+                ToolbarItem(placement: layout.secondaryToolbarPlacement) {
                     ShareHouseholdButton()
                 }
             }
-            .alert(editing == nil ? "Add Person" : "Rename", isPresented: $adding) {
-                TextField("Name", text: $nameDraft)
-                Button("Cancel", role: .cancel) { editing = nil }
-                Button(editing == nil ? "Add" : "Save", action: commit)
-            }
+            .textPrompt(
+                editing == nil ? "Add Person" : "Rename",
+                isPresented: $adding,
+                text: $nameDraft,
+                prompt: "Name",
+                actionTitle: editing == nil ? "Add" : "Save",
+                action: commit
+            )
         }
     }
 

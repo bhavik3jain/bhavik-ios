@@ -33,7 +33,7 @@ struct UpdateBalanceView: View {
     }
 
     var body: some View {
-        NavigationStack {
+        SheetStack {
             Form {
                 Section {
                     Picker("Entry", selection: $mode) {

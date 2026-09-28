@@ -5,6 +5,7 @@ import SwiftUI
 /// What the household holds: every account by category, and the gold and
 /// silver.
 struct HoldingsView: View {
+    @Environment(\.moduleLayout) private var layout
     @Environment(\.managedObjectContext) private var context
     @Environment(\.financePersistentContainer) private var container
     var data = FinanceFetches()
@@ -24,30 +25,53 @@ struct HoldingsView: View {
     @State private var addingMetal = false
     /// nil shows every location.
     @State private var locationFilter: String?
+    @State private var showingPeople = false
 
     var body: some View {
         let snapshot = data.snapshot
         let isEditable = snapshot.canEdit
         NavigationStack {
-            List {
-                Section {
-                    Picker("View", selection: $mode) {
-                        ForEach(Mode.allCases) { Text($0.rawValue).tag($0) }
-                    }
-                    .pickerStyle(.segmented)
-                    .listRowBackground(Color.clear)
-                    .listRowInsets(EdgeInsets())
-                }
-
-                switch mode {
-                case .accounts:
-                    accountSections(snapshot, isEditable: isEditable)
-                case .metals:
-                    metalSections(snapshot, isEditable: isEditable)
+            Group {
+                if layout == .sidebar, mode == .accounts, !snapshot.accounts.isEmpty {
+                    MacHoldingsView(
+                        snapshot: snapshot,
+                        isEditable: isEditable,
+                        edit: { editingAccount = $0 },
+                        delete: { pendingDelete = $0 },
+                        toggleArchived: { account in
+                            account.isArchived.toggle()
+                            try? context.saveIfNeeded()
+                        }
+                    )
+                    .navigationDestination(isPresented: $showingPeople) { OwnersView() }
+                } else {
+                    list(snapshot, isEditable: isEditable)
                 }
             }
             .navigationTitle("Holdings")
             .toolbar {
+                if layout == .sidebar {
+                    ToolbarItem(placement: .primaryAction) {
+                        Picker("View", selection: $mode) {
+                            ForEach(Mode.allCases) { Text($0.rawValue).tag($0) }
+                        }
+                        .pickerStyle(.segmented)
+                        .labelsHidden()
+                        .fixedSize()
+                    }
+                }
+                if layout == .sidebar, mode == .accounts, !snapshot.accounts.isEmpty {
+                    // The phone's "people" row, which has no row to live in
+                    // above a table.
+                    ToolbarItem(placement: .primaryAction) {
+                        Button {
+                            showingPeople = true
+                        } label: {
+                            Label("People", systemImage: "person.2")
+                        }
+                        .help(sharingLabel(snapshot.household) ?? "Manage people and sharing")
+                    }
+                }
                 if isEditable {
                     ToolbarItem(placement: .primaryAction) {
                         Button {
@@ -61,7 +85,7 @@ struct HoldingsView: View {
                         .accessibilityLabel(mode == .accounts ? "New Account" : "Add Gold or Silver")
                     }
                 }
-                ToolbarItem(placement: .secondaryAction) {
+                ToolbarItem(placement: layout.secondaryToolbarPlacement) {
                     ShareHouseholdButton()
                 }
             }
@@ -89,6 +113,29 @@ struct HoldingsView: View {
                 }
             } message: {
                 Text(deleteMessage(for: pendingDelete))
+            }
+        }
+    }
+
+    private func list(_ snapshot: FinanceSnapshot, isEditable: Bool) -> some View {
+        List {
+            // On the Mac this switch is in the toolbar, not a list row.
+            if layout == .tabs {
+                Section {
+                    Picker("View", selection: $mode) {
+                        ForEach(Mode.allCases) { Text($0.rawValue).tag($0) }
+                    }
+                    .pickerStyle(.segmented)
+                    .listRowBackground(Color.clear)
+                    .listRowInsets(EdgeInsets())
+                }
+            }
+
+            switch mode {
+            case .accounts:
+                accountSections(snapshot, isEditable: isEditable)
+            case .metals:
+                metalSections(snapshot, isEditable: isEditable)
             }
         }
     }

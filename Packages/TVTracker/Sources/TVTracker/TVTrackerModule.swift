@@ -15,7 +15,7 @@ public enum TVTrackerModule {
         ModuleSection("watching", title: "Watching", systemImage: "tv"),
         ModuleSection("movies", title: "Movies", systemImage: "film"),
         ModuleSection("upnext", title: "Up Next", systemImage: "calendar"),
-        ModuleSection("settings", title: "Settings", systemImage: "gear"),
+        ModuleSection("settings", title: "Settings", systemImage: "gear", isSettings: true),
     ]
 
     /// Where the TMDB API key is stored. Kept in user defaults rather than the
@@ -29,6 +29,13 @@ public enum TVTrackerModule {
     /// `section` is the Mac sidebar's selection, which picks the section in
     /// place of a tab bar; leave it nil on the phone.
     @MainActor
+    /// TV's settings on their own, for the Mac's Settings window — see
+    /// `ModuleSection.isSettings`.
+    public static func settingsView() -> some View {
+        NavigationStack { TVSettingsView() }
+            .tint(accent.color)
+    }
+
     public static func rootView(section: Binding<String>? = nil) -> some View {
         TVRootView(section: section)
     }

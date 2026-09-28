@@ -17,6 +17,8 @@ struct GuideListView: View {
 
     @State private var showingNewGuide = false
     @State private var pendingDeletion: GuideSummary?
+    @State private var opened: SharedGuide?
+    @Environment(\.moduleLayout) private var layout
 
     private var summaries: [GuideSummary] {
         GuideSummary.all(guides, pinDates: GuidePins.earliestPinDates(pinResults))
@@ -36,6 +38,26 @@ struct GuideListView: View {
                             .primaryActionStyle(tint: ExploreTrackerModule.accent.color)
                     }
                     .scrollsForRefresh()
+                } else if layout == .sidebar {
+                    MacGuidesGrid(
+                        summaries: summaries,
+                        guide: guide(for:),
+                        open: { opened = $0 }
+                    ) { guide, summary in
+                        AnyView(Group {
+                            Button("Open", systemImage: "arrow.up.forward.app") { opened = guide }
+                            pinButton(for: guide, isPinned: summary.isPinned)
+                            if let container {
+                                Button("Share Guide", systemImage: "person.crop.circle.badge.plus") {
+                                    presentShareSheet(ShareSheetRequest(object: guide, container: container))
+                                }
+                            }
+                            Divider()
+                            Button("Delete Guide", systemImage: "trash", role: .destructive) {
+                                pendingDeletion = summary
+                            }
+                        })
+                    }
                 } else {
                     List {
                         Section {
@@ -87,6 +109,8 @@ struct GuideListView: View {
             }
             .refreshesFromCloud()
             .navigationTitle("Guides")
+            .navigationDestination(item: $opened) { GuideDetailView(guide: $0) }
+            .debugOpensFirstItem { opened = guides.first }
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
                     Button {

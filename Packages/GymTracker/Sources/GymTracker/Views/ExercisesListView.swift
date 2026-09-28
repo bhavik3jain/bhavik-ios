@@ -65,7 +65,7 @@ private struct NewExerciseView: View {
     @State private var equipment = ""
 
     var body: some View {
-        NavigationStack {
+        SheetStack {
             Form {
                 TextField("Name", text: $name)
                 Picker("Muscle Group", selection: $muscleGroup) {
