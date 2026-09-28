@@ -24,7 +24,7 @@ struct AddParcelView: View {
     }
 
     var body: some View {
-        NavigationStack {
+        SheetStack {
             Form {
                 Section {
                     TextField("Tracking number", text: $trackingNumber, axis: .vertical)

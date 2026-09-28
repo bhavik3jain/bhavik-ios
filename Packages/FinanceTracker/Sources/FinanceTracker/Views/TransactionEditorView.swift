@@ -45,7 +45,7 @@ struct TransactionEditorView: View {
         let snapshot = data.snapshot
         let cards = SpendingSummary.cardsByRecentUse(snapshot.cards)
         let categories = SpendingSummary.knownCategories(snapshot.transactions)
-        NavigationStack {
+        SheetStack {
             Form {
                 Section {
                     TextField("Cost", text: $costText)

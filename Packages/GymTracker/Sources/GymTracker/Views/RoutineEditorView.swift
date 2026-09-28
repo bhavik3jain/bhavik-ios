@@ -11,7 +11,7 @@ struct RoutineEditorView: View {
     @State private var showingExercisePicker = false
 
     var body: some View {
-        NavigationStack {
+        SheetStack {
             Form {
                 Section {
                     TextField("Routine Name", text: $name)

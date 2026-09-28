@@ -46,7 +46,7 @@ struct MetalEditorView: View {
     var body: some View {
         let snapshot = data.snapshot
         let prices = snapshot.currentPrices
-        NavigationStack {
+        SheetStack {
             Form {
                 Section {
                     Picker("Metal", selection: $metal) {

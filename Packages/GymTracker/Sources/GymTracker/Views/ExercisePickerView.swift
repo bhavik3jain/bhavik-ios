@@ -20,7 +20,7 @@ struct ExercisePickerView: View {
     }
 
     var body: some View {
-        NavigationStack {
+        SheetStack {
             List {
                 ForEach(grouped, id: \.0) { group, groupExercises in
                     Section(group.displayName) {

@@ -40,7 +40,7 @@ struct AddFillUpView: View {
     }
 
     var body: some View {
-        NavigationStack {
+        SheetStack {
             Form {
                 Section {
                     DatePicker("Date", selection: $date, displayedComponents: [.date, .hourAndMinute])

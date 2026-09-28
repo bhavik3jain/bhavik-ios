@@ -19,7 +19,7 @@ struct GuideFormView: View {
     private var trimmedName: String { name.trimmingCharacters(in: .whitespacesAndNewlines) }
 
     var body: some View {
-        NavigationStack {
+        SheetStack {
             Form {
                 Section {
                     TextField("Name", text: $name)

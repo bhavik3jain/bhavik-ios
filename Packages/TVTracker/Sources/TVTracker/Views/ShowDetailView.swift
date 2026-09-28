@@ -144,7 +144,7 @@ private struct AddEpisodeView: View {
     @State private var airDate = Date.now
 
     var body: some View {
-        NavigationStack {
+        SheetStack {
             Form {
                 Stepper("Season \(seasonNumber)", value: $seasonNumber, in: 1...50)
                 Stepper("Episode \(episodeNumber)", value: $episodeNumber, in: 1...200)

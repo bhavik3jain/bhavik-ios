@@ -43,7 +43,7 @@ struct TripEditorView: View {
     }
 
     var body: some View {
-        NavigationStack {
+        SheetStack {
             Form {
                 Section {
                     TextField("Trip name", text: $title)

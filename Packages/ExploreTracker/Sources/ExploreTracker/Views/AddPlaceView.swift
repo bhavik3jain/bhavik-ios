@@ -60,7 +60,7 @@ struct AddPlaceView: View {
     }
 
     var body: some View {
-        NavigationStack {
+        SheetStack {
             Form {
                 Section {
                     TextField("Search Apple Maps", text: $search.query)

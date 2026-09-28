@@ -35,7 +35,7 @@ struct AccountEditorView: View {
     var body: some View {
         let snapshot = data.snapshot
         let latest = snapshot.latestMonth
-        NavigationStack {
+        SheetStack {
             Form {
                 Section {
                     TextField("Institution, e.g. Capital One", text: $institution)

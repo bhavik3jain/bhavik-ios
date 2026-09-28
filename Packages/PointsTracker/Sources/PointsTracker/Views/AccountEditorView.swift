@@ -43,7 +43,7 @@ struct AccountEditorView: View {
     }
 
     var body: some View {
-        NavigationStack {
+        SheetStack {
             Form {
                 Section {
                     TextField("Name, e.g. Sapphire Reserve", text: $name)

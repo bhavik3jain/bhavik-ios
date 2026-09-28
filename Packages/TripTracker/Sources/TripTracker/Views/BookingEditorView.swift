@@ -59,7 +59,7 @@ struct BookingEditorView: View {
     }
 
     var body: some View {
-        NavigationStack {
+        SheetStack {
             Form {
                 Section {
                     Picker("Kind", selection: $kind) {

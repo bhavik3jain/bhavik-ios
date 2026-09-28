@@ -31,7 +31,7 @@ struct LibraryImportView: View {
     }
 
     var body: some View {
-        NavigationStack {
+        SheetStack {
             Form {
                 switch phase {
                 case .idle:
