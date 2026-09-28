@@ -5,6 +5,7 @@ import SwiftUI
 
 /// A month's card transactions and how they sit against its budgets.
 struct SpendingView: View {
+    @Environment(\.moduleLayout) private var layout
     @Environment(\.managedObjectContext) private var context
     @Environment(\.financePersistentContainer) private var container
     var data = FinanceFetches()
@@ -30,25 +31,25 @@ struct SpendingView: View {
         let isEditable = snapshot.canEdit
         let period = chosenPeriod ?? snapshot.latestMonth?.period ?? YearMonth(containing: .now)
         NavigationStack {
-            List {
-                Section {
-                    Picker("View", selection: $mode) {
-                        ForEach(Mode.allCases) { Text($0.rawValue).tag($0) }
-                    }
-                    .pickerStyle(.segmented)
-                    .listRowBackground(Color.clear)
-                    .listRowInsets(EdgeInsets())
-                }
-
-                switch mode {
-                case .transactions:
-                    transactionSections(snapshot, period: period, isEditable: isEditable)
-                case .budget:
-                    budgetSections(snapshot, period: period, isEditable: isEditable)
+            Group {
+                if layout == .sidebar, mode == .transactions, !snapshot.cards.isEmpty {
+                    macTransactions(snapshot, period: period, isEditable: isEditable)
+                } else {
+                    list(snapshot, period: period, isEditable: isEditable)
                 }
             }
             .navigationTitle("Spending")
             .toolbar {
+                if layout == .sidebar {
+                    ToolbarItem(placement: .primaryAction) {
+                        Picker("View", selection: $mode) {
+                            ForEach(Mode.allCases) { Text($0.rawValue).tag($0) }
+                        }
+                        .pickerStyle(.segmented)
+                        .labelsHidden()
+                        .fixedSize()
+                    }
+                }
                 ToolbarItem(placement: .navigation) {
                     monthMenu(snapshot, selected: period)
                 }
@@ -89,6 +90,66 @@ struct SpendingView: View {
     }
 
     // MARK: - Transactions
+
+    private func list(_ snapshot: FinanceSnapshot, period: YearMonth, isEditable: Bool) -> some View {
+        List {
+            // On the Mac this switch is in the toolbar, not a list row.
+            if layout == .tabs {
+                Section {
+                    Picker("View", selection: $mode) {
+                        ForEach(Mode.allCases) { Text($0.rawValue).tag($0) }
+                    }
+                    .pickerStyle(.segmented)
+                    .listRowBackground(Color.clear)
+                    .listRowInsets(EdgeInsets())
+                }
+            }
+
+            switch mode {
+            case .transactions:
+                transactionSections(snapshot, period: period, isEditable: isEditable)
+            case .budget:
+                budgetSections(snapshot, period: period, isEditable: isEditable)
+            }
+        }
+    }
+
+    /// The Mac's transactions: a table, with the card filter in the toolbar
+    /// rather than a row of chips above it.
+    private func macTransactions(_ snapshot: FinanceSnapshot, period: YearMonth, isEditable: Bool) -> some View {
+        let monthTransactions = SpendingSummary.transactions(snapshot.transactions, in: period)
+        let shown = cardFilter.map { card in monthTransactions.filter { $0.card == card } } ?? monthTransactions
+        return MacTransactionsView(
+            transactions: shown,
+            isEditable: isEditable,
+            edit: { editing = $0 },
+            delete: { transaction in
+                context.delete(transaction)
+                try? context.saveIfNeeded()
+            },
+            filter: { cardMenu(snapshot, period: period) }
+        )
+        .overlay {
+            if shown.isEmpty {
+                ContentUnavailableView("Nothing in \(period.title) yet", systemImage: "creditcard")
+            }
+        }
+    }
+
+    private func cardMenu(_ snapshot: FinanceSnapshot, period: YearMonth) -> some View {
+        Picker(selection: $cardFilter) {
+            Text("All Cards").tag(SharedFinanceAccount?.none)
+            Divider()
+            ForEach(snapshot.cards.filter { !$0.isArchived || $0.spend(in: period) != 0 }) { card in
+                Text(card.name.isEmpty ? card.displayName : card.name).tag(Optional(card))
+            }
+        } label: {
+            Label("Card", systemImage: "creditcard")
+        }
+        .pickerStyle(.menu)
+        .labelsHidden()
+        .fixedSize()
+    }
 
     @ViewBuilder
     private func transactionSections(_ snapshot: FinanceSnapshot, period: YearMonth, isEditable: Bool) -> some View {
@@ -309,7 +370,7 @@ private struct TransactionRow: View {
 }
 
 /// Where the month's money went, as one stacked bar.
-private struct CategoryBar: View {
+struct CategoryBar: View {
     let totals: [SpendingTotal]
 
     var body: some View {

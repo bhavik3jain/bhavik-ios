@@ -691,3 +691,17 @@ private func makeSeptember() throws -> (household: SharedFinanceHousehold, month
     #expect(month.silverPricePerOz == 52)
     #expect(household.sortedMetals.first?.owner?.name == "Saloni")
 }
+
+@Test func monthsChartSpansAYearEvenWithOneMonth() throws {
+    let september = YearMonth(year: 2026, month: 9)
+    let one = [FinanceHistory.Value(period: september, value: 1)]
+    let domain = try #require(FinanceHistory.chartDomain(one))
+    #expect(domain.lowerBound == YearMonth(year: 2025, month: 10).start)
+    #expect(domain.upperBound == september.end)
+
+    // Longer histories keep all of their months.
+    let long = (0..<20).map { FinanceHistory.Value(period: YearMonth(year: 2025, month: 1 + $0), value: 1) }
+    let longDomain = try #require(FinanceHistory.chartDomain(long))
+    #expect(longDomain.lowerBound == YearMonth(year: 2025, month: 1).start)
+    #expect(FinanceHistory.chartDomain([]) == nil)
+}

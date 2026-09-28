@@ -58,9 +58,9 @@ struct MacAccountsView: View {
                 TableColumn("Balance", value: \.balance) { account in
                     Text("\(account.balance.formatted()) \(account.kind.unit.abbreviation)")
                         .monospacedDigit()
-                        .frame(maxWidth: .infinity, alignment: .trailing)
                 }
                 .width(min: 100, ideal: 130)
+                .alignment(.numeric)
                 TableColumn("Updated", value: \.balanceUpdatedAt) { account in
                     Text(account.balanceUpdatedAt.formatted(.relative(presentation: .named)))
                         .foregroundStyle(.secondary)

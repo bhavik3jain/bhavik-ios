@@ -31,13 +31,16 @@ struct HoldingsView: View {
         let isEditable = snapshot.canEdit
         NavigationStack {
             List {
-                Section {
-                    Picker("View", selection: $mode) {
-                        ForEach(Mode.allCases) { Text($0.rawValue).tag($0) }
+                // On the Mac this switch is in the toolbar, not a list row.
+                if layout == .tabs {
+                    Section {
+                        Picker("View", selection: $mode) {
+                            ForEach(Mode.allCases) { Text($0.rawValue).tag($0) }
+                        }
+                        .pickerStyle(.segmented)
+                        .listRowBackground(Color.clear)
+                        .listRowInsets(EdgeInsets())
                     }
-                    .pickerStyle(.segmented)
-                    .listRowBackground(Color.clear)
-                    .listRowInsets(EdgeInsets())
                 }
 
                 switch mode {
@@ -49,6 +52,16 @@ struct HoldingsView: View {
             }
             .navigationTitle("Holdings")
             .toolbar {
+                if layout == .sidebar {
+                    ToolbarItem(placement: .primaryAction) {
+                        Picker("View", selection: $mode) {
+                            ForEach(Mode.allCases) { Text($0.rawValue).tag($0) }
+                        }
+                        .pickerStyle(.segmented)
+                        .labelsHidden()
+                        .fixedSize()
+                    }
+                }
                 if isEditable {
                     ToolbarItem(placement: .primaryAction) {
                         Button {

@@ -78,10 +78,12 @@ struct MacWorkoutsView: View {
                             .monospacedDigit()
                             .foregroundStyle(.secondary)
                     }
+                    .alignment(.numeric)
                     TableColumn("Sets") { session in
                         Text(String(WorkoutStats.completedSetCount(for: session)))
                             .monospacedDigit()
                     }
+                    .alignment(.numeric)
                 }
                 // No blank striped rows filling the space under the last one.
             .alternatingRowBackgrounds(.disabled)

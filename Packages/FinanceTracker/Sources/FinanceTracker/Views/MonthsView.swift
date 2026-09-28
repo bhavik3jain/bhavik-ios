@@ -6,12 +6,15 @@ import SwiftUI
 /// Every month, newest first, with one figure charted across them. + starts
 /// the next month as a copy of the last.
 struct MonthsView: View {
+    @Environment(\.moduleLayout) private var layout
     @Environment(\.managedObjectContext) private var context
     @Environment(\.financePersistentContainer) private var container
     var data = FinanceFetches()
 
     @AppStorage("finance.monthsMetric") private var metricRaw = FinanceMetric.netWorth.rawValue
     @State private var pendingDelete: SharedFinanceMonth?
+    /// The month the Mac's table opened by double-click.
+    @State private var opened: SharedFinanceMonth?
 
     private var metric: FinanceMetric { FinanceMetric(rawValue: metricRaw) ?? .netWorth }
 
@@ -41,6 +44,21 @@ struct MonthsView: View {
             .refreshesFromCloud()
             .navigationTitle("Months")
             .toolbar {
+                if layout == .sidebar {
+                    ToolbarItem(placement: .primaryAction) {
+                        Picker(selection: $metricRaw) {
+                            ForEach(FinanceMetric.allCases) { option in
+                                Text(option.displayName).tag(option.rawValue)
+                            }
+                        } label: {
+                            Label("Show", systemImage: "chart.bar")
+                        }
+                        .pickerStyle(.menu)
+                        .help("What the chart shows")
+                    }
+                }
+            }
+            .toolbar {
                 if isEditable {
                     ToolbarItem(placement: .primaryAction) {
                         Button {
@@ -68,33 +86,41 @@ struct MonthsView: View {
         }
     }
 
+    @ViewBuilder
     private func list(_ snapshot: FinanceSnapshot, isEditable: Bool) -> some View {
+        if layout == .sidebar {
+            MacMonthsView(
+                history: snapshot.history(),
+                metric: metric,
+                isEditable: isEditable,
+                open: { opened = $0 },
+                delete: { pendingDelete = $0 }
+            )
+            .navigationDestination(item: $opened) { MonthEntryView(month: $0) }
+        } else {
+            phoneList(snapshot, isEditable: isEditable)
+        }
+    }
+
+    private func phoneList(_ snapshot: FinanceSnapshot, isEditable: Bool) -> some View {
         let history = snapshot.history()
         let series = history.series(metric)
         return List {
             Section {
-                Picker("Show", selection: $metricRaw) {
-                    ForEach(FinanceMetric.allCases) { option in
-                        Text(option.displayName).tag(option.rawValue)
-                    }
-                }
-                .pickerStyle(.menu)
-
-                if !series.isEmpty {
-                    Chart(series) { point in
-                        BarMark(
-                            x: .value("Month", point.period.start, unit: .month),
-                            y: .value(metric.displayName, point.value)
-                        )
-                        .foregroundStyle(FinanceTrackerModule.accent.color.gradient)
-                    }
-                    .chartXAxis {
-                        AxisMarks(values: .stride(by: .month)) { _ in
-                            AxisValueLabel(format: .dateTime.month(.narrow))
+                // On the Mac this is a toolbar menu, not a list row.
+                if layout == .tabs {
+                    Picker("Show", selection: $metricRaw) {
+                        ForEach(FinanceMetric.allCases) { option in
+                            Text(option.displayName).tag(option.rawValue)
                         }
                     }
-                    .frame(height: 160)
-                    .padding(.vertical, 6)
+                    .pickerStyle(.menu)
+                }
+
+                if !series.isEmpty {
+                    MonthsChart(series: series, metric: metric)
+                        .frame(height: 160)
+                        .padding(.vertical, 6)
                 }
             }
 
