@@ -110,6 +110,7 @@ struct GuideListView: View {
             .refreshesFromCloud()
             .navigationTitle("Guides")
             .navigationDestination(item: $opened) { GuideDetailView(guide: $0) }
+            .debugOpensFirstItem { opened = guides.first }
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
                     Button {

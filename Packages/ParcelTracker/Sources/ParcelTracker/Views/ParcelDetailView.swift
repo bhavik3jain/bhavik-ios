@@ -106,6 +106,7 @@ struct ParcelDetailView: View {
                 }
             }
         }
+        .readableWidthInSidebar()
         .navigationTitle(parcel.name.isEmpty ? parcel.trackingNumber : parcel.name)
         .navigationBarTitleDisplayMode(.inline)
         .webSheet($webPage, tint: ParcelTrackerModule.accent.color)

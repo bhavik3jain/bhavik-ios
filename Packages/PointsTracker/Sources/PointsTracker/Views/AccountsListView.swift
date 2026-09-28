@@ -78,17 +78,7 @@ struct AccountsListView: View {
             .navigationDestination(item: $opened) { account in
                 AccountDetailView(account: account)
             }
-            #if DEBUG
-            // `-MacOpenFirstItem YES` opens the first account, so a script can
-            // look at the Mac's account screen, which only a double-click
-            // reaches. Navigation only.
-            .task {
-                guard UserDefaults.standard.bool(forKey: "MacOpenFirstItem") else { return }
-                // The store is still loading when the list first appears.
-                try? await Task.sleep(for: .seconds(2))
-                opened = accounts.first
-            }
-            #endif
+            .debugOpensFirstItem { opened = accounts.first }
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
                     Button {

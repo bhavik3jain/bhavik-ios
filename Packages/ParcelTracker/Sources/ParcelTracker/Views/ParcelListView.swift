@@ -58,6 +58,7 @@ struct ParcelListView: View {
             .navigationDestination(item: $opened) { parcel in
                 ParcelDetailView(parcel: parcel, router: router)
             }
+            .debugOpensFirstItem { opened = parcels.first }
             .toolbar {
                 // Pull-to-refresh has no Mac equivalent; the toolbar does.
                 if layout == .sidebar {

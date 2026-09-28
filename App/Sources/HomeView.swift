@@ -280,9 +280,12 @@ struct HomeView: View {
         }
         // Again on the split view itself: a screen a module pushes (an
         // account, a month, a guide) is hosted by the split view's own
-        // navigation, not under the detail column's modifiers, so it read the
-        // phone layout and the Mac's default form style.
+        // navigation, not under the detail column's modifiers or the module's
+        // own root. It read the phone layout, the Mac's default form style
+        // and Trips' context, which Finance's month screen crashed fetching
+        // from (NSInvalidArgumentException in a @FetchRequest).
         .environment(\.moduleLayout, .sidebar)
+        .environment(\.managedObjectContext, macModuleContext)
         .formStyle(.grouped)
         // Menu-bar shortcuts (⌘0 for Overview, ⌘1 onward per visible tracker)
         // act on this window's selection, handed to BhavikApp's commands as
@@ -324,6 +327,21 @@ struct HomeView: View {
             if let openTripID, !ids.contains(openTripID) { self.openTripID = nil }
         }
     }
+
+    #if os(macOS)
+    /// The selected tracker's Core Data context, for the screens it pushes —
+    /// see the split view's modifiers. Trips' (this level's own) for the
+    /// Overview and the SwiftData trackers, which don't read it.
+    private var macModuleContext: NSManagedObjectContext {
+        switch selectedModule {
+        case .fuel: fuelContext ?? tripContext
+        case .explore: exploreContext ?? tripContext
+        case .points: pointsContext ?? tripContext
+        case .finance: financeContext ?? tripContext
+        default: tripContext
+        }
+    }
+    #endif
 
     /// The open trip, as the trip list inside Trips writes it. A different
     /// trip opens on Plan, as it does from the sidebar — the list used to

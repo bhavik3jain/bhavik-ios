@@ -97,6 +97,7 @@ struct MonthsView: View {
                 delete: { pendingDelete = $0 }
             )
             .navigationDestination(item: $opened) { MonthEntryView(month: $0) }
+            .debugOpensFirstItem { opened = data.snapshot.latestMonth }
         } else {
             phoneList(snapshot, isEditable: isEditable)
         }
