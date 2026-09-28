@@ -128,5 +128,5 @@ func rendersTheSampleItinerary() throws {
         #expect(text.contains(code), "\(code) is printed")
     }
     #expect(!text.contains("DOOR-4471"), "The secure note never reaches the file")
-    #expect(!text.contains("Aventine keyhole"), "Ideas stay in the app")
+    #expect(text.contains("Aventine keyhole"), "Ideas are printed, on their own page")
 }

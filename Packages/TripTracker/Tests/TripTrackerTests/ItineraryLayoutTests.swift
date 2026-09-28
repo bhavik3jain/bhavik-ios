@@ -33,6 +33,10 @@ private extension ItineraryLayout {
     var cover: CoverPage? {
         if case .cover(let cover) = pages.first { cover } else { nil }
     }
+
+    var ideaPages: [IdeasPage] {
+        pages.compactMap { if case .ideas(let page) = $0 { page } else { nil } }
+    }
 }
 
 private func line(_ title: String, detail: String = "", time: String? = "09:00") -> ItineraryDocument.Line {
@@ -46,13 +50,17 @@ private func sampleDay(_ number: Int, lines: [ItineraryDocument.Line], weather: 
     )
 }
 
-private func document(days: [ItineraryDocument.Day], codes: [ItineraryDocument.Confirmation] = [], weatherAsOf: String? = nil) -> ItineraryDocument {
+private func document(
+    days: [ItineraryDocument.Day], codes: [ItineraryDocument.Confirmation] = [],
+    ideas: [ItineraryDocument.Line] = [], weatherAsOf: String? = nil
+) -> ItineraryDocument {
     ItineraryDocument(
         title: "Rome & Amalfi",
         dateRange: "6–14 Jun 2026",
         cover: ItineraryDocument.Cover(title: "Rome & Amalfi", destination: "Rome, Italy", dateRange: "Saturday 6 – Sunday 14 June 2026", facts: []),
         days: days,
         confirmations: codes,
+        ideas: ideas,
         weatherAsOf: weatherAsOf
     )
 }
@@ -143,6 +151,29 @@ private func code(_ section: String, _ code: String, isFlight: Bool = false) -> 
     #expect(cover.contents.map(\.title) == ["Flights & bookings", "Day by day"])
     #expect(cover.contents[0].pages == "Page 2")
     #expect(cover.contents[1].pages == "Pages 3–\(layout.pages.count)")
+}
+
+@Test func ideasComeLastOnPagesOfTheirOwn() throws {
+    let days = (1...3).map { sampleDay($0, lines: [line("Colosseum")]) }
+    let ideas = (1...80).map { line("Maybe \($0)", detail: "Somewhere nearby, with a note that wraps", time: nil) }
+    let layout = ItineraryLayout(document: document(days: days, ideas: ideas), measure: .fixed)
+
+    guard case .ideas = layout.pages.last else {
+        Issue.record("Ideas come after the days")
+        return
+    }
+    #expect(layout.ideaPages.count > 1, "80 ideas run onto a second page")
+    #expect(layout.ideaPages.flatMap(\.rows).map(\.line.title) == ideas.map(\.title), "Every idea, in order, once")
+    #expect(layout.ideaPages.map(\.isContinuation) == [false] + Array(repeating: true, count: layout.ideaPages.count - 1))
+    let cover = try #require(layout.cover)
+    #expect(cover.contents.map(\.title) == ["Day by day", "Ideas, not on a day yet"])
+    #expect(cover.contents.last?.pages == "Pages \(layout.pages.count - layout.ideaPages.count + 1)–\(layout.pages.count)")
+}
+
+@Test func noIdeasMeansNoIdeasPage() throws {
+    let layout = ItineraryLayout(document: document(days: [sampleDay(1, lines: [line("Colosseum")])]), measure: .fixed)
+    #expect(layout.ideaPages.isEmpty)
+    #expect(try #require(layout.cover).contents.map(\.title) == ["Day by day"])
 }
 
 @Test func noCodesMeansNoCodesPage() throws {

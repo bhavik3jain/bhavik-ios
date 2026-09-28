@@ -12,6 +12,20 @@ private func strings(in value: Any) -> [String] {
 }
 
 @MainActor
+@Test func ideasGetTheirOwnListAndAreNotCountedAsPlaces() throws {
+    let context = try makeContext()
+    let trip = makeRome(in: context)
+    addItem("Galleria Borghese", to: trip, in: context, day: 2, at: (9, 30), placed: true)
+    addItem("Aventine keyhole", to: trip, in: context, day: SharedItineraryItem.unassignedDayIndex, placed: true)
+
+    let document = ItineraryDocument(trip: trip)
+    #expect(document.ideas.map(\.title) == ["Aventine keyhole"])
+    #expect(document.ideas.allSatisfy { $0.time == nil })
+    #expect(document.days.flatMap(\.lines).map(\.title) == ["Galleria Borghese"], "An idea is on no day")
+    #expect(document.cover.facts.first { $0.label.hasPrefix("Place") }?.value == "1", "Ideas aren't places yet")
+}
+
+@MainActor
 @Test func aCoverAndEveryDayOfTheTrip() throws {
     let context = try makeContext()
     let trip = makeRome(in: context)
@@ -20,8 +34,8 @@ private func strings(in value: Any) -> [String] {
     let document = ItineraryDocument(trip: trip)
     #expect(document.cover.title == "Rome & Amalfi")
     #expect(document.cover.destination == "Rome, Italy")
-    #expect(document.cover.facts.map(\.value) == ["9", "1", "0", "0"])
-    #expect(document.cover.facts.map(\.label) == ["Days", "Place", "Flights", "Bookings"], "Each label agrees with its number")
+    #expect(document.cover.facts.map(\.value) == ["9", "1"], "No flights or bookings: no tiles saying 0")
+    #expect(document.cover.facts.map(\.label) == ["Days", "Place"], "Each label agrees with its number")
     #expect(document.days.map(\.dayNumber) == Array(1...9), "Empty days are still there")
     #expect(document.days[2].lines.map(\.title) == ["Galleria Borghese"])
     #expect(document.days[0].lines.isEmpty)

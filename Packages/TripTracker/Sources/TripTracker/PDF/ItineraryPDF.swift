@@ -132,6 +132,7 @@ struct ItineraryPageView: View {
         case .cover(let cover): CoverPageView(page: cover)
         case .confirmations(let codes): ConfirmationsPageView(page: codes)
         case .days(let days): DaysPageView(page: days)
+        case .ideas(let ideas): IdeasPageView(page: ideas)
         }
     }
 
@@ -461,6 +462,32 @@ private struct DaysPageView: View {
     }
 }
 
+// MARK: Ideas
+
+private struct IdeasPageView: View {
+    let page: ItineraryLayout.IdeasPage
+
+    private typealias M = ItineraryMetrics
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            PageHeader(title: "Ideas", label: page.isContinuation ? "Continued" : "Saved for this trip, not on a day yet")
+            ForEach(Array(page.rows.enumerated()), id: \.offset) { index, row in
+                RowView(row: row, showsTime: false)
+                    // Indented by a day's badge, so each row is drawn at the
+                    // width its height was measured at.
+                    .padding(.leading, M.badgeWidth + M.badgeSpacing)
+                    .overlay(alignment: .top) {
+                        if index > 0 {
+                            Ink.rule.frame(height: 0.5)
+                                .padding(.leading, M.badgeWidth + M.badgeSpacing)
+                        }
+                    }
+            }
+        }
+    }
+}
+
 private struct DaySliceView: View {
     let slice: ItineraryLayout.DaySlice
 
@@ -542,6 +569,9 @@ private struct DaySliceView: View {
 
 private struct RowView: View {
     let row: ItineraryLayout.Row
+    /// False on the Ideas page: an idea has no time, and "Anytime" beside
+    /// every one would read as a plan.
+    var showsTime = true
 
     private typealias M = ItineraryMetrics
     private var line: ItineraryDocument.Line { row.line }
@@ -549,7 +579,9 @@ private struct RowView: View {
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: M.rowSpacing) {
             Group {
-                if let time = line.time {
+                if !showsTime {
+                    Color.clear.frame(height: 1)
+                } else if let time = line.time {
                     Text(time)
                         .font(.system(size: 10, weight: .medium, design: .monospaced))
                 } else {
