@@ -89,21 +89,54 @@ enum CloudSharingPresenter {
     private static let delegate = Delegate()
 
     static func present(_ request: ShareSheetRequest) {
-        guard let presenter = topViewController() else { return }
+        guard topViewController() != nil else { return }
         let object = request.object
         let container = request.container
-
         let title = displayTitle(of: object)
 
-        let controller: UICloudSharingController
-        if let share = try? container.fetchShares(matching: [object.objectID])[object.objectID],
-           let identifier = container.persistentStoreDescriptions.first?.cloudKitContainerOptions?.containerIdentifier {
+        // Looking the share up, and re-saving it when it needs a stamp, both
+        // happen off the main thread, and the controller is presented once
+        // they're done. The stamp's `persistUpdatedShare` used to run right
+        // here on the main thread, and it waits synchronously on the
+        // container's executor — see CloudShareCalls.swift: Share hung the
+        // app until iOS killed it (watchdog 0x8BADF00D, TestFlight build 16).
+        nonisolated(unsafe) let sharedObject = object
+        container.fetchShareInBackground(for: object.objectID) { existing in
+            guard let existing else {
+                Task { @MainActor in show(object: sharedObject, container: container, existing: nil, title: title) }
+                return
+            }
             // A share made before shares were stamped can't be accepted;
             // stamping it here fixes every invitation already sent for it.
-            if ShareAcceptRouter.stamp(share, for: object), let store = object.objectID.persistentStore {
-                container.persistUpdatedShare(share, in: store) { _, _ in }
+            // Saved before the controller gets the share, so the two never
+            // hold different versions of it.
+            guard ShareAcceptRouter.stamp(existing, for: sharedObject),
+                  let store = sharedObject.objectID.persistentStore else {
+                nonisolated(unsafe) let existing = existing
+                Task { @MainActor in show(object: sharedObject, container: container, existing: existing, title: title) }
+                return
             }
-            controller = UICloudSharingController(share: share, container: CKContainer(identifier: identifier))
+            nonisolated(unsafe) let stamped = existing
+            container.persistUpdatedShareInBackground(stamped, in: store) { saved, _ in
+                nonisolated(unsafe) let share = saved ?? stamped
+                Task { @MainActor in show(object: sharedObject, container: container, existing: share, title: title) }
+            }
+        }
+    }
+
+    private static func show(
+        object: NSManagedObject,
+        container: NSPersistentCloudKitContainer,
+        existing: CKShare?,
+        title: String?
+    ) {
+        // Looked up again: the lookup took a moment, and whatever was on top
+        // when Share was tapped may have gone.
+        guard let presenter = topViewController() else { return }
+        let controller: UICloudSharingController
+        if let existing,
+           let identifier = container.persistentStoreDescriptions.first?.cloudKitContainerOptions?.containerIdentifier {
+            controller = UICloudSharingController(share: existing, container: CKContainer(identifier: identifier))
         } else {
             // Deprecated, and the one warning left on purpose: this works end
             // to end, and a replacement can only be proven on two devices.
@@ -116,7 +149,7 @@ enum CloudSharingPresenter {
                 // handler, which UIKit accepts from any queue.
                 nonisolated(unsafe) let object = object
                 nonisolated(unsafe) let preparationCompletionHandler = preparationCompletionHandler
-                container.share([object], to: nil) { _, share, ckContainer, error in
+                container.shareInBackground(object) { share, ckContainer, error in
                     guard let share, let store = object.objectID.persistentStore else {
                         preparationCompletionHandler(share, ckContainer, error)
                         return
@@ -127,7 +160,7 @@ enum CloudSharingPresenter {
                     // over, since share(_:to:) already saved the share.
                     share[CKShare.SystemFieldKey.title] = title
                     ShareAcceptRouter.stamp(share, for: object)
-                    container.persistUpdatedShare(share, in: store) { saved, saveError in
+                    container.persistUpdatedShareInBackground(share, in: store) { saved, saveError in
                         preparationCompletionHandler(saved ?? share, ckContainer, saveError)
                     }
                 }
@@ -354,9 +387,18 @@ private final class ShareCoordinator: ObservableObject {
         }
         // Reuse an existing share for this object rather than creating a
         // second one — `share(_:to:completion:)`'s own header comment says it
-        // fails outright if any of the objects are already shared.
-        if let existingShares = try? request.container.fetchShares(matching: [request.object.objectID]),
-           let existing = existingShares[request.object.objectID] {
+        // fails outright if any of the objects are already shared. Every
+        // container call in this coordinator goes through its `…InBackground`
+        // form, since each waits synchronously on the container's executor
+        // and hung the main thread on iOS — see CloudShareCalls.swift.
+        let objectID = request.object.objectID
+        let existingShare: CKShare? = await withCheckedContinuation { continuation in
+            request.container.fetchShareInBackground(for: objectID) { share in
+                nonisolated(unsafe) let share = share
+                continuation.resume(returning: share)
+            }
+        }
+        if let existing = existingShare {
             share = existing
             isLoading = false
             // Stamped so the other person's app can route it; see
@@ -373,7 +415,7 @@ private final class ShareCoordinator: ObservableObject {
             // isn't `Sendable`, and this completion runs on CloudKit's own
             // background queue, so a captured `store` can't safely ride along
             // into the `Task { @MainActor in }` below with it.
-            request.container.share([request.object], to: nil) { [weak self] _, newShare, _, error in
+            request.container.shareInBackground(request.object) { [weak self] newShare, _, error in
                 Task { @MainActor in
                     guard let self else {
                         continuation.resume()
@@ -410,7 +452,7 @@ private final class ShareCoordinator: ObservableObject {
         // `store` is only a plain argument to fetchParticipants itself here,
         // never captured inside the completion closure below — see the same
         // Sendable reasoning in `prepare()` above.
-        request.container.fetchParticipants(matching: [lookupInfo], into: store) { [weak self] participants, error in
+        request.container.fetchParticipantsInBackground(matching: [lookupInfo], into: store) { [weak self] participants, error in
             Task { @MainActor in
                 guard let self else { return }
                 self.isAddingParticipant = false
@@ -432,7 +474,7 @@ private final class ShareCoordinator: ObservableObject {
     /// completion closure.
     private func persist(_ share: CKShare) {
         guard let store = request.object.objectID.persistentStore else { return }
-        request.container.persistUpdatedShare(share, in: store) { [weak self] updatedShare, error in
+        request.container.persistUpdatedShareInBackground(share, in: store) { [weak self] updatedShare, error in
             Task { @MainActor in
                 guard let self else { return }
                 if let error {

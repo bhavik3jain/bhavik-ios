@@ -130,41 +130,97 @@ public final class SharedChangeNotificationRouter: ObservableObject {
     @Published public var moduleToOpen: String?
 }
 
+/// What the delegate decides about a notification, kept apart from it so it
+/// can be tested without a notification center.
+enum SharedChangeNotificationRouting {
+    /// How a notification shows while the app is in front.
+    static func presentationOptions(
+        categoryIdentifier: String,
+        moduleID: String?,
+        onScreenModuleID: String?
+    ) -> UNNotificationPresentationOptions {
+        // iCloud's alert, while the app is open and importing the same change
+        // itself: the local notification says it better, or the change was on
+        // screen already.
+        if categoryIdentifier == SharedChangeServerAlertText.category { return [] }
+        if let moduleID, moduleID == onScreenModuleID { return [] }
+        return [.banner, .list, .sound]
+    }
+
+    /// The tracker a tapped notification opens, or nil to just open the app.
+    static func moduleToOpen(
+        actionIdentifier: String,
+        content: UNNotificationContent,
+        participatingModuleIDs: Set<String>
+    ) -> String? {
+        guard actionIdentifier == UNNotificationDefaultActionIdentifier else { return nil }
+        if content.categoryIdentifier == SharedChangeServerAlertText.category {
+            return SharedChangeServerAlertID.moduleToOpen(
+                subscriptionID: SharedChangeServerAlertInbox.subscriptionID(of: content),
+                participatingModuleIDs: participatingModuleIDs
+            )
+        }
+        return content.userInfo[SharedChangeNotifications.moduleUserInfoKey] as? String
+    }
+}
+
 /// The notification center's delegate: decides whether a notification shows
 /// while the app is in front, and routes a tap to its tracker.
+///
+/// The completion-handler forms, answered on the main thread, on purpose.
+/// This used to implement the `async` forms, which Swift runs on its
+/// cooperative pool, not the main thread, and then calls UIKit's completion
+/// handler from there. UIKit's handler for a tap updates the app switcher
+/// snapshot, which asserts it's on the main thread: tapping any notification
+/// killed the app (TestFlight build 16, SIGABRT in
+/// `-[UIApplication _performBlockAfterCATransactionCommitSynchronizes:]`
+/// under `_updateSnapshotAndStateRestorationWithAction:windowScene:`, on a
+/// `com.apple.root.user-initiated-qos.cooperative` thread).
 final class SharedChangeNotificationDelegate: NSObject, UNUserNotificationCenterDelegate, Sendable {
     static let shared = SharedChangeNotificationDelegate()
 
     func userNotificationCenter(
         _ center: UNUserNotificationCenter,
-        willPresent notification: UNNotification
-    ) async -> UNNotificationPresentationOptions {
-        // iCloud's alert, while the app is open and importing the same change
-        // itself: the local notification says it better, or the change was on
-        // screen already.
-        if notification.request.content.categoryIdentifier == SharedChangeServerAlertText.category { return [] }
-        let module = notification.request.content.userInfo[SharedChangeNotifications.moduleUserInfoKey] as? String
-        let onScreen = await MainActor.run { SharedChangeNotificationRouter.shared.foregroundModuleID }
-        if let module, module == onScreen { return [] }
-        return [.banner, .list, .sound]
+        willPresent notification: UNNotification,
+        withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
+    ) {
+        let content = notification.request.content
+        let category = content.categoryIdentifier
+        let module = content.userInfo[SharedChangeNotifications.moduleUserInfoKey] as? String
+        nonisolated(unsafe) let completionHandler = completionHandler
+        Self.onMain {
+            completionHandler(SharedChangeNotificationRouting.presentationOptions(
+                categoryIdentifier: category,
+                moduleID: module,
+                onScreenModuleID: SharedChangeNotificationRouter.shared.foregroundModuleID
+            ))
+        }
     }
 
     func userNotificationCenter(
         _ center: UNUserNotificationCenter,
-        didReceive response: UNNotificationResponse
-    ) async {
-        guard response.actionIdentifier == UNNotificationDefaultActionIdentifier else { return }
-        let content = response.notification.request.content
-        let module: String?
-        if content.categoryIdentifier == SharedChangeServerAlertText.category {
-            module = SharedChangeServerAlertID.moduleToOpen(
-                subscriptionID: SharedChangeServerAlertInbox.subscriptionID(of: content),
-                participatingModuleIDs: SharedChangeServerAlerts.participatingModuleIDs
-            )
-        } else {
-            module = content.userInfo[SharedChangeNotifications.moduleUserInfoKey] as? String
+        didReceive response: UNNotificationResponse,
+        withCompletionHandler completionHandler: @escaping () -> Void
+    ) {
+        let module = SharedChangeNotificationRouting.moduleToOpen(
+            actionIdentifier: response.actionIdentifier,
+            content: response.notification.request.content,
+            participatingModuleIDs: SharedChangeServerAlerts.participatingModuleIDs
+        )
+        nonisolated(unsafe) let completionHandler = completionHandler
+        Self.onMain {
+            if let module { SharedChangeNotificationRouter.shared.moduleToOpen = module }
+            completionHandler()
         }
-        guard let module else { return }
-        await MainActor.run { SharedChangeNotificationRouter.shared.moduleToOpen = module }
+    }
+
+    /// The center calls its delegate on the main thread, so this normally
+    /// runs `work` there and then; the hop is only a guard.
+    private static func onMain(_ work: @escaping @MainActor @Sendable () -> Void) {
+        if Thread.isMainThread {
+            MainActor.assumeIsolated(work)
+        } else {
+            Task { @MainActor in work() }
+        }
     }
 }
