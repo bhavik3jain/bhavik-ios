@@ -19,6 +19,17 @@ public struct TMDBMovieSummary: Identifiable, Sendable, Equatable {
     public let runtime: Int
 }
 
+/// What the movie screen shows beyond what's stored: read live each time,
+/// like the posters, so none of it syncs through iCloud.
+public struct TMDBMovieDetails: Sendable, Equatable {
+    public let summary: TMDBMovieSummary
+    public let tagline: String
+    public let genres: [String]
+    /// TMDB's 0–10 audience score; zero when too few have voted.
+    public let rating: Double
+    public let voteCount: Int
+}
+
 public struct TMDBEpisode: Sendable, Equatable {
     public let id: Int
     public let name: String
@@ -95,11 +106,17 @@ public struct TMDBClient: Sendable {
 
     /// Re-reads a movie to pick up the runtime, which search results omit.
     public func movieDetail(id: Int) async throws -> TMDBMovieSummary {
+        try await movieDetails(id: id).summary
+    }
+
+    /// Everything the movie screen shows: the same request as `movieDetail`,
+    /// with the tagline, genres and rating it already carries.
+    public func movieDetails(id: Int) async throws -> TMDBMovieDetails {
         guard !apiKey.isEmpty else { throw TMDBError.missingAPIKey }
         var components = URLComponents(string: "https://api.themoviedb.org/3/movie/\(id)")!
         components.queryItems = [URLQueryItem(name: "api_key", value: apiKey)]
         let payload: MovieDetailResponse = try await get(components)
-        return payload.summary
+        return payload.details
     }
 
     /// Fetches every episode of a show by walking its seasons. Specials
@@ -219,6 +236,24 @@ private struct MovieDetailResponse: Decodable {
     let poster_path: String?
     let release_date: String?
     let runtime: Int?
+    let tagline: String?
+    let genres: [Genre]?
+    let vote_average: Double?
+    let vote_count: Int?
+
+    struct Genre: Decodable {
+        let name: String
+    }
+
+    var details: TMDBMovieDetails {
+        TMDBMovieDetails(
+            summary: summary,
+            tagline: tagline ?? "",
+            genres: (genres ?? []).map(\.name),
+            rating: vote_average ?? 0,
+            voteCount: vote_count ?? 0
+        )
+    }
 
     var summary: TMDBMovieSummary {
         TMDBMovieSummary(

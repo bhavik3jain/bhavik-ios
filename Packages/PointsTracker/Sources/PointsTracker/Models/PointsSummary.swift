@@ -57,6 +57,8 @@ public struct PointsSection: Identifiable {
     public let id: String
     public let title: String
     public let accounts: [SharedPointsAccount]
+    /// Set when the section is one kind (grouped by type), for its colour.
+    public var kind: PointsKind? = nil
 
     public var total: PointsTotal { PointsTotal(accounts) }
 }
@@ -78,7 +80,7 @@ public enum PointsSummary {
         case .kind:
             return PointsKind.allCases.compactMap { kind in
                 let matching = sorted.filter { $0.kind == kind }
-                return matching.isEmpty ? nil : PointsSection(id: kind.rawValue, title: kind.groupName, accounts: matching)
+                return matching.isEmpty ? nil : PointsSection(id: kind.rawValue, title: kind.groupName, accounts: matching, kind: kind)
             }
         case .owner:
             let owners = Set(sorted.compactMap(\.owner))

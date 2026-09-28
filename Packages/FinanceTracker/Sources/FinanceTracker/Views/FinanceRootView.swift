@@ -36,6 +36,7 @@ struct FinanceRootView: View {
             }
         }
         .environment(\.financeCanCreateHousehold, hasCaughtUp)
+        .task { await MetalPriceFeed.shared.refreshIfStale() }
         .task {
             // Holds back creating a household until iCloud has caught up,
             // like Trips' importer and Points' seeder, so a second device —

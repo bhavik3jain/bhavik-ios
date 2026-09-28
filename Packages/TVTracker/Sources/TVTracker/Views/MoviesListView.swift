@@ -27,7 +27,7 @@ struct MoviesListView: View {
                         if !watchlist.isEmpty {
                             Section("Watchlist") {
                                 ForEach(watchlist) { movie in
-                                    MovieRow(movie: movie)
+                                    movieLink(movie)
                                 }
                                 .onDelete { delete(watchlist, at: $0) }
                             }
@@ -35,7 +35,7 @@ struct MoviesListView: View {
                         if !watched.isEmpty {
                             Section("Watched") {
                                 ForEach(watched) { movie in
-                                    MovieRow(movie: movie)
+                                    movieLink(movie)
                                 }
                                 .onDelete { delete(watched, at: $0) }
                             }
@@ -59,6 +59,14 @@ struct MoviesListView: View {
         }
     }
 
+    private func movieLink(_ movie: Movie) -> some View {
+        NavigationLink {
+            MovieDetailView(movie: movie)
+        } label: {
+            MovieRow(movie: movie)
+        }
+    }
+
     private func delete(_ source: [Movie], at offsets: IndexSet) {
         for index in offsets {
             modelContext.delete(source[index])
@@ -66,44 +74,48 @@ struct MoviesListView: View {
     }
 }
 
+/// The circle still ticks a movie off in place; the rest of the row opens it.
 private struct MovieRow: View {
     @Bindable var movie: Movie
 
     var body: some View {
-        Button {
-            movie.setWatched(!movie.isWatched)
-        } label: {
-            HStack(spacing: 10) {
+        HStack(spacing: 10) {
+            Button {
+                movie.setWatched(!movie.isWatched)
+            } label: {
                 Image(systemName: movie.isWatched ? "checkmark.circle.fill" : "circle")
                     .foregroundStyle(movie.isWatched ? TVTrackerModule.accent.color : .secondary)
-
-                PosterView(path: movie.posterPath, width: 40)
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(movie.title)
-                        .foregroundStyle(.primary)
-                        .font(.subheadline)
-                        .fontWeight(.medium)
-
-                    HStack(spacing: 6) {
-                        if let releaseDate = movie.releaseDate {
-                            Text(releaseDate, format: .dateTime.year())
-                        }
-                        if let runtime = movie.formattedRuntime {
-                            Text("· \(runtime)")
-                        }
-                        if !movie.hasReleased() {
-                            Text("· Unreleased")
-                                .foregroundStyle(TVTrackerModule.accent.color)
-                        }
-                    }
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                }
-
-                Spacer()
             }
+            // Borderless, or the whole row's tap goes to this button and the
+            // link never opens.
+            .buttonStyle(.borderless)
+            .accessibilityLabel(movie.isWatched ? "Mark \(movie.title) unwatched" : "Mark \(movie.title) watched")
+
+            PosterView(path: movie.posterPath, width: 40)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(movie.title)
+                    .foregroundStyle(.primary)
+                    .font(.subheadline)
+                    .fontWeight(.medium)
+
+                HStack(spacing: 6) {
+                    if let releaseDate = movie.releaseDate {
+                        Text(releaseDate, format: .dateTime.year())
+                    }
+                    if let runtime = movie.formattedRuntime {
+                        Text("· \(runtime)")
+                    }
+                    if !movie.hasReleased() {
+                        Text("· Unreleased")
+                            .foregroundStyle(TVTrackerModule.accent.color)
+                    }
+                }
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            }
+
+            Spacer()
         }
-        .buttonStyle(.plain)
     }
 }

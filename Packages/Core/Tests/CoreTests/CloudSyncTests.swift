@@ -202,7 +202,10 @@ private func makeMonitor(
         Issue.record("expected .updated, got \(second)")
         return
     }
-    #expect(clock.now - start < .seconds(1))
+    // Well under the 5 s timeout rather than "fast": a 1 s bound failed on a
+    // starved CI runner (PR #11, the same run timed out collecting simulator
+    // diagnostics) though the refresh never waited on the timeout at all.
+    #expect(clock.now - start < .seconds(4))
     #expect(box.nudges == 1)
 }
 

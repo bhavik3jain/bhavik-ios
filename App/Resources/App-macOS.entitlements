@@ -23,10 +23,10 @@
 	     Without it a partner's change only appeared when the app was next
 	     activated or relaunched, minutes later. "development" is right for a
 	     local build; the Developer ID profile supplies "production" at export,
-	     which is why that profile has to be regenerated once push is enabled
-	     for the app ID, or the export fails on the mismatch — and the
-	     MAC_DEVELOPER_ID_PROFILE secret mac-release.yml installs it from
-	     replaced (README → macOS → Installing it). -->
+	     which is why that profile has to carry push. Mac Release makes a
+	     fresh one every run (.github/scripts/developer_id_profile.py); the
+	     hand-downloaded profile it used to install predated push, and the
+	     export failed on the mismatch. -->
 	<key>com.apple.developer.aps-environment</key>
 	<string>development</string>
 	<!-- CloudKit refuses to hand a Mac app its private database unless the app
@@ -40,8 +40,22 @@
 	<key>com.apple.security.network.client</key>
 	<true/>
 	<!-- Lets the Fuelly CSV importer read the file the user picks in the open
-	     panel. Read-only is enough: the importer never writes back. -->
-	<key>com.apple.security.files.user-selected.read-only</key>
+	     panel, and Finance's Export to Numbers save the filled sheet where the
+	     user picks in the save panel. Read-only was enough until that export. -->
+	<key>com.apple.security.files.user-selected.read-write</key>
+	<true/>
+	<!-- Finance's Export to Numbers drives Numbers through Apple events
+	     (App/Sources/MacFinanceNumbers.swift). The sandbox blocks every Apple
+	     event unless the target is listed here, and the hardened runtime
+	     blocks them unless the second key is set; missing either, the export
+	     fails with -1743 and macOS never asks for Automation permission. The
+	     temporary exception is fine for Developer ID; the Mac App Store would
+	     want a scripting-targets entitlement Numbers doesn't offer. -->
+	<key>com.apple.security.temporary-exception.apple-events</key>
+	<array>
+		<string>com.apple.Numbers</string>
+	</array>
+	<key>com.apple.security.automation.apple-events</key>
 	<true/>
 	<!-- Lets Explore's guide map show where you are. Without it the sandbox
 	     refuses Core Location outright: no permission prompt ever appears,

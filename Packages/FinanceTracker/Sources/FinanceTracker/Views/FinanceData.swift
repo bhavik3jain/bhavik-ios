@@ -46,7 +46,9 @@ struct FinanceFetches: DynamicProperty {
             canEdit: household.map { canEdit($0, in: container) } ?? canCreateHousehold,
             // Read so a balance or budget edit counts as a change to this
             // view; the figures themselves come through the months.
-            revision: balances.count &+ budgets.count
+            revision: balances.count &+ budgets.count,
+            // Read here, in the body, so a fetch landing redraws the screen.
+            live: MetalPriceFeed.shared.live
         )
     }
 }
@@ -65,6 +67,8 @@ struct FinanceSnapshot {
     /// Whether the reader can add to and change what's shown.
     let canEdit: Bool
     let revision: Int
+    /// `MetalPriceFeed`'s prices, which value the latest month while it's open.
+    let live: MetalPrices?
 
     /// Nothing here yet, and nothing can be added until iCloud has had its
     /// chance to bring an existing household in.
@@ -74,11 +78,20 @@ struct FinanceSnapshot {
     var latestMonth: SharedFinanceMonth? { months.last }
 
     func summary(for month: SharedFinanceMonth, filter: OwnerFilter = .all) -> MonthSummary {
-        MonthSummary(month: month, cards: cards, metals: metals, filter: filter)
+        MonthSummary(month: month, cards: cards, metals: metals, filter: filter, live: live)
     }
 
     func history(filter: OwnerFilter = .all) -> FinanceHistory {
-        FinanceHistory(months: months, filter: filter)
+        FinanceHistory(months: months, filter: filter, live: live)
+    }
+
+    /// What the latest month's metals are valued at: live while it's open.
+    var currentPrices: MetalPrices {
+        latestMonth.map { MetalPriceFeed.effectivePrices(for: $0, live: live) } ?? live ?? MetalPrices()
+    }
+
+    func progress(of month: SharedFinanceMonth) -> MonthProgress {
+        MonthRollover.progress(of: month, live: live)
     }
 
     /// Every location already used, for the metal editor's chips.

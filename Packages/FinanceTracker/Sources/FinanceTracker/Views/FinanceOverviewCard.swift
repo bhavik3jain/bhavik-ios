@@ -35,9 +35,9 @@ struct FinanceOverviewCard: View {
             open: open
         ) {
             if let latest {
-                let summary = MonthSummary(month: latest)
+                let summary = MonthSummary(month: latest, live: MetalPriceFeed.shared.live)
                 let period = latest.period ?? YearMonth(containing: .now)
-                let history = FinanceHistory(months: Array(latest.household?.months ?? []))
+                let history = FinanceHistory(months: Array(latest.household?.months ?? []), live: MetalPriceFeed.shared.live)
                 let delta = history.delta(.netWorth, at: period)
                 let previous = history.point(before: period)?.period
                 VStack(alignment: .leading, spacing: 4) {
@@ -59,6 +59,7 @@ struct FinanceOverviewCard: View {
                 OverviewValue("No months yet")
             }
         }
+        .task { await MetalPriceFeed.shared.refreshIfStale() }
     }
 
     /// "6 accounts · 4 cards": the accounts with a balance that month, and

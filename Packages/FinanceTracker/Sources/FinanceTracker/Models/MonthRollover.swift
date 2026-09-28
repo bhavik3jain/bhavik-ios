@@ -70,13 +70,18 @@ public enum MonthRollover {
 
     /// Edited balances plus prices that moved, out of every balance plus the
     /// two prices. A price counts as updated once it differs from last
-    /// month's — or, in a first month, once it's been set at all.
-    public static func progress(of month: SharedFinanceMonth) -> MonthProgress {
+    /// month's — or, in a first month, once it's been set at all. Live
+    /// prices (`MetalPriceFeed`) count as updated: nothing is left to type.
+    public static func progress(of month: SharedFinanceMonth, live: MetalPrices? = nil) -> MonthProgress {
         let balances = (month.balances ?? []).filter { $0.account?.category.hasMonthlyBalance ?? false }
         let previous = month.previousMonth
         var updated = balances.filter(\.edited).count
-        if month.goldPricePerOz > 0, month.goldPricePerOz != previous?.goldPricePerOz { updated += 1 }
-        if month.silverPricePerOz > 0, month.silverPricePerOz != previous?.silverPricePerOz { updated += 1 }
+        if MetalPriceFeed.usesLivePrices(month, live: live) {
+            updated += 2
+        } else {
+            if month.goldPricePerOz > 0, month.goldPricePerOz != previous?.goldPricePerOz { updated += 1 }
+            if month.silverPricePerOz > 0, month.silverPricePerOz != previous?.silverPricePerOz { updated += 1 }
+        }
         return MonthProgress(updated: updated, total: balances.count + 2)
     }
 }

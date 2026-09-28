@@ -26,7 +26,7 @@ struct FinanceJSONFile: FileDocument {
 }
 
 /// Export a month as JSON for the Numbers sheet, or import one the Mac
-/// script made from it.
+/// script made from it. On the Mac, also fill the Numbers sheet directly.
 struct MonthExchangeView: View {
     let months: [SharedFinanceMonth]
     let household: SharedFinanceHousehold?
@@ -35,6 +35,8 @@ struct MonthExchangeView: View {
     @Environment(\.managedObjectContext) private var context
     @Environment(\.financePersistentContainer) private var container
     @Environment(\.financeCanCreateHousehold) private var canCreateHousehold
+    @Environment(\.financeNumbersExporter) private var numbersExporter
+    @Environment(\.openURL) private var openURL
 
     @State private var selectedMonth: String?
     @State private var exportFile: FinanceJSONFile?
@@ -42,6 +44,10 @@ struct MonthExchangeView: View {
     @State private var showingImporter = false
     @State private var resultTitle = ""
     @State private var resultMessage: String?
+    /// The month being filled in Numbers, while it is.
+    @State private var fillingMonth: String?
+    @State private var numbersFile: URL?
+    @State private var showingNumbersMover = false
 
     private var chosen: SharedFinanceMonth? {
         let newestFirst = months.sorted { $0.yearMonth > $1.yearMonth }
@@ -64,13 +70,31 @@ struct MonthExchangeView: View {
                                 Text(month.title).tag(month.yearMonth)
                             }
                         }
-                        Button("Export \(chosen?.title ?? "")", systemImage: "square.and.arrow.up", action: export)
+                        if numbersExporter != nil {
+                            Button(action: exportToNumbers) {
+                                if let fillingMonth {
+                                    HStack {
+                                        ProgressView()
+                                            .controlSize(.small)
+                                        Text("Filling \(fillingMonth) in Numbers…")
+                                    }
+                                } else {
+                                    Label("Export \(chosen?.title ?? "") to Numbers", systemImage: "tablecells")
+                                }
+                            }
+                            .disabled(chosen == nil || fillingMonth != nil)
+                        }
+                        Button("Export \(chosen?.title ?? "") as JSON", systemImage: "square.and.arrow.up", action: export)
                             .disabled(chosen == nil)
                     }
                 } header: {
                     Text("Export")
                 } footer: {
-                    Text("Save it to iCloud Drive › Multitrack › Finance. Then on your Mac, run “Export Finance to Numbers” (in scripts/finance) to turn it into the Numbers file.")
+                    if numbersExporter != nil {
+                        Text("To Numbers fills a copy of the Finance template, growing every table to fit — it takes a minute or two, then asks where to save it. Refresh the two pivot tables in Numbers afterwards (select each, then Refresh in the Organize sidebar). JSON is for the scripts in scripts/finance.")
+                    } else {
+                        Text("Save it to iCloud Drive › Multitrack › Finance. Then on your Mac, open Finance › Export in the Multitrack Mac app to make the Numbers file — or run “Export Finance to Numbers” in scripts/finance.")
+                    }
                 }
 
                 Section {
@@ -103,6 +127,15 @@ struct MonthExchangeView: View {
                     show("Export failed", error.localizedDescription)
                 }
             }
+            .fileMover(isPresented: $showingNumbersMover, file: numbersFile) { result in
+                switch result {
+                case .success(let url):
+                    openURL(url)
+                case .failure(let error):
+                    show("Couldn’t save the Numbers file", error.localizedDescription)
+                }
+                numbersFile = nil
+            }
             .fileImporter(
                 isPresented: $showingImporter,
                 allowedContentTypes: [.json],
@@ -118,13 +151,37 @@ struct MonthExchangeView: View {
         }
     }
 
+    /// The month as the file carries it: an open latest month with the live
+    /// prices it's being valued at, not the ones last stored in it.
+    private func document(for month: SharedFinanceMonth) -> FinanceMonthDocument {
+        var document = FinanceMonthDocument(month: month)
+        let prices = MetalPriceFeed.shared.prices(for: month)
+        document.metalPrices = FinanceMonthDocument.Prices(gold: prices.gold, silver: prices.silver)
+        return document
+    }
+
     private func export() {
         guard let chosen else { return }
         do {
-            exportFile = FinanceJSONFile(data: try FinanceMonthExchange.encode(FinanceMonthDocument(month: chosen)))
+            exportFile = FinanceJSONFile(data: try FinanceMonthExchange.encode(document(for: chosen)))
             showingExporter = true
         } catch {
             show("Export failed", error.localizedDescription)
+        }
+    }
+
+    private func exportToNumbers() {
+        guard let chosen, let numbersExporter else { return }
+        let document = document(for: chosen)
+        fillingMonth = chosen.title
+        Task {
+            defer { fillingMonth = nil }
+            do {
+                numbersFile = try await numbersExporter.fill(document)
+                showingNumbersMover = true
+            } catch {
+                show("Export to Numbers failed", error.localizedDescription)
+            }
         }
     }
 

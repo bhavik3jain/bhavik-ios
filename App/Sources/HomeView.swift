@@ -481,6 +481,7 @@ struct HomeView: View {
             // `\.financePersistentContainer` unconditionally in `.init()`,
             // before any view (this one included) exists.
             FinanceTrackerModule.rootView(context: financeContext!, container: financePersistentContainer!, section: section)
+                .environment(\.financeNumbersExporter, .forThisPlatform)
         }
     }
 

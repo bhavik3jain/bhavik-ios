@@ -189,6 +189,9 @@ struct BhavikApp: App {
             }
             #if DEBUG
             CloudSyncRefreshProbe.scheduleIfRequested(syncMonitor)
+            #if os(macOS)
+            MacFinanceNumbers.runProbeIfRequested()
+            #endif
             #endif
             Self.startSharedChangeNotifications(
                 trips: tripContainer,

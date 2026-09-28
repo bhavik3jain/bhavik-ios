@@ -26,6 +26,8 @@
 	<false/>
 	<key>LSMinimumSystemVersion</key>
 	<string>$(MACOSX_DEPLOYMENT_TARGET)</string>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>Multitrack fills your Finance template in Numbers when you export a month.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Shows how far you are from the places in a guide and the ideas saved for a trip.</string>
 	<key>UTExportedTypeDeclarations</key>

@@ -167,6 +167,18 @@ private let start = Date(timeIntervalSince1970: 1_750_000_000)
 }
 
 @MainActor
+@Test func sectionsByTypeCarryTheirKindForItsColourAndPeopleDoNot() {
+    let household = makeHousehold()
+    let accounts = [
+        SharedPointsAccount(name: "United", kind: .airline, household: household),
+        SharedPointsAccount(name: "Hyatt", kind: .hotel, household: household),
+    ]
+    #expect(PointsSummary.sections(accounts, by: .kind).map(\.kind) == [.hotel, .airline])
+    #expect(PointsSummary.sections(accounts, by: .owner).allSatisfy { $0.kind == nil })
+    #expect(Set(PointsKind.allCases.map { "\($0.color)" }).count == PointsKind.allCases.count, "Every kind has its own colour")
+}
+
+@MainActor
 @Test func totalsKeepPointsAndMilesApart() {
     let household = makeHousehold()
     let card = SharedPointsAccount(name: "Chase", kind: .creditCard, household: household)

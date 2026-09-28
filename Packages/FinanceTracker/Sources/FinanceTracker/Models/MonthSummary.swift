@@ -39,13 +39,14 @@ public struct MonthSummary: Equatable, Sendable {
     public init() {}
 
     /// Everything from the month's own household.
-    public init(month: SharedFinanceMonth, filter: OwnerFilter = .all) {
+    public init(month: SharedFinanceMonth, filter: OwnerFilter = .all, live: MetalPrices? = nil) {
         let household = month.household
         self.init(
             month: month,
             cards: Array(household?.accounts ?? []).filter { $0.category == .card },
             metals: Array(household?.metalItems ?? []),
-            filter: filter
+            filter: filter,
+            live: live
         )
     }
 
@@ -55,7 +56,8 @@ public struct MonthSummary: Equatable, Sendable {
         month: SharedFinanceMonth,
         cards: [SharedFinanceAccount],
         metals: [SharedFinanceMetalItem],
-        filter: OwnerFilter = .all
+        filter: OwnerFilter = .all,
+        live: MetalPrices? = nil
     ) {
         for balance in month.balances ?? [] {
             guard let account = balance.account, filter.includes(account.owner) else { continue }
@@ -66,7 +68,8 @@ public struct MonthSummary: Equatable, Sendable {
                 cardSpend += card.spend(in: period)
             }
         }
-        let prices = month.metalPrices
+        // `live` (MetalPriceFeed's) only counts for the latest open month.
+        let prices = MetalPriceFeed.effectivePrices(for: month, live: live)
         for item in metals where filter.includes(item.owner) {
             self.metals += item.value(at: prices)
         }
@@ -130,11 +133,11 @@ public struct FinanceHistory {
     /// `FinanceFold` keeps. Two rows of one period gave the Months list
     /// duplicate IDs until the fold caught up (and in a view-only share, it
     /// never can).
-    public init(months: [SharedFinanceMonth], filter: OwnerFilter = .all) {
+    public init(months: [SharedFinanceMonth], filter: OwnerFilter = .all, live: MetalPrices? = nil) {
         points = FinanceFold.distinctMonths(months)
             .compactMap { month in month.period.map { (period: $0, month: month) } }
             .sorted { $0.period < $1.period }
-            .map { Point(period: $0.period, month: $0.month, summary: MonthSummary(month: $0.month, filter: filter)) }
+            .map { Point(period: $0.period, month: $0.month, summary: MonthSummary(month: $0.month, filter: filter, live: live)) }
     }
 
     public var latest: Point? { points.last }
@@ -165,7 +168,7 @@ public enum FinanceHome {
     @MainActor
     public static func homeDetail(for months: [SharedFinanceMonth], container: NSPersistentCloudKitContainer?) -> String {
         guard let latest = latestMonth(months, container: container) else { return "No months yet" }
-        return "Net worth \(FinanceFormat.money(MonthSummary(month: latest).netWorth))"
+        return "Net worth \(FinanceFormat.money(MonthSummary(month: latest, live: MetalPriceFeed.shared.live).netWorth))"
     }
 
     /// The latest month of the household the module itself shows

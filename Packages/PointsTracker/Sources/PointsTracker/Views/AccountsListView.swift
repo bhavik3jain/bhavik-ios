@@ -59,7 +59,7 @@ struct AccountsListView: View {
                                 .onDelete { delete(section.accounts, at: $0) }
                             } header: {
                                 HStack {
-                                    Text(section.title)
+                                    PointsSectionTitle(section: section)
                                     Spacer()
                                     Text(section.total.summary)
                                         .monospacedDigit()
@@ -108,6 +108,24 @@ struct AccountsListView: View {
     }
 }
 
+/// A section's title, with its kind's icon in its colour when it's one kind.
+struct PointsSectionTitle: View {
+    let section: PointsSection
+
+    var body: some View {
+        if let kind = section.kind {
+            Label {
+                Text(section.title)
+            } icon: {
+                Image(systemName: kind.symbolName)
+                    .foregroundStyle(kind.color)
+            }
+        } else {
+            Text(section.title)
+        }
+    }
+}
+
 struct AccountRow: View {
     @ObservedObject var account: SharedPointsAccount
     let showsOwner: Bool
@@ -118,7 +136,7 @@ struct AccountRow: View {
                 .font(.system(size: 14, weight: .semibold))
                 .foregroundStyle(.white)
                 .frame(width: 30, height: 30)
-                .background(PointsTrackerModule.accent.color, in: RoundedRectangle(cornerRadius: 8))
+                .background(account.kind.color, in: RoundedRectangle(cornerRadius: 8))
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(account.displayName.isEmpty ? "Untitled" : account.displayName)
