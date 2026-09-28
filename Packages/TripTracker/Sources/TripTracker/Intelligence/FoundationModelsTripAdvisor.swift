@@ -39,7 +39,7 @@ struct GeneratedPick {
 @available(iOS 26.0, macOS 26.0, *)
 @Generable
 struct GeneratedPicks {
-    @Guide(description: "Different candidates, best first", .count(1...3))
+    @Guide(description: "Different candidates, best first", .count(1...5))
     var picks: [GeneratedPick]
 }
 
@@ -71,10 +71,11 @@ public struct FoundationModelsTripAdvisor: TripAdvising {
         """
 
     static let pickInstructions = """
-        You pick places for a traveller to save as ideas for their trip, only from the numbered candidates. \
-        Use only numbers from the list, each at most once. Prefer indoor places when rain is forecast, \
-        and places that add something the day doesn't have yet. \
-        For each pick, say in one sentence under 20 words why it suits this traveller and day. \
+        You pick up to five places for a traveller to save as ideas for their trip, only from the numbered candidates. \
+        Use only numbers from the list, each at most once. \
+        Prefer places that add something the day doesn't have yet. \
+        For each pick, say in one sentence under 20 words why it suits this traveller and day, \
+        and give every pick a different reason — what the place is and what it adds — mentioning the weather for at most one. \
         Never invent opening hours, prices or facts about a place beyond its name and kind.
         """
 

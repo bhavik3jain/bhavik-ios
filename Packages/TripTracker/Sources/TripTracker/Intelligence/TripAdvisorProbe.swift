@@ -166,11 +166,14 @@ public enum TripAdvisorProbe {
         say("secrets in the context: \(leakedContext.isEmpty ? "none" : leakedContext.joined(separator: ", "))")
         let searchStarted = clock.now
         let outcome = await PlaceSuggester.suggest(for: request, searcher: searcher, advisor: advisor)
-        say("\(outcome.suggestions.count) suggestions from \(outcome.candidateCount) candidates in \(Self.seconds(clock.now - searchStarted)), \(outcome.usedModel ? "picked by the model" : "nearest, no model")")
-        for suggestion in outcome.suggestions {
-            let distance = suggestion.metres.map { "\(Int($0)) m" } ?? "?"
-            say("- \(suggestion.place.name) [\(suggestion.place.category ?? "no category"), \(distance)] \(suggestion.place.address)")
-            if suggestion.isModelPick { say("    why: \(suggestion.why)") }
+        say("\(outcome.suggestions.count) suggestions from \(outcome.candidateCount) candidates in \(Self.seconds(clock.now - searchStarted))")
+        for section in outcome.sections {
+            say("-- \(section.group.title): \(section.suggestions.count) of \(section.candidateCount), \(section.usedModel ? "picked by the model" : "nearest, no model")")
+            for suggestion in section.suggestions {
+                let distance = suggestion.metres.map { "\(Int($0)) m" } ?? "?"
+                say("- \(suggestion.place.name) [\(suggestion.place.category ?? "no category"), \(distance)] \(suggestion.place.address)")
+                if suggestion.isModelPick { say("    why: \(suggestion.why)") }
+            }
         }
 
         if let first = outcome.suggestions.first {

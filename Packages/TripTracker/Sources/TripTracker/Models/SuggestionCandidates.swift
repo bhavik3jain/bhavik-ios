@@ -121,11 +121,13 @@ public struct SuggestionCandidates: Sendable, Equatable {
         candidates.prefix(max(0, count)).map { PlaceSuggestion(place: $0.place, why: "", metres: $0.metres) }
     }
 
-    /// "3. Capitoline Museums — Museum, indoor, 650 m away".
+    /// "3. Capitoline Museums — Museum, 650 m away". No "indoor"/"outdoor":
+    /// a wet day's searches already look indoors, and with the word on every
+    /// line the small model began every reason with it — ten picks, ten
+    /// "Indoor dining…", one of them for an open-air archaeological park.
     public var promptList: String {
         candidates.map { candidate in
             var about = [candidate.place.category ?? "Place"]
-            if let indoor = candidate.place.isIndoor { about.append(indoor ? "indoor" : "outdoor") }
             if let metres = candidate.metres { about.append("\(Int((metres / 50).rounded()) * 50) m away") }
             return "\(candidate.number). \(TripBrief.clip(candidate.place.name)) — \(about.joined(separator: ", "))"
         }
@@ -156,14 +158,59 @@ public struct SuggestionCandidates: Sendable, Equatable {
     }
 }
 
+/// The two lists "Suggest Places" shows: somewhere to eat and drink, and
+/// somewhere to go. One list of three mixed the two and ran out fast — a
+/// restaurant crowded out the only sight, and the traveller asked for "more
+/// options, broken up by food and places to check out".
+public enum SuggestionGroup: String, CaseIterable, Sendable, Identifiable {
+    case food
+    case sights
+
+    public var id: String { rawValue }
+
+    public var title: String {
+        switch self {
+        case .food: "Food & Drink"
+        case .sights: "Places to Check Out"
+        }
+    }
+
+    public var symbolName: String {
+        switch self {
+        case .food: "fork.knife"
+        case .sights: "binoculars"
+        }
+    }
+
+    /// Added to the model's context: which list it's picking for.
+    var modelContext: String {
+        switch self {
+        case .food: "Pick places to eat or drink."
+        case .sights: "Pick sights and things to do, not places to eat."
+        }
+    }
+
+    /// Whether a found place belongs on this list. A search word brings back
+    /// its neighbours too — "landmark" found a trattoria on the piazza — so
+    /// a place goes where its own category says, and one Apple Maps gives
+    /// no category stays with the search that found it.
+    func admits(_ place: FoundPlace) -> Bool {
+        switch self {
+        case .food: place.kind != .sight && place.kind != .activity
+        case .sights: place.kind != .food
+        }
+    }
+}
+
 /// What a "Suggest Places" run searches for, where, and what the model is told
 /// about the day — all chosen in Swift from the plan, before anything is sent
 /// anywhere.
 public struct SuggestionRequest: Sendable, Equatable {
     /// The spike's model looped on searches; here Swift runs at most this many
-    /// per suggestion run, never per keystroke — MapKit throttles
-    /// (`MKError.loadingThrottled`).
-    public static let maximumSearches = 3
+    /// per list per suggestion run, never per keystroke — MapKit throttles
+    /// (`MKError.loadingThrottled`), and six a run is well inside it.
+    public static let maximumSearchesPerGroup = 3
+    public static var maximumSearches: Int { maximumSearchesPerGroup * SuggestionGroup.allCases.count }
     /// Around one day's stops: a walk or a short ride from what's planned.
     public static let dayRadiusMetres = 2_500.0
     /// Around the destination when there's no day to centre on.
@@ -173,8 +220,10 @@ public struct SuggestionRequest: Sendable, Equatable {
     public let dayIndex: Int?
     public let center: GeoCoordinate
     public let radiusMetres: Double
-    /// One or two plain words each, at most `maximumSearches`.
-    public let queries: [String]
+    /// One or two plain words each, at most `maximumSearchesPerGroup` a list.
+    public let queriesByGroup: [SuggestionGroup: [String]]
+    /// Every search, food first.
+    public var queries: [String] { SuggestionGroup.allCases.flatMap { queriesByGroup[$0] ?? [] } }
     /// What the model is told: destination, day, forecast, what's planned.
     public let context: String
     public let taken: [TakenPlace]
@@ -183,14 +232,14 @@ public struct SuggestionRequest: Sendable, Equatable {
         dayIndex: Int?,
         center: GeoCoordinate,
         radiusMetres: Double,
-        queries: [String],
+        queries: [SuggestionGroup: [String]],
         context: String,
         taken: [TakenPlace]
     ) {
         self.dayIndex = dayIndex
         self.center = center
         self.radiusMetres = radiusMetres
-        self.queries = Array(queries.prefix(Self.maximumSearches))
+        self.queriesByGroup = queries.mapValues { Array($0.prefix(Self.maximumSearchesPerGroup)) }
         self.context = context
         self.taken = taken
     }
@@ -241,82 +290,142 @@ public struct SuggestionRequest: Sendable, Equatable {
             dayIndex: dayIndex,
             center: center,
             radiusMetres: dayCenter == nil ? Self.tripRadiusMetres : Self.dayRadiusMetres,
-            queries: Self.queries(kinds: stops.map(\.kind), isWet: isWet, isWholeTrip: dayIndex == nil),
+            queries: Dictionary(uniqueKeysWithValues: SuggestionGroup.allCases.map { group in
+                (group, Self.queries(for: group, kinds: stops.map(\.kind), isWet: isWet, isWholeTrip: dayIndex == nil))
+            }),
             context: context.joined(separator: " "),
             taken: TakenPlace.all(in: trip)
         )
     }
 
-    /// What to search for, from what the day lacks and the weather: indoors on
-    /// a wet day, somewhere to eat on a day with no food, a sight on a day of
-    /// errands. Plain words only.
-    public static func queries(kinds: [ItemKind], isWet: Bool, isWholeTrip: Bool = false) -> [String] {
-        var queries: [String] = []
-        if isWholeTrip {
-            queries = ["landmark", "museum", "restaurant"]
-        } else if isWet {
-            queries = ["museum", kinds.contains(.food) ? "gallery" : "restaurant", "cafe"]
-        } else {
-            if !kinds.contains(.sight) { queries.append("landmark") }
-            if !kinds.contains(.food) { queries.append("restaurant") }
-            if !kinds.contains(.activity) { queries.append("park") }
-            queries += ["viewpoint", "museum", "cafe"]
+    /// What to search for on each list, from what the day lacks and the
+    /// weather: indoors on a wet day, a sight on a day of errands, somewhere
+    /// green on a day with nothing outside. Plain words only — long phrases
+    /// return nothing from Apple Maps.
+    public static func queries(for group: SuggestionGroup, kinds: [ItemKind], isWet: Bool, isWholeTrip: Bool = false) -> [String] {
+        var queries: [String]
+        switch group {
+        case .food:
+            queries = isWet ? ["restaurant", "cafe", "bakery"] : ["restaurant", "cafe", "bakery", "bar"]
+        case .sights:
+            if isWholeTrip {
+                queries = ["landmark", "museum", "park"]
+            } else if isWet {
+                queries = ["museum", "gallery", "landmark"]
+            } else {
+                queries = []
+                if !kinds.contains(.sight) { queries.append("landmark") }
+                if !kinds.contains(.activity) { queries.append("park") }
+                queries += ["viewpoint", "museum", "landmark", "gallery"]
+            }
         }
         var seen = Set<String>()
-        return Array(queries.filter { seen.insert($0).inserted }.prefix(maximumSearches))
+        return Array(queries.filter { seen.insert($0).inserted }.prefix(maximumSearchesPerGroup))
     }
 }
 
 /// One "Suggest Places" run: Swift searches, Swift filters, the model picks by
-/// number and says why, Swift checks the numbers. No tool calling, so nothing
-/// can loop.
+/// number and says why, Swift checks the numbers — once per list. No tool
+/// calling, so nothing can loop.
 public enum PlaceSuggester {
-    public static let suggestionCount = 3
+    /// Per list. Three in all left almost nothing to choose between.
+    public static let suggestionCount = 5
 
-    public struct Outcome: Sendable, Equatable {
+    public struct Section: Sendable, Equatable, Identifiable {
+        public let group: SuggestionGroup
         public let suggestions: [PlaceSuggestion]
-        /// How many real places the model had to choose from.
+        /// How many real places the model had to choose from for this list.
         public let candidateCount: Int
         /// False when these are simply the nearest, with no model involved.
         public let usedModel: Bool
+
+        public var id: SuggestionGroup { group }
+    }
+
+    public struct Outcome: Sendable, Equatable {
+        /// Food first, then places to check out; a list with nothing is left out.
+        public let sections: [Section]
+
+        public init(sections: [Section]) {
+            self.sections = sections.filter { !$0.suggestions.isEmpty }
+        }
+
+        public var suggestions: [PlaceSuggestion] { sections.flatMap(\.suggestions) }
+        public var candidateCount: Int { sections.reduce(0) { $0 + $1.candidateCount } }
+        /// Whether the model picked any of the lists.
+        public var usedModel: Bool { sections.contains(where: \.usedModel) }
     }
 
     /// - Parameter advisor: nil — the setting is off, or there is no model —
     ///   gives the nearest candidates without asking any model. Any error from
-    ///   it does the same.
+    ///   it does the same, list by list.
     public static func suggest(
         for request: SuggestionRequest,
         searcher: any PlaceSearching,
         advisor: (any TripAdvising)?
     ) async -> Outcome {
-        let found = await withTaskGroup(of: (Int, [FoundPlace]).self) { group in
-            for (index, query) in request.queries.prefix(SuggestionRequest.maximumSearches).enumerated() {
-                group.addTask {
-                    // A failed search is just no results for that word; the
-                    // others still count.
-                    let places = (try? await searcher.search(query, near: request.center, radiusMetres: request.radiusMetres)) ?? []
-                    return (index, places)
+        // Every search at once, each remembered with its list and order.
+        let found = await withTaskGroup(of: (SuggestionGroup, Int, [FoundPlace]).self) { tasks in
+            for group in SuggestionGroup.allCases {
+                for (index, query) in (request.queriesByGroup[group] ?? []).enumerated() {
+                    tasks.addTask {
+                        // A failed search is just no results for that word;
+                        // the others still count.
+                        let places = (try? await searcher.search(query, near: request.center, radiusMetres: request.radiusMetres)) ?? []
+                        return (group, index, places)
+                    }
                 }
             }
-            var results: [(Int, [FoundPlace])] = []
-            for await result in group { results.append(result) }
-            return results.sorted { $0.0 < $1.0 }.flatMap(\.1)
+            var results: [(SuggestionGroup, Int, [FoundPlace])] = []
+            for await result in tasks { results.append(result) }
+            return results
         }
-        let candidates = SuggestionCandidates(
-            found: found,
-            taken: request.taken,
-            center: request.center,
-            radiusMetres: request.radiusMetres * 1.5
-        )
-        guard !candidates.isEmpty else { return Outcome(suggestions: [], candidateCount: 0, usedModel: false) }
 
-        if let advisor, advisor.availability == .available,
-           let picks = try? await advisor.pickPlaces(candidates: candidates, context: request.context) {
+        // Food first, and a place only ever on one list: what the food list
+        // took is "taken" for the other.
+        var taken = request.taken
+        var lists: [(SuggestionGroup, SuggestionCandidates)] = []
+        for group in SuggestionGroup.allCases {
+            let places = found
+                .sorted { $0.0 == $1.0 ? $0.1 < $1.1 : $0.0 == .food }
+                .flatMap(\.2)
+                .filter(group.admits)
+            let candidates = SuggestionCandidates(
+                found: places,
+                taken: taken,
+                center: request.center,
+                radiusMetres: request.radiusMetres * 1.5
+            )
+            taken += candidates.candidates.map { TakenPlace(title: $0.place.name, coordinate: $0.place.coordinate) }
+            lists.append((group, candidates))
+        }
+
+        let asked = advisor.flatMap { $0.availability == .available ? $0 : nil }
+        let sections = await withTaskGroup(of: Section.self) { tasks in
+            for (group, candidates) in lists where !candidates.isEmpty {
+                tasks.addTask {
+                    await section(group, candidates: candidates, context: "\(request.context) \(group.modelContext)", advisor: asked)
+                }
+            }
+            var sections: [Section] = []
+            for await section in tasks { sections.append(section) }
+            return sections
+        }
+        return Outcome(sections: SuggestionGroup.allCases.compactMap { group in sections.first { $0.group == group } })
+    }
+
+    private static func section(
+        _ group: SuggestionGroup,
+        candidates: SuggestionCandidates,
+        context: String,
+        advisor: (any TripAdvising)?
+    ) async -> Section {
+        if let advisor, let picks = try? await advisor.pickPlaces(candidates: candidates, context: context) {
             let suggestions = Array(candidates.resolve(picks).prefix(suggestionCount))
             if !suggestions.isEmpty {
-                return Outcome(suggestions: suggestions, candidateCount: candidates.count, usedModel: true)
+                return Section(group: group, suggestions: suggestions, candidateCount: candidates.count, usedModel: true)
             }
         }
-        return Outcome(suggestions: candidates.nearest(suggestionCount), candidateCount: candidates.count, usedModel: false)
+        return Section(group: group, suggestions: candidates.nearest(suggestionCount), candidateCount: candidates.count, usedModel: false)
     }
 }

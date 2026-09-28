@@ -56,7 +56,7 @@ public struct StubTripAdvisor: TripAdvising {
     public func pickPlaces(candidates: SuggestionCandidates, context: String) async throws -> [PlacePick] {
         if let failure { throw failure }
         if delay > .zero { try? await Task.sleep(for: delay) }
-        return candidates.candidates.prefix(3).map { PlacePick(number: $0.number, why: "Stub pick: \($0.place.name) fits the day.") }
+        return candidates.candidates.prefix(PlaceSuggester.suggestionCount).map { PlacePick(number: $0.number, why: "Stub pick: \($0.place.name) fits the day.") }
     }
 }
 
