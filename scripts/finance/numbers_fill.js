@@ -75,12 +75,14 @@ function openDocument(path, opened) {
     shell.includeStandardAdditions = true;
     shell.doShellScript("open -g -b com.apple.Numbers '" + path.replace(/'/g, "'\\''") + "'");
   }
-  for (let i = 0; i < 120; i++) {  // open returns before the document exists
+  // Two minutes: a cold start of Numbers on a busy Mac, with iCloud documents
+  // reopening, can take more than the one this used to allow.
+  for (let i = 0; i < 240; i++) {  // open returns before the document exists
     const d = find();
     if (d) return Numbers.documents.byId(d.id());
     delay(0.5);
   }
-  throw new Error(`Numbers didn't open ${path} within a minute`);
+  throw new Error(`Numbers didn't open ${path} within two minutes`);
 }
 
 function isGrouped(t) {
