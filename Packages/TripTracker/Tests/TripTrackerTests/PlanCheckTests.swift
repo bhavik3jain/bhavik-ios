@@ -123,6 +123,23 @@ private func stop(
 }
 
 @MainActor
+@Test func aRideIsNotAWalk() throws {
+    let context = try makeContext()
+    let trip = makeRome(in: context)
+    // The train leaves from Roma Termini and arrives 250 km away: its place
+    // is its departure, so there's no walk from it to the next stop.
+    stop("Train to Salerno", trip, context, day: 0, at: (8, 45), minutes: 90, point: (41.9010, 12.5018), kind: .transit)
+    stop("Amalfi apartment", trip, context, day: 0, at: (14, 0), point: (40.6340, 14.6027), kind: .lodging)
+    #expect(!PlanCheck(trip: trip, asOf: beforeTrip).findings.contains { $0.kind == .tightTransfer })
+
+    // Getting to the train is still a walk worth checking.
+    let other = makeRome(in: context)
+    stop("Vatican Museums", other, context, day: 0, at: (9, 0), minutes: 60, point: vatican)
+    stop("Train to Naples", other, context, day: 0, at: (10, 5), minutes: 70, point: (41.9010, 12.5018), kind: .transit)
+    #expect(PlanCheck(trip: other, asOf: beforeTrip).findings.contains { $0.kind == .tightTransfer })
+}
+
+@MainActor
 @Test func aShortWalkWithinTheToleranceIsNotFlagged() throws {
     let context = try makeContext()
     let trip = makeRome(in: context)

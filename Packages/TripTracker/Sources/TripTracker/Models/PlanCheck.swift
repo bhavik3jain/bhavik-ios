@@ -372,6 +372,11 @@ extension PlanCheck {
         }
         var findings: [Finding] = []
         for (from, to) in zip(timed, timed.dropFirst()) {
+            // A train or a transfer is how you get to the next stop, and its
+            // place is where it leaves from: the seeded Rome trip's "Train to
+            // Salerno" (Roma Termini) then the Amalfi apartment came out as a
+            // "Tight walk" of 140 mi. Walking *to* a departure is still checked.
+            guard from.kind != .transit else { continue }
             guard let a = from.coordinate, let b = to.coordinate,
                   let end = days.minute(ofEnd: .item(from), on: day),
                   let start = days.minute(ofStart: .item(to), on: day) else { continue }
