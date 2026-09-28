@@ -40,71 +40,61 @@ struct VehicleLogView: View {
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: 0) {
-                VehicleChipStrip(
-                    summaries: summaries,
-                    selectedID: summary?.id,
-                    perform: perform
-                )
+            Group {
+                if let vehicle, let summary, layout == .sidebar {
+                    VehicleDesktopLog(vehicle: vehicle, summary: summary)
+                } else if let vehicle, let summary {
+                    List {
+                        Section {
+                            SummaryTiles(summary: summary)
+                                .listRowInsets(EdgeInsets())
+                                .listRowBackground(Color.clear)
+                        }
 
-                if layout == .tabs, let label = sharingStatus.vehicleBadgeLabel {
-                    Label(label, systemImage: "person.2.fill")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .padding(.horizontal)
-                        .padding(.bottom, 4)
-                }
-
-                Group {
-                    if let vehicle, let summary, layout == .sidebar {
-                        VehicleDesktopLog(vehicle: vehicle, summary: summary)
-                    } else if let vehicle, let summary {
-                        List {
-                            Section {
-                                SummaryTiles(summary: summary)
-                                    .listRowInsets(EdgeInsets())
-                                    .listRowBackground(Color.clear)
-                            }
-
-                            Section("Fill-ups") {
-                                if fillUps.isEmpty {
-                                    ContentUnavailableView(
-                                        "No fill-ups yet",
-                                        systemImage: "fuelpump",
-                                        description: Text("Add one with the + button, or import a Fuelly export in Garage.")
-                                    )
-                                } else {
-                                    ForEach(fillUps) { entry in
-                                        FillUpRow(entry: entry, mpg: mpgByOdometer[entry.odometer])
-                                    }
-                                }
-                            }
-
-                            if !vehicle.orderedServices.isEmpty {
-                                Section("Service") {
-                                    ForEach(vehicle.orderedServices) { entry in
-                                        ServiceRow(entry: entry)
-                                    }
+                        Section("Fill-ups") {
+                            if fillUps.isEmpty {
+                                ContentUnavailableView(
+                                    "No fill-ups yet",
+                                    systemImage: "fuelpump",
+                                    description: Text("Add one with the + button, or import a Fuelly export in Garage.")
+                                )
+                            } else {
+                                ForEach(fillUps) { entry in
+                                    FillUpRow(entry: entry, mpg: mpgByOdometer[entry.odometer])
                                 }
                             }
                         }
-                    } else {
-                        ContentUnavailableView(
-                            "No vehicles",
-                            systemImage: "car",
-                            description: Text("Add a vehicle in Garage, or import a Fuelly export.")
-                        )
-                        .scrollsForRefresh()
+
+                        if !vehicle.orderedServices.isEmpty {
+                            Section("Service") {
+                                ForEach(vehicle.orderedServices) { entry in
+                                    ServiceRow(entry: entry)
+                                }
+                            }
+                        }
                     }
+                } else {
+                    ContentUnavailableView(
+                        "No vehicles",
+                        systemImage: "car",
+                        description: Text("Add a vehicle in Garage, or import a Fuelly export.")
+                    )
+                    .scrollsForRefresh()
                 }
             }
+            // On the log alone, applied before `vehicleSwitcher` puts the chips
+            // above it. It used to wrap a VStack holding the chip strip too, and
+            // `.refreshable` reaches every scroll view below it: the chips'
+            // horizontal ScrollView became a pull-to-refresh view of its own,
+            // and the phone's log — unlike Trends, which has no refresh — lost
+            // its vehicle switch. See `VehicleSwitcher`.
             .refreshesFromCloud()
             .navigationTitle(summary?.name ?? "Fuel")
             // The Mac says who it's shared with under the toolbar's title
             // rather than in a line of its own above the list — or, with
             // several cars, beside the switcher that stands in for the title.
             .moduleSubtitle(sharingStatus.vehicleBadgeLabel)
-            .vehicleSwitcherToolbar(
+            .vehicleSwitcher(
                 summaries: summaries,
                 selectedID: summary?.id,
                 badge: sharingStatus.vehicleBadgeLabel,
