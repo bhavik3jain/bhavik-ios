@@ -35,6 +35,24 @@ public extension NSPersistentCloudKitContainer {
         }
     }
 
+    /// Many objects' shares in one `fetchShares(matching:)`, on a queue of
+    /// their own — for "Shared" badges (`SharingStatusCache`). Their own so a
+    /// run of badge lookups, each waiting its turn on the container's
+    /// executor, never sits between a Share button and its link: on the Mac,
+    /// every badge on screen used to queue one lookup ahead of the share
+    /// itself, and making a share cleared them all at once — the link waited
+    /// behind a lookup for every trip, car and guide showing.
+    func fetchSharesInBackground(
+        for objectIDs: [NSManagedObjectID],
+        completion: @escaping @Sendable ([NSManagedObjectID: CKShare]) -> Void
+    ) {
+        Self.badgeQueue.async {
+            completion((try? self.fetchShares(matching: objectIDs)) ?? [:])
+        }
+    }
+
+    private static let badgeQueue = DispatchQueue(label: "com.bhavikjain.trackers.share-badges", qos: .utility)
+
     func shareInBackground(
         _ object: NSManagedObject,
         completion: @escaping @Sendable (CKShare?, CKContainer?, (any Error)?) -> Void

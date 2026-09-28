@@ -88,6 +88,37 @@ public enum CloudKitImportGate {
         of container: NSPersistentCloudKitContainer?,
         timeout: Duration = .seconds(60)
     ) async -> Bool {
+        await waitForFirstImportOutcome(of: container, timeout: timeout) != .cancelled
+    }
+
+    /// Why a wait ended — for the legacy importers, which may copy only when
+    /// the store has really caught up (`mayCopyLegacyData`).
+    public enum Outcome: Equatable, Sendable {
+        /// A successful import landed: the store holds what iCloud does.
+        case imported
+        /// Nothing to wait for: no CloudKit on this container, or no account.
+        case nothingToImport
+        /// The minute ran out, iCloud's state unknown.
+        case timedOut
+        /// The calling task was cancelled (the module was closed).
+        case cancelled
+
+        /// Whether a legacy importer may copy anything now. Not after a
+        /// timeout: then this device can't tell "iCloud has none of these"
+        /// from "iCloud hasn't sent them yet", and copying on the second
+        /// re-created every car a fresh install hadn't downloaded in time —
+        /// cars duplicated on every reinstall. The importer tries again on the
+        /// next launch instead.
+        public var mayCopyLegacyData: Bool {
+            self == .imported || self == .nothingToImport
+        }
+    }
+
+    @MainActor
+    public static func waitForFirstImportOutcome(
+        of container: NSPersistentCloudKitContainer?,
+        timeout: Duration = .seconds(60)
+    ) async -> Outcome {
         guard let container,
               let description = container.persistentStoreDescriptions.first(where: {
                   $0.cloudKitContainerOptions?.databaseScope == .private
@@ -97,14 +128,14 @@ public enum CloudKitImportGate {
               let storeID = container.persistentStoreCoordinator.persistentStore(for: url)?.identifier,
               let tracker = trackers.withLock({ $0[ObjectIdentifier(container)] })
         else {
-            return !Task.isCancelled
+            return Task.isCancelled ? .cancelled : .nothingToImport
         }
 
-        if tracker.hasImported(storeIdentifier: storeID) { return true }
+        if tracker.hasImported(storeIdentifier: storeID) { return .imported }
 
         switch try? await CKContainer(identifier: containerID).accountStatus() {
         case .noAccount, .restricted:
-            return !Task.isCancelled
+            return Task.isCancelled ? .cancelled : .nothingToImport
         default:
             break
         }
@@ -115,7 +146,8 @@ public enum CloudKitImportGate {
             await group.next()
             group.cancelAll()
         }
-        return !Task.isCancelled
+        if Task.isCancelled { return .cancelled }
+        return tracker.hasImported(storeIdentifier: storeID) ? .imported : .timedOut
     }
 }
 

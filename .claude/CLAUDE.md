@@ -100,6 +100,15 @@ those modules' data locally and never exported any of it to iCloud. That include
 `cloudkit.share` type, which only appears once something has been shared: the run makes and deletes
 one test share for it. Before it did, every Share button on TestFlight failed while making the link.
 
+**The legacy importers run once per iCloud account, never per install.** Trips, Fuel and Explore
+still copy out of their old SwiftData stores (`*LegacyMigration`), whose records live on in iCloud,
+so every fresh install finds them again. Keyed only on UserDefaults and a name match, each reinstall
+re-copied whatever hadn't synced down yet or had been renamed since — the user's cars duplicated on
+every install. Now: `LegacyMigrationLedger` (UserDefaults **and** iCloud key-value storage), never
+copy into a store that already holds anything, and never copy after `CloudKitImportGate` timed out
+(`Outcome.mayCopyLegacyData`) — try next launch. Garage's "Merge Duplicate Cars" (`FuelDuplicates`)
+folds the copies already made; it keeps a car this person shared, never touches a partner's.
+
 **Adding a whole module** needs these further edits, none optional: `packages:` **and** the
 `&appDependencies` anchor in `project.yml` (the anchor covers both targets, so the Mac build follows
 for free); the `AppSchema.models` sum in `BhavikApp.swift`; a `ModuleRow` (with its `.contextMenu` peek) in

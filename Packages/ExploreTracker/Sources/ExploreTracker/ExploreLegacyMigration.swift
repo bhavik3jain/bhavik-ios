@@ -25,7 +25,7 @@ public enum ExploreLegacyMigration {
     /// this import may be a real, possibly-shared store, and debug seeding
     /// must never write fake guides into that.
     public static var hasRun: Bool {
-        UserDefaults.standard.bool(forKey: completedDefaultsKey)
+        LegacyMigrationLedger.isComplete(completedDefaultsKey)
     }
 
     /// Reads every `Guide` (and its places) out of `legacyContext` and
@@ -57,15 +57,31 @@ public enum ExploreLegacyMigration {
     /// after a re-fetch confirms every legacy guide now has a match — never
     /// assumed from the loop below alone.
     @MainActor
-    public static func runIfNeeded(from legacyContext: ModelContext, into context: NSManagedObjectContext) {
+    public static func runIfNeeded(
+        from legacyContext: ModelContext,
+        into context: NSManagedObjectContext,
+        importOutcome: CloudKitImportGate.Outcome = .nothingToImport
+    ) {
         guard !hasRun else { return }
+
+        // Anything already in the new store means this account was copied
+        // over before — by another device, or by this one before a reinstall
+        // — and the rest of it is on its way down from iCloud. Copying now
+        // matched only what had arrived, by name, and re-created the rest:
+        // the user's guides, duplicated on every install.
+        if ((try? context.count(for: SharedGuide.fetchRequest())) ?? 0) > 0 {
+            LegacyMigrationLedger.markComplete(completedDefaultsKey)
+            return
+        }
+        // Empty, but iCloud may not have caught up: then try next launch.
+        guard importOutcome.mayCopyLegacyData else { return }
 
         guard let legacyGuides = try? legacyContext.fetch(FetchDescriptor<Guide>()), !legacyGuides.isEmpty else {
             // Nothing to migrate — a device that has never had a guide should
             // not keep re-scanning the SwiftData store on every launch, and
             // should still count as "already migrated" for ExploreDebugSeed's
             // guard above.
-            UserDefaults.standard.set(true, forKey: completedDefaultsKey)
+            LegacyMigrationLedger.markComplete(completedDefaultsKey)
             return
         }
 
@@ -105,7 +121,7 @@ public enum ExploreLegacyMigration {
         try? context.saveIfNeeded()
 
         if legacyGuides.allSatisfy({ guideExists(matching: $0, in: context) }) {
-            UserDefaults.standard.set(true, forKey: completedDefaultsKey)
+            LegacyMigrationLedger.markComplete(completedDefaultsKey)
         }
     }
 

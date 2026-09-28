@@ -29,10 +29,12 @@ struct ExploreRootView: View {
             // guides another device already exported, and the pin migration
             // so it can't re-pin a guide another device already migrated and
             // then unpinned. See CloudKitImportGate.
+            var outcome = CloudKitImportGate.Outcome.nothingToImport
             if !ExploreLegacyMigration.hasRun || pins.hasRetiredPinsToMigrate() {
-                guard await CloudKitImportGate.waitForFirstImport(of: container) else { return }
+                outcome = await CloudKitImportGate.waitForFirstImportOutcome(of: container)
+                guard outcome != .cancelled else { return }
             }
-            ExploreLegacyMigration.runIfNeeded(from: legacyContext, into: context)
+            ExploreLegacyMigration.runIfNeeded(from: legacyContext, into: context, importOutcome: outcome)
             pins.migrateRetiredPinnedAt()
             #if DEBUG
             guard ExploreDebugSeed.isRequested else { return }
