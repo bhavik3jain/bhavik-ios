@@ -182,7 +182,7 @@ struct TripDetailView: View {
             }
             ToolbarItemGroup(placement: .primaryAction) {
                 ShareLink(
-                    item: ItineraryFile(document: ItineraryDocument(trip: trip)),
+                    item: ItineraryFile(document: ItineraryDocument(trip: trip, weather: weather)),
                     preview: SharePreview("\(trip.title) itinerary", image: Image(systemName: "doc.richtext"))
                 ) {
                     Image(systemName: "square.and.arrow.up")

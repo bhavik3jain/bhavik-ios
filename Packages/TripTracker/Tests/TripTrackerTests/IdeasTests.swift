@@ -200,13 +200,8 @@ import Testing
     addItem("Aventine keyhole", to: trip, in: context, day: SharedItineraryItem.unassignedDayIndex, placed: true)
 
     let document = ItineraryDocument(trip: trip)
-    guard case .cover(let cover) = document.pages.first else {
-        Issue.record("The first page is the cover")
-        return
-    }
-    #expect(cover.facts == "9 days · 1 place", "Ideas aren't counted among the places")
-    let titles = document.pages.flatMap { page -> [String] in
-        if case .day(let dayPage) = page { dayPage.lines.map(\.title) } else { [] }
-    }
+    let places = document.cover.facts.first { $0.label.hasPrefix("Place") }
+    #expect(places == ItineraryDocument.Fact(value: "1", label: "Place"), "Ideas aren't counted among the places")
+    let titles = document.days.flatMap { $0.lines.map(\.title) }
     #expect(titles == ["Galleria Borghese"])
 }

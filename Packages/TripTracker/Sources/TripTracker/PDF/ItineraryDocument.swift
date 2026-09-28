@@ -1,79 +1,108 @@
 import Core
 import Foundation
 
-/// A trip's shareable itinerary, as plain strings laid out into pages.
+/// A trip's shareable itinerary, as plain strings: what goes in the PDF, before
+/// anything is decided about pages.
 ///
 /// The renderer draws exactly what is here and reads nothing from the models,
-/// which is what makes two guarantees testable without rendering a PDF: how
-/// pages break, and that `Booking.secureNote` is never among the strings — it
-/// is simply not read when this is built.
-///
-/// Pagination is by entry count, not measured height. That is the honest
-/// limitation: an entry with a long note can still crowd its page. Measuring
-/// would mean laying the views out twice, and a travel itinerary's entries are
-/// short.
+/// which is what makes one guarantee testable without rendering a PDF: that
+/// `Booking.secureNote` is never among the strings — it is simply not read
+/// when this is built. Where things fall on pages is `ItineraryLayout`'s job,
+/// done only when the file is actually written — this is built on every redraw
+/// of the trip screen, for its Share button.
 public struct ItineraryDocument: Sendable, Equatable {
     public struct Cover: Sendable, Equatable {
         public let title: String
         public let destination: String
+        /// "Saturday 6 – Sunday 14 June 2026".
         public let dateRange: String
-        /// "9 days · 22 places · 2 flights".
-        public let facts: String
+        /// The stat tiles: 9 days, 22 places, 2 flights, 4 bookings.
+        public let facts: [Fact]
+    }
+
+    public struct Fact: Sendable, Equatable {
+        /// "9".
+        public let value: String
+        /// "Days" — or "Day", agreeing with the value.
+        public let label: String
+    }
+
+    public struct Weather: Sendable, Equatable {
+        public let symbolName: String
+        /// "Partly cloudy".
+        public let summary: String
+        /// "28° / 19°", in the reader's own unit.
+        public let temperatures: String
     }
 
     public struct Line: Sendable, Equatable {
-        /// "09:30", or "—" for anytime.
-        public let time: String
+        /// "09:30", or nil for anytime.
+        public let time: String?
         /// "1h 30m", or "".
         public let duration: String
         public let title: String
         public let detail: String
         public let symbolName: String
+        /// Drawn as a tinted row with a rule down its left edge, so it still
+        /// stands out printed in black and white.
+        public let isFlight: Bool
     }
 
-    public struct DayPage: Sendable, Equatable {
+    public struct Day: Sendable, Equatable {
         public let dayNumber: Int
-        /// "Day 3 · Mon 8 June".
+        /// "Sat", "6", "Jun" — the date badge.
+        public let weekday: String
+        public let dayOfMonth: String
+        public let month: String
+        /// "Saturday 6 June".
         public let heading: String
+        /// "Sat 6 Jun", for the cover's at-a-glance list.
+        public let shortDate: String
+        public let weather: Weather?
         public let lines: [Line]
-        /// 1-based among this day's pages; `partCount` > 1 marks continuations.
-        public let part: Int
-        public let partCount: Int
     }
 
     public struct Confirmation: Sendable, Equatable {
+        /// "Flights", "Lodging".
         public let section: String
+        public let symbolName: String
+        /// A flight's route, "LHR → FCO"; a booking's name.
         public let title: String
+        /// "BA 548 · 07:15–10:45 · Terminal 5 · Seat 14A", "Airbnb · in Wed 10 · out Sun 14".
         public let detail: String
+        /// A booking's phone number, or "".
+        public let contact: String
+        /// A flight's day above its route, "Sat 6 Jun"; "" for bookings, whose
+        /// dates are in `detail`.
+        public let date: String
         public let code: String
-    }
-
-    public enum Page: Sendable, Equatable {
-        case cover(Cover)
-        case day(DayPage)
-        case confirmations([Confirmation], part: Int, partCount: Int)
+        public let isFlight: Bool
     }
 
     public let title: String
-    public let pages: [Page]
+    /// "6–14 Jun 2026", for every page's footer.
+    public let dateRange: String
+    public let cover: Cover
+    public let days: [Day]
+    /// Flights, then bookings by kind.
+    public let confirmations: [Confirmation]
+    /// "27 Sep 2026" when any day carries weather: the pages that show it print
+    /// the Apple Weather credit WeatherKit's terms require, and when it was
+    /// fetched — a forecast printed today is stale by the trip. Nil otherwise.
+    public let weatherAsOf: String?
 
-    public static let linesPerPage = 12
-    public static let confirmationsPerPage = 16
-
-    /// Splits `count` things into runs of at most `size`, keeping at least one
-    /// (possibly empty) run — a day with nothing planned still gets its page.
-    public static func chunks(_ count: Int, size: Int) -> [Range<Int>] {
-        guard count > 0, size > 0 else { return [0..<0] }
-        return stride(from: 0, to: count, by: size).map { $0..<min($0 + size, count) }
-    }
-
-    public init(title: String, pages: [Page]) {
+    public init(title: String, dateRange: String, cover: Cover, days: [Day], confirmations: [Confirmation], weatherAsOf: String?) {
         self.title = title
-        self.pages = pages
+        self.dateRange = dateRange
+        self.cover = cover
+        self.days = days
+        self.confirmations = confirmations
+        self.weatherAsOf = weatherAsOf
     }
 
-    /// Builds the document for `trip`: a cover, a page per day (more when a day
-    /// runs long) and the confirmation codes.
+    /// Builds the document for `trip`: a cover, the codes, and every day.
+    /// `weather` is whatever the trip screen has already fetched, matched to
+    /// days the same way the Plan tab does it (`TripForecast.byDay`).
     ///
     /// Ideas — items on no day yet — are left out on purpose, and not counted
     /// among the cover's places. The PDF is what gets sent to the people
@@ -81,75 +110,89 @@ public struct ItineraryDocument: Sendable, Equatable {
     /// at the end reads as more plan, and "might go to the Aventine" isn't
     /// something anyone else can act on. They stay in the app, where they can
     /// still be moved onto a day.
-    public init(trip: SharedTrip, linesPerPage: Int = ItineraryDocument.linesPerPage, calendar: Calendar = .current) {
+    public init(trip: SharedTrip, weather: [DayWeather] = [], asOf now: Date = .now, calendar: Calendar = .current) {
         let dates = TripDates(start: trip.startDate, end: trip.endDate, calendar: calendar)
         // Core Data's to-many relationships are `Set<T>?`, not `[T]?` — turned
-        // into an array once here rather than at every use below.
+        // into arrays once here rather than at every use below.
         let flights = Array(trip.flights ?? [])
-        var pages: [Page] = []
-
-        let facts = [
-            counted(dates.dayCount, "day"),
-            counted(trip.plannedPlaces.count, "place"),
-            flights.isEmpty ? nil : counted(flights.count, "flight"),
-        ].compactMap(\.self).joined(separator: " · ")
-        pages.append(.cover(Cover(
-            title: trip.title,
-            destination: trip.destination,
-            dateRange: ItineraryFormat.dateRange(dates),
-            facts: facts
-        )))
+        let items = Array(trip.items ?? [])
+        let bookings = Array(trip.bookings ?? [])
+        let forecast = TripForecast.byDay(weather, dates: dates, asOf: now)
 
         // Day by day from 0, so `DayPlan` never sees an idea's -1.
-        for index in 0..<dates.dayCount {
-            let plan = DayPlan(dayIndex: index, items: Array(trip.items ?? []), flights: flights, dates: dates)
-            let lines = plan.entries.map { ItineraryFormat.line(for: $0, in: plan) }
-            let runs = Self.chunks(lines.count, size: linesPerPage)
-            for (offset, run) in runs.enumerated() {
-                pages.append(.day(DayPage(
-                    dayNumber: index + 1,
-                    heading: "Day \(index + 1) · \(dates.date(forDay: index).formatted(.dateTime.weekday(.abbreviated).day().month(.wide)))",
-                    lines: Array(lines[run]),
-                    part: offset + 1,
-                    partCount: runs.count
-                )))
-            }
+        let days = (0..<dates.dayCount).map { index in
+            let plan = DayPlan(dayIndex: index, items: items, flights: flights, dates: dates)
+            let date = dates.date(forDay: index)
+            return Day(
+                dayNumber: index + 1,
+                weekday: date.formatted(.dateTime.weekday(.abbreviated)),
+                dayOfMonth: date.formatted(.dateTime.day()),
+                month: date.formatted(.dateTime.month(.abbreviated)),
+                heading: date.formatted(.dateTime.weekday(.wide).day().month(.wide)),
+                shortDate: date.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated)),
+                weather: forecast[index].map(ItineraryFormat.weather),
+                lines: plan.entries.map { ItineraryFormat.line(for: $0, in: plan) }
+            )
         }
 
-        let confirmations = Self.confirmations(for: trip, dates: dates)
-        if !confirmations.isEmpty {
-            let runs = Self.chunks(confirmations.count, size: Self.confirmationsPerPage)
-            for (offset, run) in runs.enumerated() {
-                pages.append(.confirmations(Array(confirmations[run]), part: offset + 1, partCount: runs.count))
-            }
-        }
+        let cover = Cover(
+            title: trip.title,
+            destination: trip.destination,
+            dateRange: ItineraryFormat.longDateRange(dates),
+            facts: [
+                Self.fact(dates.dayCount, "Day", "Days"),
+                Self.fact(trip.plannedPlaces.count, "Place", "Places"),
+                Self.fact(flights.count, "Flight", "Flights"),
+                Self.fact(bookings.count, "Booking", "Bookings"),
+            ]
+        )
 
-        self.init(title: trip.title, pages: pages)
+        self.init(
+            title: trip.title,
+            dateRange: (dates.start..<dates.end.addingTimeInterval(1)).formatted(.interval.day().month(.abbreviated).year()),
+            cover: cover,
+            days: days,
+            confirmations: Self.confirmations(flights: flights, bookings: bookings, dates: dates),
+            weatherAsOf: days.contains { $0.weather != nil } ? now.formatted(.dateTime.day().month(.abbreviated).year()) : nil
+        )
+    }
+
+    private static func fact(_ count: Int, _ one: String, _ many: String) -> Fact {
+        Fact(value: "\(count)", label: count == 1 ? one : many)
     }
 
     /// Flights, then bookings by kind. Reads `code` and never `secureNote`.
-    static func confirmations(for trip: SharedTrip, dates: TripDates) -> [Confirmation] {
-        let flights = (trip.flights ?? [])
+    static func confirmations(flights: [SharedFlight], bookings: [SharedBooking], dates: TripDates) -> [Confirmation] {
+        let flightCards = flights
             .sorted { ($0.departsAt ?? dates.date(forDay: $0.dayIndex)) < ($1.departsAt ?? dates.date(forDay: $1.dayIndex)) }
             .map { flight in
-                Confirmation(
+                let day = flight.departsAt ?? dates.date(forDay: flight.dayIndex)
+                return Confirmation(
                     section: "Flights",
-                    title: flight.headline,
-                    detail: ItineraryFormat.flightWhen(flight, dates: dates),
-                    code: flight.confirmationCode
+                    symbolName: "airplane",
+                    title: flight.route.isEmpty ? flight.headline : flight.route,
+                    detail: ItineraryFormat.flightCardDetail(flight),
+                    contact: "",
+                    date: day.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated)),
+                    code: flight.confirmationCode,
+                    isFlight: true
                 )
             }
-        let bookings = BookingGroups.ordered(Array(trip.bookings ?? [])).flatMap { group in
+        let bookingCards = BookingGroups.ordered(bookings).flatMap { group in
             group.bookings.map { booking in
                 Confirmation(
                     section: group.kind.displayName,
+                    symbolName: group.kind.symbolName,
                     title: booking.title,
                     detail: ItineraryFormat.bookingDetail(booking),
-                    code: booking.code
+                    contact: booking.contactPhone,
+                    date: "",
+                    code: booking.code,
+                    isFlight: false
                 )
             }
         }
-        return flights + bookings
+        return flightCards + bookingCards
     }
 }
 
@@ -184,6 +227,11 @@ public enum ItineraryFormat {
         (dates.start..<dates.end.addingTimeInterval(1)).formatted(.interval.day().month(.abbreviated))
     }
 
+    /// "Saturday 6 – Sunday 14 June 2026", for the PDF's cover.
+    public static func longDateRange(_ dates: TripDates) -> String {
+        (dates.start..<dates.end.addingTimeInterval(1)).formatted(.interval.weekday(.wide).day().month(.wide).year())
+    }
+
     public static func time(_ date: Date) -> String {
         date.formatted(.dateTime.hour().minute())
     }
@@ -205,15 +253,29 @@ public enum ItineraryFormat {
         var parts: [String] = []
         let day = flight.departsAt ?? dates.date(forDay: flight.dayIndex)
         parts.append(day.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated)))
-        if let departs = flight.departsAt {
-            if let arrives = flight.arrivesAt {
-                parts.append("\(time(departs))–\(time(arrives))")
-            } else {
-                parts.append(time(departs))
-            }
-        }
+        if let times = times(flight) { parts.append(times) }
         if !flight.seat.isEmpty { parts.append("Seat \(flight.seat)") }
         return parts.joined(separator: " · ")
+    }
+
+    /// "BA 548 · 07:15–10:45 · Terminal 5 · Seat 14A" — under a flight card's
+    /// route, which already says where, while the card's own label says when.
+    public static func flightCardDetail(_ flight: SharedFlight) -> String {
+        var parts: [String] = []
+        // The designator only when the route took the title; without a route
+        // the title is already the headline, designator and all.
+        if !flight.route.isEmpty, !flight.designator.isEmpty { parts.append(flight.designator) }
+        if let times = times(flight) { parts.append(times) }
+        if !flight.terminal.isEmpty { parts.append("Terminal \(flight.terminal)") }
+        if !flight.seat.isEmpty { parts.append("Seat \(flight.seat)") }
+        return parts.joined(separator: " · ")
+    }
+
+    /// "18:40–20:25", "18:40", or nil with no departure time.
+    private static func times(_ flight: SharedFlight) -> String? {
+        guard let departs = flight.departsAt else { return nil }
+        guard let arrives = flight.arrivesAt else { return time(departs) }
+        return "\(time(departs))–\(time(arrives))"
     }
 
     /// "Rome · in Sat 6 · out Wed 10".
@@ -231,8 +293,16 @@ public enum ItineraryFormat {
         return parts.joined(separator: " · ")
     }
 
+    static func weather(_ day: DayWeather) -> ItineraryDocument.Weather {
+        ItineraryDocument.Weather(
+            symbolName: day.symbolName,
+            summary: day.summary,
+            temperatures: "\(WeatherFormat.temperature(day.highCelsius)) / \(WeatherFormat.temperature(day.lowCelsius))"
+        )
+    }
+
     static func line(for entry: DayPlan.Entry, in plan: DayPlan) -> ItineraryDocument.Line {
-        let time = plan.start(of: entry).map(time) ?? "—"
+        let time = plan.start(of: entry).map(time)
         switch entry {
         case .item(let item):
             let detail = [item.address, item.detail].filter { !$0.isEmpty }.joined(separator: " · ")
@@ -241,7 +311,8 @@ public enum ItineraryFormat {
                 duration: duration(minutes: item.durationMinutes),
                 title: item.title,
                 detail: detail,
-                symbolName: item.kind.symbolName
+                symbolName: item.kind.symbolName,
+                isFlight: false
             )
         case .flight(let flight):
             var detail: [String] = []
@@ -253,7 +324,8 @@ public enum ItineraryFormat {
                 duration: "",
                 title: flight.headline,
                 detail: detail.joined(separator: " · "),
-                symbolName: "airplane"
+                symbolName: "airplane",
+                isFlight: true
             )
         }
     }
