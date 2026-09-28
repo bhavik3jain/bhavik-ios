@@ -238,6 +238,16 @@ is `github.run_number + 100` (`BUILD_OFFSET`), passed only as `CURRENT_PROJECT_V
 archive command line; marketing version is hardcoded `"1.0"` in `project.yml`, and a tag name does
 not change it.
 
+`testflight.yml` also uploads the **Mac app to TestFlight** (job `mac`, Universal Purchase: same bundle id,
+same App Store Connect app, macOS platform added there). It can't development-sign a Mac archive: a
+Mac development profile only covers registered Macs, and signing manually without a profile is refused
+because CloudKit and push need one. So it archives with `CODE_SIGNING_ALLOWED=NO`, signs the app **ad hoc
+with `App-macOS.entitlements` resolved by hand** (unsigned, it would carry no entitlements and the export
+would ship it without its sandbox or CloudKit), and lets the `app-store-connect` export re-sign it through
+the API key. A new Mac entitlement therefore needs no workflow change, but a new `$(…)` variable in that
+file needs adding to the job's `sed`. The Mac App Store also needs `LSApplicationCategoryType` and a full
+Mac icon set (`mac-*.png` in `AppIcon`).
+
 `mac-release.yml` is the Mac equivalent, manual-only (`workflow_dispatch`), producing a notarized
 `.dmg` as a run artifact rather than shipping anywhere. **Cloud-managed signing does not cover
 Developer ID** — that was the first thing tried, and it fails with `Cloud signing permission error` /
