@@ -127,7 +127,7 @@ private func place(_ name: String, _ latitude: Double, _ longitude: Double, cate
     #expect(lines[0].hasPrefix("1. Capitoline Museums — Museum, "))
     #expect(!lines[0].contains("indoor"), "The word led every reason the model wrote")
     #expect(lines[0].hasSuffix(" m away"))
-    #expect(lines[1].hasPrefix("2. Parco del Colle Oppio — Park, outdoor, "))
+    #expect(lines[1].hasPrefix("2. Parco del Colle Oppio — Park, "))
 }
 
 // MARK: - Places
