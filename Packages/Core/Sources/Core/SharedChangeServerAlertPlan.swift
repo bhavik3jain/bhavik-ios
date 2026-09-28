@@ -211,6 +211,21 @@ public struct SharedChangeServerAlertInputs: Sendable, Equatable {
         self.participatingModuleIDs = participatingModuleIDs
         self.mutedModuleIDs = mutedModuleIDs
     }
+
+    /// Whether this user shares anything, either way round.
+    public var sharesAnything: Bool { !ownedZones.isEmpty || !participatingModuleIDs.isEmpty }
+
+    /// Whether a pass should ask for notification permission: the switch is
+    /// on, the question has never been put, and something is shared.
+    ///
+    /// Permission used to be asked only at the moment a share was made or
+    /// accepted. Shares older than this feature never saw that moment, so
+    /// their devices were never asked, and without permission iOS drops the
+    /// app's notifications and iCloud's alerts alike — a partner's fill-up
+    /// synced to the other phone with nothing said.
+    public func shouldAskForPermission(switchOn: Bool, neverAsked: Bool) -> Bool {
+        switchOn && neverAsked && sharesAnything
+    }
 }
 
 /// Which subscriptions to save and delete to bring the server in line.

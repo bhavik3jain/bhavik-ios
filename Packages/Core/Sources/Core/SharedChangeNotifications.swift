@@ -20,7 +20,8 @@ import UserNotifications
 public enum SharedChangeNotifications {
     /// The Settings toggle "Changes to shared items". On by default, but
     /// nothing is shown until the system permission has been granted, which
-    /// is only ever asked for when sharing starts or from that toggle.
+    /// is asked for when sharing starts, from that toggle, or by the first
+    /// iCloud-alert pass that finds something already shared.
     public static let enabledKey = "sharedChangeNotificationsEnabled"
 
     /// One per module, so a busy shared Finance household can be muted
@@ -79,6 +80,11 @@ public enum SharedChangeNotifications {
         case .authorized, .provisional, .ephemeral: true
         default: false
         }
+    }
+
+    /// Whether the permission question has never been put to the user.
+    public static func isUndetermined() async -> Bool {
+        await UNUserNotificationCenter.current().notificationSettings().authorizationStatus == .notDetermined
     }
 
     /// Whether the system permission was refused, so the Settings screen can

@@ -139,11 +139,16 @@ private func makeMonitor(
     let center = NotificationCenter()
     let monitor = CloudSyncMonitor(containerID: nil, nudge: {}, center: center)
     let posted = DispatchSemaphore(value: 0)
-    DispatchQueue.global().async {
+    // Its own thread, not `DispatchQueue.global()`: that pool is only as wide
+    // as the CPU count, and on a 3-core CI runner running every suite at once
+    // the post sometimes never got a thread within the bound. It failed main
+    // at two seconds and then this branch at ten, with the observer unchanged
+    // and correct, and never locally.
+    Thread {
         center.post(name: NSPersistentCloudKitContainer.eventChangedNotification, object: nil)
         posted.signal()
-    }
-    #expect(posted.wait(timeout: .now() + 2) == .success)
+    }.start()
+    #expect(posted.wait(timeout: .now() + 10) == .success)
     withExtendedLifetime(monitor) {}
 }
 
