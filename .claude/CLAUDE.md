@@ -177,6 +177,17 @@ the `WindowGroup`; the notification it used before switched every open window). 
 module's Home tab. Don't move this into Core — it's the two platforms genuinely wanting different
 navigation, and it belongs where the hub itself lives.
 
+- **A screen a Mac module pushes gets none of the module's environment.** Its
+  `navigationDestination` is hosted by the split view's own navigation, above the module's root, so
+  it saw the phone layout, the Mac's default form style and **Trips' `managedObjectContext`**: a
+  Finance month crashed on open fetching Finance entities from the Trips store. `HomeView` sets
+  `\.moduleLayout`, `.formStyle(.grouped)` and the selected tracker's context
+  (`macModuleContext`) on the `NavigationSplitView` itself. A module that injects anything else at
+  its root and pushes screens needs it added there too.
+- Mac-only modifiers in a module go through Core like the iOS ones: `tableRowBackgroundsPlain()`
+  (`alternatingRowBackgrounds` is macOS-only and broke the iOS build), `moduleSubtitle(_:)` (not
+  `navigationSubtitle`, iOS 26+), `readableWidthInSidebar()`. Editor sheets root in Core's
+  `SheetStack`, not `NavigationStack`: a bare Mac sheet takes its `Form`'s cramped ideal size.
 - Eighteen view files carry `import Core // Only reached on macOS, …`. The import looks unused on iOS;
   **deleting it breaks only the Mac build**, the last CI step. Keep the marker comment on new ones.
 - Never use `SafariView` directly — it doesn't exist on macOS. Go through `WebPage` +
@@ -216,6 +227,8 @@ model on a Mac without touching real iCloud data (it answers on the iOS 27 simul
 (`…/Multitrack.app/Contents/MacOS/Multitrack -TripAdvisorProbe YES -TripAdvisorProbeQuit YES`) and read stdout.
 `-MacOpenTracker <module>[/<section>]` (Mac, e.g. `fuel/trends`) opens a tracker at launch,
 navigation only: the one way to reach a tracker's Mac layout from a script without Accessibility access.
+`trips/next[/<face>]` opens the nearest trip not yet over; `-MacOpenFirstItem YES` then opens the first
+month, guide, order or Points account (screens only a double-click reaches), two seconds in.
 On the Mac a debug build reads your **real** iCloud data, so never pair it with a seeder there.
 
 ## CI and release — what README doesn't say
