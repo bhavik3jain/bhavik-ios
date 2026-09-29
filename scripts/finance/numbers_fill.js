@@ -42,6 +42,7 @@ function run(argv) {
   try {
     const tables = {};
     doc.sheets().forEach(sheet => sheet.tables().forEach(t => { tables[t.name()] = t; }));
+    const layouts = doc.sheets().map(measureSections);
     const priceRows = spec.priceTable ? fillLookup(tables, spec.priceTable) : {};
     spec.tables.forEach(ts => {
       const t = tables[ts.name];
@@ -53,6 +54,7 @@ function run(argv) {
         throw new Error(`'${ts.name}': ${e.message}`);
       }
     });
+    layouts.forEach(restoreSections);
     doc.save();
   } finally {
     doc.close({ saving: "no" });
@@ -83,6 +85,60 @@ function openDocument(path, opened) {
     delay(0.5);
   }
   throw new Error(`Numbers didn't open ${path} within two minutes`);
+}
+
+// Section spacing. A table that grows pushes down everything whose horizontal span overlaps it,
+// not just what sits under it. Gold + Silver, in the right-hand column of Assets, overlaps the
+// Liabilities heading and chart by a sliver, so its growth pushed the whole Liabilities section
+// ~800pt below the end of Assets. So the gap above each section is measured in the template before
+// filling and put back after. A section is a text box (the template's only text boxes are its
+// headings: Net Worth: Overview, Assets, Liabilities) and everything below it, up to the next one.
+const SECTION_KINDS = ["textItems", "tables", "charts", "shapes", "images", "groups"];
+
+function sheetItems(sheet) {
+  const items = [];
+  SECTION_KINDS.forEach(kind => {
+    let list = [];
+    try { list = sheet[kind](); } catch (e) { return; }
+    list.forEach((item, index) => {
+      const p = item.position();
+      items.push({ kind, index, x: p.x, y: p.y, height: item.height() });
+    });
+  });
+  return items;
+}
+
+function measureSections(sheet) {
+  const items = sheetItems(sheet);
+  const headings = items.filter(i => i.kind === "textItems").sort((a, b) => a.y - b.y);
+  const sections = headings.map((h, k) => {
+    const next = headings[k + 1];
+    const members = items.filter(i => i.y >= h.y && (!next || i.y < next.y));
+    const above = items.filter(i => i.y < h.y);
+    const gap = above.length ? h.y - Math.max(...above.map(i => i.y + i.height)) : null;
+    return { heading: h, members, gap };
+  });
+  return { sheet, sections };
+}
+
+function restoreSections(layout) {
+  const { sheet, sections } = layout;
+  const current = ({ kind, index }) => sheet[kind][index];
+  sections.forEach((section, k) => {
+    if (k === 0 || section.gap == null) return;
+    const above = sections.slice(0, k).flatMap(s => s.members).map(m => {
+      const item = current(m);
+      return item.position().y + item.height();
+    });
+    if (!above.length) return;
+    const delta = Math.max(...above) + section.gap - current(section.heading).position().y;
+    if (Math.abs(delta) < 1) return;
+    section.members.forEach(m => {
+      const item = current(m);
+      const p = item.position();
+      item.position = { x: p.x, y: p.y + delta };
+    });
+  });
 }
 
 function isGrouped(t) {
