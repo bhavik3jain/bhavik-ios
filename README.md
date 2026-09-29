@@ -312,7 +312,8 @@ The Mac app is the macOS platform of the same App Store Connect app as the iPhon
 Purchase: one bundle id), so it installs through **TestFlight**, like the phone: every TestFlight run
 uploads both (`testflight.yml`'s `mac` job). Install the TestFlight app from the Mac App Store, sign
 in, and install Multitrack. It's signed for **Production** CloudKit, the same real data as your
-phone, unlike a debug build run from Xcode, which always talks to Development.
+phone. A debug build run from Xcode is a separate app, "Multitrack Dev" (`com.bhavikjain.trackers.dev`),
+with its own local data, syncing only with iCloud's Development environment; see CLAUDE.md for why.
 
 No certificate is stored for it. The job archives unsigned, signs the app ad hoc with
 `App-macOS.entitlements` resolved by hand so the archive carries them, and the App Store export
