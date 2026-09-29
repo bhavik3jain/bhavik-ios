@@ -56,6 +56,19 @@ targets:
         INFOPLIST_KEY_UILaunchScreen_Generation: "YES"
         INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait
         TARGETED_DEVICE_FAMILY: "1"
+        APP_DISPLAY_NAME: Multitrack
+      configs:
+        # Debug is its own app. On the Mac, a Debug build with the release
+        # bundle id shared the TestFlight app's sandbox container, so the same
+        # Core Data stores, while syncing with iCloud's Development
+        # environment instead of Production. The first TestFlight build to
+        # open them crashed three times fetching shared changes: "Cannot
+        # replace assigned container ID <… environment=Sandbox> with
+        # <… environment=Production>". Same iCloud container, so Debug still
+        # syncs, with Development; its own keychain and key-value store.
+        Debug:
+          PRODUCT_BUNDLE_IDENTIFIER: com.bhavikjain.trackers.dev
+          APP_DISPLAY_NAME: Multitrack Dev
     dependencies: &appDependencies
       - package: Core
       - package: GymTracker
@@ -69,7 +82,7 @@ targets:
     info:
       path: App/Resources/Info.plist
       properties:
-        CFBundleDisplayName: Multitrack
+        CFBundleDisplayName: $(APP_DISPLAY_NAME)
         UILaunchScreen: {}
         UIBackgroundModes:
           - remote-notification
@@ -151,13 +164,20 @@ targets:
         # INFOPLIST_KEY_UILaunchScreen_Generation and
         # INFOPLIST_KEY_UISupportedInterfaceOrientations are iOS-only and make
         # the Mac build warn.
+        APP_DISPLAY_NAME: Multitrack
+      configs:
+        # See the iOS target: a Debug Mac build that shared the TestFlight
+        # app's container, stores and all, crashed it.
+        Debug:
+          PRODUCT_BUNDLE_IDENTIFIER: com.bhavikjain.trackers.dev
+          APP_DISPLAY_NAME: Multitrack Dev
     dependencies: *appDependencies
     info:
       # Its own plist: the iOS one carries launch-screen, background-mode and
       # file-sharing keys that mean nothing on the Mac.
       path: App/Resources/Info-macOS.plist
       properties:
-        CFBundleDisplayName: Multitrack
+        CFBundleDisplayName: $(APP_DISPLAY_NAME)
         # Required by the Mac App Store: an upload without a category fails
         # validation.
         LSApplicationCategoryType: public.app-category.productivity

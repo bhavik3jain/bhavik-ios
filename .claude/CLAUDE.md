@@ -229,7 +229,14 @@ model on a Mac without touching real iCloud data (it answers on the iOS 27 simul
 navigation only: the one way to reach a tracker's Mac layout from a script without Accessibility access.
 `trips/next[/<face>]` opens the nearest trip not yet over; `-MacOpenFirstItem YES` then opens the first
 month, guide, order or Points account (screens only a double-click reaches), two seconds in.
-On the Mac a debug build reads your **real** iCloud data, so never pair it with a seeder there.
+**Debug is its own app: `com.bhavikjain.trackers.dev`, "Multitrack Dev"** (`project.yml`, per-config). With
+the release bundle id, a Mac Debug build shared the TestFlight app's sandbox container, so the same
+Core Data stores, while syncing with iCloud **Development**; the first TestFlight build to open those
+stores crashed three times: "Cannot replace assigned container ID <… environment=Sandbox> with
+<… environment=Production>". Now Debug has its own container, keychain and key-value store, and syncs
+only with Development (same iCloud container), so it never sees or touches real data. Never give Debug
+the release bundle id back. The `.dev` App ID needs WeatherKit enabled in the developer portal like the
+release one, or Debug shows no weather.
 
 ## CI and release — what README doesn't say
 
