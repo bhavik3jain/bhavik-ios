@@ -219,17 +219,15 @@ private func makeMonitor(
 
     // No second nudge, and no waiting out the 5 s timeout for an import
     // nothing asked for: the one the first nudge caused already counts.
-    let clock = ContinuousClock()
-    let start = clock.now
+    // `.updated` is the proof — a refresh that waited for a fresh import
+    // would get none and end `.timedOut`. It used to time the call as well,
+    // and that wall-clock bound failed on starved CI runners at 1 s (PR #11)
+    // and again at 4 s (PR #28) though the refresh never waited at all.
     let second = await monitor.refresh()
     guard case .updated = second else {
         Issue.record("expected .updated, got \(second)")
         return
     }
-    // Well under the 5 s timeout rather than "fast": a 1 s bound failed on a
-    // starved CI runner (PR #11, the same run timed out collecting simulator
-    // diagnostics) though the refresh never waited on the timeout at all.
-    #expect(clock.now - start < .seconds(4))
     #expect(box.nudges == 1)
 }
 
