@@ -97,6 +97,12 @@ public final class SharingStatusCache {
     /// invalidate the view that's drawing.
     @ObservationIgnored private var checkedAt: [NSManagedObjectID: Date] = [:]
     @ObservationIgnored private var inFlight: Set<NSManagedObjectID> = []
+    /// The share each lookup found, kept for the Mac's share sheet: it can
+    /// show an existing share's link and people at once instead of waiting
+    /// its turn on the container's executor behind iCloud's own sync, which
+    /// is what made the Mac's Share buttons slow. The sheet still fetches a
+    /// fresh one and replaces this when it lands.
+    @ObservationIgnored private var shares: [NSManagedObjectID: CKShare] = [:]
 
     init() {}
 
@@ -107,6 +113,12 @@ public final class SharingStatusCache {
             lookUp(objectID, in: container)
         }
         return statuses[objectID] ?? .notShared
+    }
+
+    /// The share the last lookup found for `objectID`, if any. Possibly stale
+    /// by up to `maxAge`, or by a share made, changed or stopped since.
+    public func cachedShare(for objectID: NSManagedObjectID) -> CKShare? {
+        shares[objectID]
     }
 
     /// Forgets every answer, after a share was made, changed or stopped. The
@@ -153,6 +165,7 @@ public final class SharingStatusCache {
                 Task { @MainActor in
                     for (id, status) in statuses {
                         self.record(status, for: id)
+                        self.shares[id] = shares[id]
                     }
                 }
             }

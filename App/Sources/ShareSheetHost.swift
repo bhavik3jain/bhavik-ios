@@ -41,6 +41,15 @@ extension View {
             .showsShareAcceptOutcome()
     }
 
+    /// The Mac's: on the split view, without the accept-outcome alert, which
+    /// `HomeView` already shows on its root. On the module's content (as on
+    /// the phone) it missed every screen a module pushes — a guide, a past
+    /// trip — whose navigation the split view hosts: their Share buttons
+    /// called the do-nothing default.
+    func presentsShareSheetsWithoutOutcome() -> some View {
+        modifier(PresentsShareSheets())
+    }
+
     /// Says whether a tapped invitation was accepted. On the home screen and
     /// again inside each module, since an alert under a fullScreenCover can't
     /// show while the cover is up.
@@ -293,7 +302,15 @@ struct MacShareSheet: View {
                         }
                     }
                 } else if coordinator.isLoading {
-                    ProgressView("Preparing to share…")
+                    VStack(alignment: .leading, spacing: 6) {
+                        ProgressView("Creating the share in iCloud…")
+                        // Making a share uploads the whole item to a zone of
+                        // its own, so a first share takes seconds, not a
+                        // moment; say so rather than look stuck.
+                        Text("The first time, this uploads everything in it to iCloud and can take a little while.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                 }
             }
             .formStyle(.grouped)
@@ -404,6 +421,15 @@ private final class ShareCoordinator: ObservableObject {
         // form, since each waits synchronously on the container's executor
         // and hung the main thread on iOS — see CloudShareCalls.swift.
         let objectID = request.object.objectID
+        // An existing share's people and link at once, from the badge
+        // lookups' cache; the fetch below still replaces it with a fresh one.
+        // The lookup alone waits its turn on the container's executor behind
+        // iCloud's imports and exports, and on the Mac that was most of the
+        // time Share took.
+        if let cached = SharingStatusCache.shared.cachedShare(for: objectID), cached.url != nil {
+            share = cached
+            isLoading = false
+        }
         let existingShare: CKShare? = await withCheckedContinuation { continuation in
             request.container.fetchShareInBackground(for: objectID) { share in
                 continuation.resume(returning: share)

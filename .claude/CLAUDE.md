@@ -181,8 +181,10 @@ navigation, and it belongs where the hub itself lives.
   `navigationDestination` is hosted by the split view's own navigation, above the module's root, so
   it saw the phone layout, the Mac's default form style and **Trips' `managedObjectContext`**: a
   Finance month crashed on open fetching Finance entities from the Trips store. `HomeView` sets
-  `\.moduleLayout`, `.formStyle(.grouped)` and the selected tracker's context
-  (`macModuleContext`) on the `NavigationSplitView` itself. A module that injects anything else at
+  `\.moduleLayout`, `.formStyle(.grouped)`, the selected tracker's context
+  (`macModuleContext`) and the share-sheet host (`presentsShareSheetsWithoutOutcome()`; on the
+  detail column, a guide's and a past trip's Share buttons called the do-nothing default) on the
+  `NavigationSplitView` itself. A module that injects anything else at
   its root and pushes screens needs it added there too.
 - Mac-only modifiers in a module go through Core like the iOS ones: `tableRowBackgroundsPlain()`
   (`alternatingRowBackgrounds` is macOS-only and broke the iOS build), `moduleSubtitle(_:)` (not
