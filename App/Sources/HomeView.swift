@@ -254,7 +254,6 @@ struct HomeView: View {
                 // style System Settings uses, not the Mac's default two-column
                 // one, which laid the phone's forms out like a 2001 dialog.
                 .formStyle(.grouped)
-                .presentsShareSheets()
                 // A fresh identity per tracker, so switching trackers can't
                 // leave one module's navigation state bleeding into another's
                 // view — the same freshness a fullScreenCover's own dismissal
@@ -287,6 +286,9 @@ struct HomeView: View {
         .environment(\.moduleLayout, .sidebar)
         .environment(\.managedObjectContext, macModuleContext)
         .formStyle(.grouped)
+        // Share, for the same reason: on the detail column it never reached
+        // a pushed screen's Share button.
+        .presentsShareSheetsWithoutOutcome()
         // Menu-bar shortcuts (⌘0 for Overview, ⌘1 onward per visible tracker)
         // act on this window's selection, handed to BhavikApp's commands as
         // the focused scene's value. They used to go by a notification every
