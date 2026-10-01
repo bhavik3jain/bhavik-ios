@@ -214,7 +214,7 @@ logic into a value type and leave the view declarative.**
 
 Debug launch arguments, all `#if DEBUG`: `-InitializeCloudKitSchema YES`, plus
 the module seeders that are the only way to get a simulator into a state worth looking at —
-`-TVSeedShows` (needs a TMDB key, no-ops if any `Show` exists), `-FuelSeedCSV`, `-ParcelSeed`,
+`-TVSeedShows` (no-ops if any `Show` exists; with no TMDB key it makes one offline "Sample Show"), `-FuelSeedCSV`, `-ParcelSeed`,
 `-TripSeed`, `-ExploreSeed`, `-PointsSeed`, `-FinanceSeed` (each no-ops once its store has a record).
 (The Points seed, like the others behind `CloudKitImportGate`, waits up to 60 s on a simulator.) Seeders run from the module
 root view's `.task`, so nothing happens until the module is opened. `-WeatherStub YES` injects

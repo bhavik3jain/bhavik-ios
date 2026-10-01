@@ -17,8 +17,14 @@ public enum DebugSeed {
 
     @MainActor
     public static func run(context: ModelContext, apiKey: String) async {
-        guard !apiKey.isEmpty else { return }
         guard (try? context.fetchCount(FetchDescriptor<Show>())) == 0 else { return }
+        // With no key (a fresh simulator), a made-up show instead: the
+        // seeder used to do nothing at all, so the show screen couldn't be
+        // looked at without typing a key into the simulator first.
+        guard !apiKey.isEmpty else {
+            seedOffline(context: context)
+            return
+        }
 
         let client = TMDBClient(apiKey: apiKey)
 
@@ -65,6 +71,26 @@ public enum DebugSeed {
             )
         }
 
+        try? context.save()
+    }
+
+    /// Two seasons of eight, all aired, the first half watched; no TMDB ids,
+    /// so nothing tries to look them up.
+    @MainActor
+    private static func seedOffline(context: ModelContext) {
+        let show = Show(name: "Sample Show", overview: "A made-up show from the debug seeder, for when there's no TMDB key.")
+        context.insert(show)
+        let start = Calendar.current.date(byAdding: .day, value: -200, to: .now) ?? .now
+        for season in 1...2 {
+            for number in 1...8 {
+                let aired = Calendar.current.date(byAdding: .day, value: (season - 1) * 70 + number * 7, to: start)
+                let episode = Episode(name: "Episode \(number) of season \(season)", seasonNumber: season, episodeNumber: number, airDate: aired)
+                episode.show = show
+                context.insert(episode)
+                if season == 1, number <= 4 { episode.setWatched(true) }
+            }
+        }
+        show.refreshStatus()
         try? context.save()
     }
 }

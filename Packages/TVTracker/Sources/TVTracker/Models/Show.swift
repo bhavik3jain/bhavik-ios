@@ -75,6 +75,29 @@ public final class Show {
         }
     }
 
+    /// Every aired episode of `season` watched, or every one unwatched. An
+    /// episode that hasn't aired is left alone either way (it can't have been
+    /// watched yet), and one already watched keeps the date it was watched.
+    /// The show's status follows, as for a single episode.
+    public func setSeasonWatched(_ season: Int, _ watched: Bool, at date: Date = .now, asOf now: Date = .now) {
+        for episode in episodes ?? [] where episode.seasonNumber == season {
+            if watched {
+                if !episode.isWatched, episode.hasAired(asOf: now) { episode.setWatched(true, at: date) }
+            } else if episode.isWatched {
+                episode.setWatched(false)
+            }
+        }
+        refreshStatus()
+    }
+
+    /// Whether every aired episode of `season` is watched — what decides
+    /// between offering "Mark Season Watched" and "Mark Season Unwatched".
+    /// False for a season with nothing aired yet.
+    public func isSeasonWatched(_ season: Int, asOf now: Date = .now) -> Bool {
+        let aired = (episodes ?? []).filter { $0.seasonNumber == season && $0.hasAired(asOf: now) }
+        return !aired.isEmpty && aired.allSatisfy(\.isWatched)
+    }
+
     public var orderedEpisodes: [Episode] {
         Self.inRunningOrder(episodes ?? [])
     }

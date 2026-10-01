@@ -399,3 +399,87 @@ private func makeShow(
     #expect(!upNext.isEmpty)
     #expect(upNext.allSatisfy { $0.showName == "Active" })
 }
+
+// MARK: - Seasons
+
+@MainActor
+@Test func markingASeasonWatchedSkipsUnairedEpisodesAndOtherSeasons() throws {
+    let context = try makeContext()
+    let show = makeShow(in: context, name: "Severance", status: .notStarted, episodes: [
+        (1, 1, -30), (1, 2, -23), (1, 3, nil), (2, 1, -2), (2, 2, 5)
+    ])
+    try context.save()
+    let s1e1 = show.orderedEpisodes[0]
+    s1e1.setWatched(true, at: daysFromNow(-29))
+
+    show.setSeasonWatched(1, true, at: now, asOf: now)
+
+    let season1 = show.orderedEpisodes.filter { $0.seasonNumber == 1 }
+    #expect(season1.map(\.isWatched) == [true, true, false], "The undated episode hasn't aired")
+    #expect(s1e1.watchedAt == daysFromNow(-29), "An episode already watched keeps its date")
+    #expect(show.orderedEpisodes.filter { $0.seasonNumber == 2 }.allSatisfy { !$0.isWatched })
+    #expect(show.isSeasonWatched(1, asOf: now))
+    #expect(show.status == .watching)
+}
+
+@MainActor
+@Test func markingASeasonUnwatchedClearsItAndTheShowsStatusFollows() throws {
+    let context = try makeContext()
+    let show = makeShow(in: context, name: "Andor", status: .notStarted, episodes: [
+        (1, 1, -30), (1, 2, -23)
+    ])
+    try context.save()
+
+    show.setSeasonWatched(1, true, asOf: now)
+    #expect(show.status == .completed)
+
+    show.setSeasonWatched(1, false, asOf: now)
+    #expect(show.orderedEpisodes.allSatisfy { !$0.isWatched && $0.watchedAt == nil })
+    #expect(!show.isSeasonWatched(1, asOf: now))
+    #expect(show.status == .notStarted)
+}
+
+@MainActor
+@Test func aSeasonWithNothingAiredIsntWatched() throws {
+    let context = try makeContext()
+    let show = makeShow(in: context, name: "Upcoming", episodes: [(3, 1, 10), (3, 2, nil)])
+    try context.save()
+    #expect(!show.isSeasonWatched(3, asOf: now))
+}
+
+// MARK: - Episode details
+
+@Test func episodeDetailsReadTheCreditsOnceEach() throws {
+    let json = """
+    {
+      "name": "Hello, Ms. Cobel",
+      "overview": "Mark is promoted.",
+      "air_date": "2025-01-17",
+      "runtime": 52,
+      "still_path": "/still.jpg",
+      "vote_average": 8.4,
+      "vote_count": 120,
+      "crew": [
+        {"name": "Ben Stiller", "job": "Director"},
+        {"name": "Dan Erickson", "job": "Writer"},
+        {"name": "Dan Erickson", "job": "Story"},
+        {"name": "Mark Friedman", "job": "Teleplay"},
+        {"name": "Someone", "job": "Editor"}
+      ],
+      "guest_stars": [{"name": "Guest One", "character": "Ricken"}, {"name": "Guest Two"}]
+    }
+    """
+    let details = try TMDBClient.decodeEpisodeDetails(Data(json.utf8))
+    #expect(details.directors == ["Ben Stiller"])
+    #expect(details.writers == ["Dan Erickson", "Mark Friedman"])
+    #expect(details.guestStars.map(\.character) == ["Ricken", ""])
+    #expect(details.runtime == 52)
+    #expect(details.airDate == TMDBDate.parse("2025-01-17"))
+}
+
+@Test func episodeDetailsTolerateMissingFields() throws {
+    let details = try TMDBClient.decodeEpisodeDetails(Data(#"{"air_date": ""}"#.utf8))
+    #expect(details.name.isEmpty && details.overview.isEmpty && details.stillPath.isEmpty)
+    #expect(details.airDate == nil && details.runtime == 0)
+    #expect(details.directors.isEmpty && details.guestStars.isEmpty)
+}

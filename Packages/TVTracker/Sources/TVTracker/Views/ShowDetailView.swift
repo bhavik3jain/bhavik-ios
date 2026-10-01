@@ -64,10 +64,12 @@ struct ShowDetailView: View {
             }
 
             ForEach(seasons, id: \.season) { season, episodes in
-                Section("Season \(season)") {
+                Section {
                     ForEach(episodes) { episode in
                         EpisodeRow(episode: episode)
                     }
+                } header: {
+                    SeasonHeader(show: show, season: season, episodes: episodes)
                 }
             }
 
@@ -91,21 +93,64 @@ struct ShowDetailView: View {
     }
 }
 
+/// "Season 2", how far through it you are, and one button for the lot:
+/// ticking a season episode by episode was the only way.
+private struct SeasonHeader: View {
+    let show: Show
+    let season: Int
+    let episodes: [Episode]
+
+    var body: some View {
+        let watched = episodes.count(where: \.isWatched)
+        let isWatched = show.isSeasonWatched(season)
+        let hasAired = episodes.contains { $0.hasAired() }
+        HStack {
+            Text("Season \(season)")
+            Text("\(watched)/\(episodes.count)")
+                .monospacedDigit()
+                .foregroundStyle(.secondary)
+            Spacer()
+            if hasAired || watched > 0 {
+                Button(isWatched ? "Mark Unwatched" : "Mark Watched") {
+                    withAnimation { show.setSeasonWatched(season, !isWatched) }
+                }
+                .font(.caption.weight(.semibold))
+                .textCase(nil)
+                .buttonStyle(.borderless)
+                .tint(TVTrackerModule.accent.color)
+                .accessibilityLabel(isWatched ? "Mark Season \(season) Unwatched" : "Mark Season \(season) Watched")
+            }
+        }
+    }
+}
+
+/// The circle ticks the episode; the rest of the row opens it.
 private struct EpisodeRow: View {
     @Bindable var episode: Episode
 
     var body: some View {
-        Button {
-            episode.setWatched(!episode.isWatched)
-            // Ticking the first episode should stop the show claiming you
-            // haven't started it, and unticking the last should stop it
-            // claiming you finished.
-            episode.show?.refreshStatus()
-        } label: {
-            HStack(spacing: 10) {
+        HStack(spacing: 10) {
+            Button {
+                episode.setWatched(!episode.isWatched)
+                // Ticking the first episode should stop the show claiming you
+                // haven't started it, and unticking the last should stop it
+                // claiming you finished.
+                episode.show?.refreshStatus()
+            } label: {
                 Image(systemName: episode.isWatched ? "checkmark.circle.fill" : "circle")
+                    .font(.title3)
                     .foregroundStyle(episode.isWatched ? TVTrackerModule.accent.color : .secondary)
+                    .contentShape(Rectangle())
+            }
+            // Borderless, or the list makes the whole row the button and a
+            // tap anywhere ticks it instead of opening the episode.
+            .buttonStyle(.borderless)
+            .disabled(!episode.hasAired() && !episode.isWatched)
+            .accessibilityLabel(episode.isWatched ? "Mark \(episode.code) unwatched" : "Mark \(episode.code) watched")
 
+            NavigationLink {
+                EpisodeDetailView(episode: episode)
+            } label: {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("\(episode.code)\(episode.name.isEmpty ? "" : " · \(episode.name)")")
                         .foregroundStyle(.primary)
@@ -122,12 +167,8 @@ private struct EpisodeRow: View {
                             .foregroundStyle(.secondary)
                     }
                 }
-
-                Spacer()
             }
         }
-        .buttonStyle(.plain)
-        .disabled(!episode.hasAired() && !episode.isWatched)
         .opacity(episode.hasAired() || episode.isWatched ? 1 : 0.5)
     }
 }
