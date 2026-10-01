@@ -30,6 +30,30 @@ public struct TMDBMovieDetails: Sendable, Equatable {
     public let voteCount: Int
 }
 
+/// One episode's own page: what it's about, a still, who made it and who's
+/// in it. Read live each time, like a movie's details; none of it syncs.
+public struct TMDBEpisodeDetails: Sendable, Equatable {
+    public struct GuestStar: Sendable, Equatable, Identifiable {
+        public let name: String
+        public let character: String
+        public var id: String { name + "|" + character }
+    }
+
+    public let name: String
+    public let overview: String
+    public let airDate: Date?
+    /// Minutes; zero when TMDB doesn't know.
+    public let runtime: Int
+    /// A path under `TMDBClient.stillBaseURL`; empty when there's no still.
+    public let stillPath: String
+    /// TMDB's 0–10 audience score; zero when too few have voted.
+    public let rating: Double
+    public let voteCount: Int
+    public let directors: [String]
+    public let writers: [String]
+    public let guestStars: [GuestStar]
+}
+
 public struct TMDBEpisode: Sendable, Equatable {
     public let id: Int
     public let name: String
@@ -65,6 +89,8 @@ public enum TMDBError: LocalizedError {
 public struct TMDBClient: Sendable {
     public static let attribution = "This product uses the TMDB API but is not endorsed or certified by TMDB."
     public static let imageBaseURL = "https://image.tmdb.org/t/p/w342"
+    /// Wider than a poster: an episode still fills the width of its screen.
+    public static let stillBaseURL = "https://image.tmdb.org/t/p/w780"
 
     private let apiKey: String
     private let session: URLSession
@@ -157,6 +183,21 @@ public struct TMDBClient: Sendable {
             episodes.append(contentsOf: seasonDetail.episodes.map(\.episode))
         }
         return (detail.summary(id: id), episodes)
+    }
+
+    /// One episode's synopsis, still, runtime, rating, director, writers and
+    /// guest stars, for the episode screen.
+    public func episodeDetails(showID: Int, season: Int, episode: Int) async throws -> TMDBEpisodeDetails {
+        guard !apiKey.isEmpty else { throw TMDBError.missingAPIKey }
+        var components = URLComponents(string: "https://api.themoviedb.org/3/tv/\(showID)/season/\(season)/episode/\(episode)")!
+        components.queryItems = [URLQueryItem(name: "api_key", value: apiKey)]
+        let payload: EpisodeDetailResponse = try await get(components)
+        return payload.details
+    }
+
+    /// The episode payload's parsing on its own, for tests.
+    static func decodeEpisodeDetails(_ data: Data) throws -> TMDBEpisodeDetails {
+        try JSONDecoder().decode(EpisodeDetailResponse.self, from: data).details
     }
 
     private func get<T: Decodable>(_ components: URLComponents) async throws -> T {
@@ -308,6 +349,50 @@ private struct SeasonDetailResponse: Decodable {
                 airDate: TMDBDate.parse(air_date)
             )
         }
+    }
+}
+
+private struct EpisodeDetailResponse: Decodable {
+    let name: String?
+    let overview: String?
+    let air_date: String?
+    let runtime: Int?
+    let still_path: String?
+    let vote_average: Double?
+    let vote_count: Int?
+    let crew: [Crew]?
+    let guest_stars: [Guest]?
+
+    struct Crew: Decodable {
+        let name: String
+        let job: String?
+    }
+
+    struct Guest: Decodable {
+        let name: String
+        let character: String?
+    }
+
+    var details: TMDBEpisodeDetails {
+        let crew = crew ?? []
+        // Once each, in TMDB's order: a writer credited for both the story
+        // and the teleplay is still one writer.
+        func people(_ jobs: Set<String>) -> [String] {
+            var seen: Set<String> = []
+            return crew.filter { jobs.contains($0.job ?? "") }.map(\.name).filter { seen.insert($0).inserted }
+        }
+        return TMDBEpisodeDetails(
+            name: name ?? "",
+            overview: overview ?? "",
+            airDate: TMDBDate.parse(air_date),
+            runtime: runtime ?? 0,
+            stillPath: still_path ?? "",
+            rating: vote_average ?? 0,
+            voteCount: vote_count ?? 0,
+            directors: people(["Director"]),
+            writers: people(["Writer", "Teleplay", "Story", "Screenplay"]),
+            guestStars: (guest_stars ?? []).map { TMDBEpisodeDetails.GuestStar(name: $0.name, character: $0.character ?? "") }
+        )
     }
 }
 
