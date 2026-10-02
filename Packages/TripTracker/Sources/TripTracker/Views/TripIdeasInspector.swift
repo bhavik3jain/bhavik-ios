@@ -31,6 +31,12 @@ struct TripIdeasInspector: View {
     /// the plan clears it, cancelling a run still going.
     @State private var suggestionsDay: Int?
     @State private var suggestions: PlaceSuggester.Outcome?
+    /// The request field, as in the phone's Suggest Places sheet: what's
+    /// typed, what was submitted (nil for the usual lists), and the line
+    /// under it once a request has run. Only while the model can run.
+    @State private var askText = ""
+    @State private var ask: String?
+    @State private var askNote: String?
 
     init(trip: SharedTrip, day: Int, weather: [DayWeather], canEdit: Bool, present: @escaping (TripSheet) -> Void) {
         self.trip = trip
@@ -106,8 +112,12 @@ struct TripIdeasInspector: View {
         .onChange(of: day) {
             suggestionsDay = nil
             suggestions = nil
+            ask = nil
+            askNote = nil
         }
-        .task(id: suggestionsDay) {
+        // A request only counts while the model can run: turning the setting
+        // off with one showing goes back to the usual lists.
+        .task(id: SuggestionsRun(day: suggestionsDay, ask: advisor.availability(isEnabled: advisorEnabled) == .available ? ask : nil)) {
             await suggest()
         }
         .dropDestination(for: ItineraryItemDrag.self) { drags, _ in
@@ -124,6 +134,32 @@ struct TripIdeasInspector: View {
     private var suggestionsSection: some View {
         let availability = advisor.availability(isEnabled: advisorEnabled)
         caption("Suggestions")
+        if availability == .available {
+            HStack(spacing: 6) {
+                TextField(SuggestionsNote.askPlaceholder, text: $askText)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.system(size: 12))
+                    .onSubmit(submitAsk)
+                if ask != nil || !askText.isEmpty {
+                    Button {
+                        askText = ""
+                        ask = nil
+                        askNote = nil
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.borderless)
+                    .accessibilityLabel("Clear request")
+                    .help("Clear request")
+                }
+            }
+            if let askNote {
+                Text(askNote)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+            }
+        }
         if suggestionsDay == nil {
             Button {
                 suggestionsDay = day
@@ -221,11 +257,44 @@ struct TripIdeasInspector: View {
             .background(accent.opacity(0.12), in: RoundedRectangle(cornerRadius: 6))
     }
 
+    /// What a run depends on: changing either starts it again.
+    private struct SuggestionsRun: Hashable {
+        let day: Int?
+        let ask: String?
+    }
+
+    /// Submitting a request runs it straight away, no "Suggest Places" click
+    /// needed; an empty one goes back to the usual lists.
+    private func submitAsk() {
+        let trimmed = askText.trimmingCharacters(in: .whitespacesAndNewlines)
+        ask = trimmed.isEmpty ? nil : trimmed
+        if ask == nil {
+            askNote = nil
+        } else {
+            suggestionsDay = day
+        }
+    }
+
     private func suggest() async {
         guard let requested = suggestionsDay else { return }
         suggestions = nil
         let availability = advisor.availability(isEnabled: advisorEnabled)
         let byDay = TripForecast.byDay(weather, dates: trip.dates)
+        if availability == .available, let ask {
+            // Any failure is the usual lists with a line saying so.
+            let asked = await PlaceSuggester.suggest(
+                asking: ask, trip: trip, openDay: requested, weather: byDay, searcher: searcher, advisor: advisor
+            )
+            guard !Task.isCancelled, suggestionsDay == requested else { return }
+            if let asked {
+                askNote = asked.summary
+                suggestions = asked.outcome
+                return
+            }
+            askNote = SuggestionsNote.unreadableAsk
+        } else {
+            askNote = nil
+        }
         guard let request = SuggestionRequest(trip: trip, day: requested, weather: byDay) else {
             suggestions = PlaceSuggester.Outcome(sections: [])
             return

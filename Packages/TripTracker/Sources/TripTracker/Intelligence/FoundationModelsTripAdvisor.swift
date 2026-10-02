@@ -43,6 +43,17 @@ struct GeneratedPicks {
     var picks: [GeneratedPick]
 }
 
+@available(iOS 26.0, macOS 26.0, *)
+@Generable
+struct GeneratedAsk {
+    @Guide(description: "The number of a day the traveller names, such as 3 for Day 3 or the third day; 0 when they don't name one")
+    var day: Int
+    @Guide(description: "Numbers of the stops they want to be near, from the numbered stops; empty for the whole day", .maximumCount(4))
+    var stops: [Int]
+    @Guide(description: "The kind of place to search a map for, one or two plain words each, such as coffee, bookshop, rooftop bar or museum", .count(1...3))
+    var searches: [String]
+}
+
 // MARK: - The advisor
 
 /// Apple's on-device model, through Foundation Models. It only ranks and
@@ -77,6 +88,19 @@ public struct FoundationModelsTripAdvisor: TripAdvising {
         For each pick, say in one sentence under 20 words why it suits this traveller and day, \
         and give every pick a different reason — what the place is and what it adds — mentioning the weather for at most one. \
         Never invent opening hours, prices or facts about a place beyond its name and kind.
+        """
+
+    // Numbers and kinds only, never names: asked for searches, a model will
+    // happily write "Colosseum coffee" or "Rome museums", and Apple Maps
+    // treats every extra word as something the place must match.
+    static let askInstructions = """
+        You turn a traveller's request for places into a map search. Answer only with numbers from the lists you are given. \
+        Day: the number of a day they name; 0 when they say this day, today, or name no day. \
+        Stops: the numbers of stops they want to be near — for example the afternoon's stops when they say afternoon, \
+        or a stop they name; leave it empty to search around the whole day. \
+        Searches: what kind of place they want, as one to three plain search words of one or two words each, \
+        such as coffee, bakery, bookshop, rooftop bar, museum, viewpoint. \
+        Never put a city, a stop's name, a time or a description in a search.
         """
 
     public init() {}
@@ -144,6 +168,16 @@ public struct FoundationModelsTripAdvisor: TripAdvising {
             options: GenerationOptions(temperature: 0.3)
         ).content
         return picks.picks.map { PlacePick(number: $0.number, why: $0.why) }
+    }
+
+    public func readAsk(_ ask: SuggestionAsk) async throws -> AskReading {
+        let session = LanguageModelSession(instructions: Instructions(Self.askInstructions))
+        let reading = try await session.respond(
+            to: Prompt(ask.prompt),
+            generating: GeneratedAsk.self,
+            options: GenerationOptions(temperature: 0)
+        ).content
+        return AskReading(day: reading.day, stops: reading.stops, searches: reading.searches)
     }
 
     // MARK: - Fitting the context

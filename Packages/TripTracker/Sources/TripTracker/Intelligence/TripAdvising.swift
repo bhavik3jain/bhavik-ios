@@ -104,6 +104,11 @@ public protocol TripAdvising: Sendable {
     /// `context` is `SuggestionRequest.context`: the destination, the day, its
     /// weather and what's already on it.
     func pickPlaces(candidates: SuggestionCandidates, context: String) async throws -> [PlacePick]
+
+    /// What a typed Suggest Places request means — which day, which stops,
+    /// what kind of place — as numbers from `ask`'s lists and a few search
+    /// words. `SuggestionAsk.resolve` checks all of it.
+    func readAsk(_ ask: SuggestionAsk) async throws -> AskReading
 }
 
 public extension TripAdvising {
@@ -131,6 +136,10 @@ public struct UnavailableTripAdvisor: TripAdvising {
     }
 
     public func pickPlaces(candidates: SuggestionCandidates, context: String) async throws -> [PlacePick] {
+        throw TripAdvisorError.unavailable(availability)
+    }
+
+    public func readAsk(_ ask: SuggestionAsk) async throws -> AskReading {
         throw TripAdvisorError.unavailable(availability)
     }
 }
