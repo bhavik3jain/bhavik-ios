@@ -25,7 +25,17 @@ private func makeHousehold() -> SharedFinanceHousehold {
     let container = makeContainer()
     let context = container.viewContext
     objc_setAssociatedObject(context, &associatedContainerKey, container, .OBJC_ASSOCIATION_RETAIN)
-    return FinanceHouseholdResolver.forWriting(in: context, container: container)
+    let household = FinanceHouseholdResolver.forWriting(in: context, container: container)
+    addPeople(to: household)
+    return household
+}
+
+/// The people the tests use. A real household starts with none.
+@MainActor
+func addPeople(to household: SharedFinanceHousehold) {
+    for (name, kind) in [("Bhavik", OwnerKind.person), ("Saloni", .person), ("Joint", .joint)] {
+        _ = SharedFinanceOwner(name: name, kind: kind, household: household)
+    }
 }
 
 @MainActor
@@ -464,14 +474,12 @@ private func makeSeptember() throws -> (household: SharedFinanceHousehold, month
 // MARK: - Households
 
 @MainActor
-@Test func aNewHouseholdStartsWithTheDefaultOwners() throws {
+@Test func aNewHouseholdIsThisDevicesOwnAndFoundAgain() throws {
     let container = makeContainer()
     let context = container.viewContext
     let first = FinanceHouseholdResolver.forWriting(in: context, container: container)
     try context.save()
 
-    #expect(first.sortedOwners.map(\.name) == ["Bhavik", "Saloni", "Joint"])
-    #expect(first.sortedOwners.last?.kind == .joint)
     #expect(FinanceHouseholdResolver.forWriting(in: context, container: container) == first)
     #expect(first.objectID.persistentStore == container.privatePersistentStore, "A new household is this device's own")
     #expect(FinanceHouseholdResolver.forDisplay(among: [first], container: container) == first)
@@ -733,4 +741,11 @@ private func makeSeptember() throws -> (household: SharedFinanceHousehold, month
     #expect(breakdown[0].expenses == [SpendingTotal(name: "Other", total: 100)])
     #expect(breakdown[2].share == 0)
     #expect(SpendingSummary.transactions(all, inCategory: "Groceries").count == 3)
+}
+
+@MainActor
+@Test func aNewHouseholdStartsWithNoPeople() throws {
+    let container = makeContainer()
+    let household = FinanceHouseholdResolver.forWriting(in: container.viewContext, container: container)
+    #expect((household.owners ?? []).isEmpty, "Nobody else's names in someone's new household")
 }

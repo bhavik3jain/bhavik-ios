@@ -6,6 +6,10 @@ struct ShowDetailView: View {
     @Bindable var show: Show
     @Environment(\.modelContext) private var modelContext
     @State private var showingAddEpisode = false
+    /// Seasons opened or closed by hand on this visit. Unset, a season is
+    /// open until every aired episode is watched, then closed: a show many
+    /// seasons in was a long scroll past seasons long finished.
+    @State private var expansion: [Int: Bool] = [:]
 
     private var seasons: [(season: Int, episodes: [Episode])] {
         Dictionary(grouping: show.orderedEpisodes, by: \.seasonNumber)
@@ -64,12 +68,17 @@ struct ShowDetailView: View {
             }
 
             ForEach(seasons, id: \.season) { season, episodes in
-                Section {
+                let expanded = isExpanded(season)
+                Section(isExpanded: expanded) {
                     ForEach(episodes) { episode in
                         EpisodeRow(episode: episode)
                     }
                 } header: {
-                    SeasonHeader(show: show, season: season, episodes: episodes)
+                    SeasonHeader(show: show, season: season, episodes: episodes, isExpanded: expanded) { watched in
+                        // Marking a season watched folds it away; unmarking
+                        // opens it again.
+                        expansion[season] = !watched
+                    }
                 }
             }
 
@@ -91,6 +100,13 @@ struct ShowDetailView: View {
             AddEpisodeView(show: show)
         }
     }
+
+    private func isExpanded(_ season: Int) -> Binding<Bool> {
+        Binding(
+            get: { expansion[season] ?? !show.isSeasonWatched(season) },
+            set: { expansion[season] = $0 }
+        )
+    }
 }
 
 /// "Season 2", how far through it you are, and one button for the lot:
@@ -99,20 +115,43 @@ private struct SeasonHeader: View {
     let show: Show
     let season: Int
     let episodes: [Episode]
+    @Binding var isExpanded: Bool
+    /// Called with the season's new watched state after the button marks it.
+    let didMark: (Bool) -> Void
 
     var body: some View {
         let watched = episodes.count(where: \.isWatched)
         let isWatched = show.isSeasonWatched(season)
         let hasAired = episodes.contains { $0.hasAired() }
         HStack {
-            Text("Season \(season)")
+            // The chevron and title fold the season. Built here rather than
+            // left to the list: only the sidebar list style draws a disclosure
+            // control for a collapsible section, and the show's list isn't one.
+            Button {
+                withAnimation { isExpanded.toggle() }
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.semibold))
+                        .rotationEffect(.degrees(isExpanded ? 90 : 0))
+                    Text("Season \(season)")
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.borderless)
+            .foregroundStyle(.secondary)
+            .accessibilityLabel("Season \(season)")
+            .accessibilityValue(isExpanded ? "Expanded" : "Collapsed")
             Text("\(watched)/\(episodes.count)")
                 .monospacedDigit()
                 .foregroundStyle(.secondary)
             Spacer()
             if hasAired || watched > 0 {
                 Button(isWatched ? "Mark Unwatched" : "Mark Watched") {
-                    withAnimation { show.setSeasonWatched(season, !isWatched) }
+                    withAnimation {
+                        show.setSeasonWatched(season, !isWatched)
+                        didMark(!isWatched)
+                    }
                 }
                 .font(.caption.weight(.semibold))
                 .textCase(nil)
