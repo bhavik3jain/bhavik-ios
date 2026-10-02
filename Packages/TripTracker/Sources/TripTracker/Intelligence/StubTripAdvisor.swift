@@ -58,6 +58,15 @@ public struct StubTripAdvisor: TripAdvising {
         if delay > .zero { try? await Task.sleep(for: delay) }
         return candidates.candidates.prefix(PlaceSuggester.suggestionCount).map { PlacePick(number: $0.number, why: "Stub pick: \($0.place.name) fits the day.") }
     }
+
+    /// No day named, no stops, and the request's last word as the one search:
+    /// "find me some coffee" searches "coffee" around the open day.
+    public func readAsk(_ ask: SuggestionAsk) async throws -> AskReading {
+        if let failure { throw failure }
+        if delay > .zero { try? await Task.sleep(for: delay) }
+        let last = ask.text.split(whereSeparator: { !$0.isLetter }).last.map(String.init) ?? ""
+        return AskReading(day: 0, stops: [], searches: [last])
+    }
 }
 
 /// Made-up places around wherever it's asked, the same every time: for each

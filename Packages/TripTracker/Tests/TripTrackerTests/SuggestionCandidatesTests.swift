@@ -156,7 +156,7 @@ private func place(_ name: String, _ latitude: Double, _ longitude: Double, cate
     #expect(SuggestionRequest.queries(for: .sights, kinds: [.food], isWet: false) == ["landmark", "park", "viewpoint"])
     #expect(SuggestionRequest.queries(for: .sights, kinds: [.sight, .activity], isWet: false) == ["viewpoint", "museum", "landmark"])
     #expect(SuggestionRequest.queries(for: .sights, kinds: [], isWet: false, isWholeTrip: true) == ["landmark", "museum", "park"])
-    for group in SuggestionGroup.allCases {
+    for group in SuggestionGroup.standard {
         for query in SuggestionRequest.queries(for: group, kinds: [], isWet: true) {
             #expect(query.split(separator: " ").count <= 2, "Long queries return nothing from MapKit")
         }
@@ -273,6 +273,7 @@ private struct WildGuesser: TripAdvising {
     func pickPlaces(candidates: SuggestionCandidates, context: String) async throws -> [PlacePick] {
         [PlacePick(number: 40, why: "Made up"), PlacePick(number: -1, why: "Also made up")]
     }
+    func readAsk(_ ask: SuggestionAsk) async throws -> AskReading { AskReading(day: 99, stops: [-3], searches: ["???"]) }
 }
 
 @Test func picksThatArentOnTheListFallBackToTheNearest() async {

@@ -162,9 +162,20 @@ public struct SuggestionCandidates: Sendable, Equatable {
 /// somewhere to go. One list of three mixed the two and ran out fast — a
 /// restaurant crowded out the only sight, and the traveller asked for "more
 /// options, broken up by food and places to check out".
-public enum SuggestionGroup: String, CaseIterable, Sendable, Identifiable {
+///
+/// Plus `asked`: the one list a typed request gets (`SuggestionAsk`) in their
+/// place. "Bookshops" belongs on neither of the other two, and a café found
+/// for "coffee" shouldn't sit under a heading the person never asked for.
+public enum SuggestionGroup: String, Sendable, Identifiable {
     case food
     case sights
+    case asked
+
+    /// The lists an ordinary run fills, in the order they're shown.
+    public static let standard: [SuggestionGroup] = [.food, .sights]
+    /// Every list in the order a run fills and shows them: what a place is
+    /// found for first goes on the earlier list only.
+    static let order: [SuggestionGroup] = [.asked, .food, .sights]
 
     public var id: String { rawValue }
 
@@ -172,6 +183,7 @@ public enum SuggestionGroup: String, CaseIterable, Sendable, Identifiable {
         switch self {
         case .food: "Food & Drink"
         case .sights: "Places to Check Out"
+        case .asked: "For Your Request"
         }
     }
 
@@ -179,6 +191,7 @@ public enum SuggestionGroup: String, CaseIterable, Sendable, Identifiable {
         switch self {
         case .food: "fork.knife"
         case .sights: "binoculars"
+        case .asked: "sparkle.magnifyingglass"
         }
     }
 
@@ -187,6 +200,7 @@ public enum SuggestionGroup: String, CaseIterable, Sendable, Identifiable {
         switch self {
         case .food: "Pick places to eat or drink."
         case .sights: "Pick sights and things to do, not places to eat."
+        case .asked: "Pick the places that best match what the traveller asked for."
         }
     }
 
@@ -198,6 +212,7 @@ public enum SuggestionGroup: String, CaseIterable, Sendable, Identifiable {
         switch self {
         case .food: place.kind != .sight && place.kind != .activity
         case .sights: place.kind != .food
+        case .asked: true
         }
     }
 }
@@ -210,7 +225,7 @@ public struct SuggestionRequest: Sendable, Equatable {
     /// per list per suggestion run, never per keystroke — MapKit throttles
     /// (`MKError.loadingThrottled`), and six a run is well inside it.
     public static let maximumSearchesPerGroup = 3
-    public static var maximumSearches: Int { maximumSearchesPerGroup * SuggestionGroup.allCases.count }
+    public static var maximumSearches: Int { maximumSearchesPerGroup * SuggestionGroup.standard.count }
     /// Around one day's stops: a walk or a short ride from what's planned.
     public static let dayRadiusMetres = 2_500.0
     /// Around the destination when there's no day to centre on.
@@ -222,8 +237,10 @@ public struct SuggestionRequest: Sendable, Equatable {
     public let radiusMetres: Double
     /// One or two plain words each, at most `maximumSearchesPerGroup` a list.
     public let queriesByGroup: [SuggestionGroup: [String]]
+    /// The lists this run fills, in `SuggestionGroup.order`.
+    public var groups: [SuggestionGroup] { SuggestionGroup.order.filter { !(queriesByGroup[$0] ?? []).isEmpty } }
     /// Every search, food first.
-    public var queries: [String] { SuggestionGroup.allCases.flatMap { queriesByGroup[$0] ?? [] } }
+    public var queries: [String] { groups.flatMap { queriesByGroup[$0] ?? [] } }
     /// What the model is told: destination, day, forecast, what's planned.
     public let context: String
     public let taken: [TakenPlace]
@@ -290,7 +307,7 @@ public struct SuggestionRequest: Sendable, Equatable {
             dayIndex: dayIndex,
             center: center,
             radiusMetres: dayCenter == nil ? Self.tripRadiusMetres : Self.dayRadiusMetres,
-            queries: Dictionary(uniqueKeysWithValues: SuggestionGroup.allCases.map { group in
+            queries: Dictionary(uniqueKeysWithValues: SuggestionGroup.standard.map { group in
                 (group, Self.queries(for: group, kinds: stops.map(\.kind), isWet: isWet, isWholeTrip: dayIndex == nil))
             }),
             context: context.joined(separator: " "),
@@ -305,6 +322,9 @@ public struct SuggestionRequest: Sendable, Equatable {
     public static func queries(for group: SuggestionGroup, kinds: [ItemKind], isWet: Bool, isWholeTrip: Bool = false) -> [String] {
         var queries: [String]
         switch group {
+        case .asked:
+            // Only ever what the person asked for — `SuggestionAsk` sets them.
+            return []
         case .food:
             queries = isWet ? ["restaurant", "cafe", "bakery"] : ["restaurant", "cafe", "bakery", "bar"]
         case .sights:
@@ -366,7 +386,7 @@ public enum PlaceSuggester {
     ) async -> Outcome {
         // Every search at once, each remembered with its list and order.
         let found = await withTaskGroup(of: (SuggestionGroup, Int, [FoundPlace]).self) { tasks in
-            for group in SuggestionGroup.allCases {
+            for group in request.groups {
                 for (index, query) in (request.queriesByGroup[group] ?? []).enumerated() {
                     tasks.addTask {
                         // A failed search is just no results for that word;
@@ -385,9 +405,10 @@ public enum PlaceSuggester {
         // took is "taken" for the other.
         var taken = request.taken
         var lists: [(SuggestionGroup, SuggestionCandidates)] = []
-        for group in SuggestionGroup.allCases {
+        let rank = { (group: SuggestionGroup) in SuggestionGroup.order.firstIndex(of: group) ?? 0 }
+        for group in request.groups {
             let places = found
-                .sorted { $0.0 == $1.0 ? $0.1 < $1.1 : $0.0 == .food }
+                .sorted { $0.0 == $1.0 ? $0.1 < $1.1 : rank($0.0) < rank($1.0) }
                 .flatMap(\.2)
                 .filter(group.admits)
             let candidates = SuggestionCandidates(
@@ -411,7 +432,7 @@ public enum PlaceSuggester {
             for await section in tasks { sections.append(section) }
             return sections
         }
-        return Outcome(sections: SuggestionGroup.allCases.compactMap { group in sections.first { $0.group == group } })
+        return Outcome(sections: request.groups.compactMap { group in sections.first { $0.group == group } })
     }
 
     private static func section(

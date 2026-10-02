@@ -176,6 +176,32 @@ public enum TripAdvisorProbe {
             }
         }
 
+        say("")
+        say("== A typed request, looking at Day 1 ==")
+        let asked = "coffee near where I'll be in the afternoon"
+        if let ask = SuggestionAsk(text: asked, trip: trip, openDay: 0) {
+            say("request: \(asked)")
+            let leakedAsk = secrets.filter(ask.prompt.contains)
+            say("secrets in the prompt: \(leakedAsk.isEmpty ? "none" : leakedAsk.joined(separator: ", "))")
+            do {
+                let reading = try await advisor.readAsk(ask)
+                say("read as: day \(reading.day), stops \(reading.stops), searches \(reading.searches)")
+                if let resolved = ask.resolve(reading, trip: trip, weather: weather, locale: locale) {
+                    say(resolved.summary)
+                    let askOutcome = await PlaceSuggester.suggest(for: resolved.request, searcher: searcher, advisor: advisor)
+                    for suggestion in askOutcome.suggestions {
+                        let distance = suggestion.metres.map { "\(Int($0)) m" } ?? "?"
+                        say("- \(suggestion.place.name) [\(suggestion.place.category ?? "no category"), \(distance)]")
+                        if suggestion.isModelPick { say("    why: \(suggestion.why)") }
+                    }
+                } else {
+                    say("nothing usable in that reading — the sheet would show the usual lists")
+                }
+            } catch {
+                say("reading failed: \(error) — the sheet would show the usual lists")
+            }
+        }
+
         if let first = outcome.suggestions.first {
             let idea = SharedItineraryItem.add(first, to: trip, in: context)
             let ideaOrders = trip.ideas.filter { $0 !== idea }.map(\.sortOrder)

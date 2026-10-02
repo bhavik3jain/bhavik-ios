@@ -135,6 +135,13 @@ public enum SuggestionsNote {
         }
     }
 
+    /// The request field's placeholder. Short enough to fit a phone's sheet
+    /// whole: a longer one ended "…like coffee this after…".
+    public static let askPlaceholder = "Try “coffee this afternoon”"
+
+    /// Under the field when a request couldn't become a search.
+    public static let unreadableAsk = "Apple Intelligence couldn't turn that into a search, so these are the usual suggestions. Try naming a kind of place, like coffee or bookshops."
+
     /// While the searches run — and the model reads, when it will.
     public static func progress(availability: TripAdvisorAvailability) -> String {
         availability == .available ? "Finding places and picking the best…" : "Finding places…"
