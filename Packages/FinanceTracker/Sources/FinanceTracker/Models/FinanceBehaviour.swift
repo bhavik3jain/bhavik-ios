@@ -6,20 +6,6 @@ import Foundation
 public extension SharedFinanceHousehold {
     var id: NSManagedObjectID { objectID }
 
-    /// The people every new household starts with. Names are editable and
-    /// owners can be added or removed; these are just a start.
-    static let defaultOwners: [(name: String, kind: OwnerKind)] = [
-        ("Bhavik", .person),
-        ("Saloni", .person),
-        ("Joint", .joint),
-    ]
-
-    func addDefaultOwners() {
-        for (name, kind) in Self.defaultOwners {
-            _ = SharedFinanceOwner(name: name, kind: kind, household: self)
-        }
-    }
-
     var sortedOwners: [SharedFinanceOwner] {
         (owners ?? []).sorted(by: SharedFinanceOwner.displayOrder)
     }

@@ -38,7 +38,7 @@ private func household(
     let household = SharedFinanceHousehold(context: context, name: name)
     context.assign(household, to: store)
     household.createdAt = createdAt
-    household.addDefaultOwners()
+    addPeople(to: household)
     return household
 }
 
@@ -69,6 +69,7 @@ private func count<T: NSManagedObject>(_ type: T.Type, in context: NSManagedObje
 
     // This device's household, with September typed in.
     let mine = FinanceHouseholdResolver.forWriting(in: context, container: container)
+    addPeople(to: mine)
     let checking = SharedFinanceAccount(institution: "Bank", name: "Checking", category: .cash, household: mine, owner: try owner("Bhavik", in: mine))
     let mySeptember = SharedFinanceMonth(period: september, household: mine)
     mySeptember.setBalance(100, for: checking)
@@ -123,6 +124,7 @@ private func count<T: NSManagedObject>(_ type: T.Type, in context: NSManagedObje
     let context = container.viewContext
     let privateStore = try #require(container.privatePersistentStore)
     let mine = FinanceHouseholdResolver.forWriting(in: context, container: container)
+    addPeople(to: mine)
     let theirs = household("Household", in: context, store: privateStore, createdAt: mine.createdAt.addingTimeInterval(60))
     for household in [mine, theirs] {
         for name in ["Bhavik", "Saloni"] {
@@ -163,6 +165,7 @@ private func count<T: NSManagedObject>(_ type: T.Type, in context: NSManagedObje
     let container = makeContainer()
     let context = container.viewContext
     let household = FinanceHouseholdResolver.forWriting(in: context, container: container)
+    addPeople(to: household)
     let checking = SharedFinanceAccount(institution: "Bank", name: "Checking", category: .cash, household: household)
     let savings = SharedFinanceAccount(institution: "Bank", name: "Savings", category: .cash, household: household)
 
@@ -205,6 +208,7 @@ private func count<T: NSManagedObject>(_ type: T.Type, in context: NSManagedObje
     let container = makeContainer()
     let context = container.viewContext
     let household = FinanceHouseholdResolver.forWriting(in: context, container: container)
+    addPeople(to: household)
     let checking = SharedFinanceAccount(institution: "Bank", name: "Checking", category: .cash, household: household)
     let month = SharedFinanceMonth(period: september, household: household)
     // What arrives when the kept month's own balance syncs in after a fold
@@ -241,6 +245,8 @@ private func count<T: NSManagedObject>(_ type: T.Type, in context: NSManagedObje
     let shared = try sharedStore(of: container)
 
     let mine = FinanceHouseholdResolver.forWriting(in: context, container: container)
+
+    addPeople(to: mine)
     let myJoint = try owner("Joint", in: mine)
     let myChecking = SharedFinanceAccount(institution: "Bank", name: "Checking", category: .cash, household: mine, owner: myJoint)
     let myBrokerage = SharedFinanceAccount(institution: "Broker", name: "Taxable", category: .investments, household: mine, owner: try owner("Bhavik", in: mine))
@@ -316,6 +322,8 @@ private func count<T: NSManagedObject>(_ type: T.Type, in context: NSManagedObje
     let shared = try sharedStore(of: container)
 
     let mine = FinanceHouseholdResolver.forWriting(in: context, container: container)
+
+    addPeople(to: mine)
     try context.save()
     #expect(FinanceHouseholdResolver.mergeOffer(among: [mine], privateStore: privateStore, canEdit: { _ in true }) == nil, "No share")
 
@@ -343,6 +351,8 @@ private func count<T: NSManagedObject>(_ type: T.Type, in context: NSManagedObje
     let shared = try sharedStore(of: container)
 
     let mine = FinanceHouseholdResolver.forWriting(in: context, container: container)
+
+    addPeople(to: mine)
     let myOctober = SharedFinanceMonth(period: october, household: mine)
     let partners = household("Household", in: context, store: shared, createdAt: mine.createdAt.addingTimeInterval(60))
     let theirSeptember = SharedFinanceMonth(period: september, household: partners)
@@ -466,6 +476,7 @@ private func count<T: NSManagedObject>(_ type: T.Type, in context: NSManagedObje
     let container = makeContainer()
     let context = container.viewContext
     let household = FinanceHouseholdResolver.forWriting(in: context, container: container)
+    addPeople(to: household)
     let base = Date(timeIntervalSince1970: 1_780_000_000)
     // Inserted newest first, so the set's order can't be what decides.
     let newer = SharedFinanceMonth(period: september, household: household)

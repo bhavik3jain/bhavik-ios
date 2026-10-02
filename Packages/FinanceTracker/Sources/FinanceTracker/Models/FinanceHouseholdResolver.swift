@@ -149,7 +149,12 @@ public enum FinanceHouseholdResolver {
             context.assign(household, to: privateStore)
         }
         try? context.obtainPermanentIDs(for: [household])
-        household.addDefaultOwners()
+        // No people to start with: whoever this is adds their own under
+        // Holdings. It used to add "Bhavik", "Saloni" and "Joint" to every
+        // new household, so anyone else starting Finance got this family's
+        // names — and a placeholder like "Me" would be no better, since
+        // merging a household into a partner's matches people by name
+        // (FinanceFold), and two "Me"s are two people.
         return household
     }
 }
