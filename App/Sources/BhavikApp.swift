@@ -254,6 +254,9 @@ struct BhavikApp: App {
                 moduleName: module.accent.name,
                 describe: describe
             )
+            // Keeps the app alive after a save until it's uploaded, so a
+            // partner hears about it even if the app is left at once.
+            CloudExportKeeper.start(container: container, moduleID: module.rawValue)
         }
         SharedChangeServerAlerts.shared.configure(
             containerID: cloudContainerID,

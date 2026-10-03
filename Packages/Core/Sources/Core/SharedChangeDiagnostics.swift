@@ -34,6 +34,11 @@ public struct SharedChangeLogEntry: Codable, Equatable, Sendable, Identifiable {
         case test
         /// Notified, but as "Someone": who made the change couldn't be named.
         case unnamed
+        /// A save still wasn't uploaded when `CloudExportKeeper` stopped
+        /// holding the app open for it.
+        case uploadSlow
+        /// iCloud refused an upload.
+        case uploadFailed
     }
 
     public let id: UUID
@@ -66,6 +71,8 @@ public struct SharedChangeLogEntry: Codable, Equatable, Sendable, Identifiable {
         case .onScreen: "Not shown: \(detail) was on screen"
         case .test: "Test notification: \(detail)"
         case .unnamed: "Said \u{201C}Someone\u{201D}: \(detail)"
+        case .uploadSlow: "Upload not finished \(detail) after a save — it goes when the app is next open"
+        case .uploadFailed: "Upload to iCloud failed: \(detail)"
         }
     }
 }
@@ -104,6 +111,28 @@ public enum SharedChangeActivityLog {
 
     static func noteImport(moduleID: String, at date: Date = .now, defaults: UserDefaults = .standard) {
         defaults.set(date, forKey: "sharedChangeLastImport.\(moduleID)")
+    }
+
+    /// When `moduleID`'s store last finished an upload to iCloud, and the
+    /// error if the latest attempt failed after it.
+    public static func lastExport(moduleID: String, defaults: UserDefaults = .standard) -> (date: Date?, failure: (date: Date, error: String)?) {
+        let date = defaults.object(forKey: "sharedChangeLastExport.\(moduleID)") as? Date
+        var failure: (Date, String)?
+        if let failedAt = defaults.object(forKey: "sharedChangeLastExportFailure.\(moduleID).date") as? Date,
+           let error = defaults.string(forKey: "sharedChangeLastExportFailure.\(moduleID).error"),
+           failedAt > (date ?? .distantPast) {
+            failure = (failedAt, error)
+        }
+        return (date, failure)
+    }
+
+    static func noteExport(moduleID: String, at date: Date = .now, defaults: UserDefaults = .standard) {
+        defaults.set(date, forKey: "sharedChangeLastExport.\(moduleID)")
+    }
+
+    static func noteExportFailure(moduleID: String, error: String, at date: Date = .now, defaults: UserDefaults = .standard) {
+        defaults.set(date, forKey: "sharedChangeLastExportFailure.\(moduleID).date")
+        defaults.set(error, forKey: "sharedChangeLastExportFailure.\(moduleID).error")
     }
 
     /// The last time iCloud's alert subscriptions were brought in line, and
