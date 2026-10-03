@@ -164,8 +164,13 @@ fails to sync until the schema is deployed. The ritual:
    `-InitializeCloudKitSchema YES`. The app opens a status screen instead of itself, sends every
    model's record type to the **Development** environment, and lists them when it's done. It never
    opens the app's real database, so it's safe on a phone holding real data.
+   On the Mac, `scripts/cloudkit/init-schema.sh` does this step in one go — it builds the Mac app,
+   signs it with the Mac's own development certificate and profile (no Apple ID in Xcode needed),
+   runs it, and prints the record types. Either way the Mac or device must be signed in to iCloud.
 2. In the CloudKit Console's **Development** environment, confirm the record types are there
-3. Hit **Deploy Schema Changes** to promote them to Production
+3. Hit **Deploy Schema Changes** to promote them to Production — **before** any TestFlight build that
+   uses the new type or field ships. Production refuses records with fields it doesn't know, so
+   until then those records don't sync. This step is Console-only: there's no API for it.
 4. Remove the launch argument
 
 There are no records to create or clean up: it uses Core Data's `initializeCloudKitSchema()` on a
@@ -237,6 +242,7 @@ All debug-only, and inert unless passed (Product → Scheme → Edit Scheme → 
 | Argument | What it does |
 | --- | --- |
 | `-InitializeCloudKitSchema YES` | The schema ritual above — opens a status screen, not the app |
+| `-InMemoryStores YES` | The whole app on empty in-memory stores with no iCloud — for looking at an unsigned Mac build; add a seeder to fill it |
 | `-TVSeedShows YES` | Adds sample shows, looked up on TMDB (needs a key; does nothing if any show exists) |
 | `-FuelSeedCSV YES` | Imports a sample Fuelly export |
 | `-ParcelSeed YES` | Adds sample orders |

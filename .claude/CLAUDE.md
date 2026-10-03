@@ -222,7 +222,8 @@ logic into a value type and leave the view declarative.**
 - `#expect(throws: SomeError.someCase)` needs the error type `Equatable`. `CarrierError` is;
   `TMDBError` is not, which is why TV tests can only assert `.self`.
 
-Debug launch arguments, all `#if DEBUG`: `-InitializeCloudKitSchema YES`, plus
+Debug launch arguments, all `#if DEBUG`: `-InitializeCloudKitSchema YES`, `-InMemoryStores YES`
+(the whole app on in-memory stores, no CloudKit — see *Working on this Mac* below), plus
 the module seeders that are the only way to get a simulator into a state worth looking at —
 `-TVSeedShows` (no-ops if any `Show` exists; with no TMDB key it makes one offline "Sample Show"), `-FuelSeedCSV`, `-ParcelSeed`,
 `-TripSeed`, `-ExploreSeed`, `-PointsSeed`, `-FinanceSeed` (each no-ops once its store has a record).
@@ -249,6 +250,46 @@ stores crashed three times: "Cannot replace assigned container ID <… environme
 only with Development (same iCloud container), so it never sees or touches real data. Never give Debug
 the release bundle id back. The `.dev` App ID needs WeatherKit enabled in the developer portal like the
 release one, or Debug shows no weather.
+
+## Working on this Mac — what cost an afternoon (October 2026)
+
+- **Xcode has no Apple ID signed in here, and the simulator isn't signed in to iCloud.** So
+  `xcodebuild` can't sign the Mac app ("No Accounts" / "No profiles for
+  'com.bhavikjain.trackers.dev'") — not with `-allowProvisioningUpdates`, not outside the sandbox.
+  Nothing that needs iCloud (sharing, notifications from a partner, iCloud alerts) can be
+  exercised on the simulator: the Notification Status page there says nothing is shared.
+- **Schema ritual: `scripts/cloudkit/init-schema.sh`.** The Mac still has an Apple Development
+  certificate and a Mac development profile — for the *release* app ID only. Xcode refuses that
+  profile under manual signing ("is Xcode managed, but signing settings require a manually managed
+  profile"), so the script builds with `CODE_SIGNING_ALLOWED=NO` and signs by hand with resolved
+  entitlements plus `application-identifier`/`team-identifier`. The release ID is safe for *this*
+  launch only (in-memory stores; the "never give Debug the release bundle id" rule is about normal
+  launches). Two traps it handles: with the release ID the run inherited the TestFlight app's saved
+  window state and opened **no window**, so the initializer (which runs from the window) never
+  started — `-ApplePersistenceIgnoreState YES` fixes it; and `print` to a file is buffered until
+  exit — `NSUnbufferedIO=YES`. **Deploy Schema Changes to Production is Console-only** (no API;
+  `cktool` only imports into Development), and GitHub runners can't sign in to iCloud, so neither
+  half can be a workflow. Never run TestFlight for a schema change before that deploy.
+- **Looking at the Mac UI without signing:** build `bhavik-macOS` with `CODE_SIGNING_ALLOWED=NO`,
+  `codesign --force --deep -s -` it, and run the binary directly with
+  `-InMemoryStores YES -FinanceSeed YES -MacOpenTracker finance/months -MacOpenFirstItem YES`.
+  Its windows belong to `com.bhavikjain.trackers.dev`. The TestFlight Mac app
+  (`/Applications/Multitrack.app`, `com.bhavikjain.trackers`) is usually running too — never drive
+  it; with a release-ID build both answer to the same bundle id, so find the window by PID.
+  Accessibility-injected Return types `"\n"` rather than pressing the key, so it can't confirm
+  `onSubmit` focus moves.
+- **Package tests:** `swift test` fails at CodeSign of the `.xctest` in this checkout. Run
+  `xcodebuild test -scheme <Package> -destination 'platform=iOS Simulator,id=<UDID>'` from the
+  package folder; README's `iPhone 17 Pro` doesn't exist here — take a booted one from
+  `xcrun simctl list devices available | grep Booted`.
+- **After switching branches, `xcodegen generate`** — the generated project still lists the other
+  branch's files ("Build input file cannot be found").
+- **Simulator driving:** screenshots lag a second or two behind a tap, so wait before deciding a tap
+  missed; scrolling minimises the tab bar to one floating button, so scroll back up before tapping
+  a tab. Opening Finance asks for notification permission (the monthly reminder).
+- **Merging:** auto-merge is disabled on the repo. Check `gh pr view N --json statusCheckRollup`,
+  then `gh pr merge N --merge` (merge commits, as the history has), then
+  `gh workflow run TestFlight --ref main`.
 
 ## CI and release — what README doesn't say
 
