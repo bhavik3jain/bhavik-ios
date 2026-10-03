@@ -144,8 +144,9 @@ public enum SpendingSummary {
     }
 
     /// Categories for the chips: those already used, most-used first, then
-    /// the suggestions not yet used.
-    public static func knownCategories(_ transactions: [SharedFinanceTransaction]) -> [String] {
+    /// `added` (the month's own, from its Budget list) and the suggestions
+    /// not yet used.
+    public static func knownCategories(_ transactions: [SharedFinanceTransaction], added: [String] = []) -> [String] {
         var counts: [String: Int] = [:]
         var names: [String: String] = [:]
         for transaction in transactions {
@@ -158,7 +159,11 @@ public enum SpendingSummary {
         let used = counts
             .sorted { $0.value != $1.value ? $0.value > $1.value : $0.key < $1.key }
             .compactMap { names[$0.key] }
-        let rest = suggestedCategories.filter { counts[key($0)] == nil }
+        var seen = Set(counts.keys)
+        let rest = (added + suggestedCategories).filter { name in
+            let categoryKey = key(name)
+            return !categoryKey.isEmpty && seen.insert(categoryKey).inserted
+        }
         return used + rest
     }
 

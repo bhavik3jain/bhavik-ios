@@ -120,6 +120,16 @@ private func table(_ name: String, in spec: FinanceNumbersSpec) throws -> Financ
             "An empty table's blank row clears the group column last")
 }
 
+@Test func aCategoryWithNoBudgetHasNoRowInTheSheet() throws {
+    var month = document()
+    month.budgets = [
+        FinanceMonthDocument.BudgetEntry(category: "Food", limit: 600),
+        FinanceMonthDocument.BudgetEntry(category: "Gifts", limit: SharedFinanceBudget.noLimit),
+    ]
+    let spec = FinanceNumbersSpec(document: month, outputPath: "/tmp/x.numbers")
+    #expect(try table("Budget", in: spec).rows == [[.init(1, "keep", .number(600)), .init(0, "text", .text("Food"))]])
+}
+
 @Test func theNumbersSpecKeepsTheSheetsFormulas() throws {
     let spec = FinanceNumbersSpec(document: document(), outputPath: "/tmp/x.numbers")
 

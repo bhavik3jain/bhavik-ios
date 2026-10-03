@@ -45,7 +45,11 @@ struct TransactionEditorView: View {
     var body: some View {
         let snapshot = data.snapshot
         let cards = SpendingSummary.paymentAccountsByRecentUse(snapshot.paymentAccounts)
-        let categories = SpendingSummary.knownCategories(snapshot.transactions)
+        let month = snapshot.household?.month(for: YearMonth(containing: date)) ?? snapshot.latestMonth
+        let categories = SpendingSummary.knownCategories(
+            snapshot.transactions,
+            added: month?.sortedBudgets.map(\.category) ?? []
+        )
         SheetStack {
             Form {
                 Section {
