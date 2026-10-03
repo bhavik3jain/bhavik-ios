@@ -52,6 +52,11 @@ public extension FinanceTrackerModule {
             let category = budget.category.trimmingCharacters(in: .whitespacesAndNewlines)
             let budgetName = category.isEmpty ? "budget" : "\(category) budget"
             let month = budget.month?.period.map { " for \($0.title)" } ?? ""
+            if !budget.hasLimit {
+                // A category kept with no budget (`SharedFinanceBudget.noLimit`).
+                let name = category.isEmpty ? "a category" : category
+                return description(household, inserted ? "added \(name)\(month)" : "took the budget off \(name)\(month)")
+            }
             return description(household, inserted ? "set the \(budgetName)\(month)" : "changed the \(budgetName)\(month)")
 
         case let item as SharedFinanceMetalItem:

@@ -543,6 +543,66 @@ private func makeSeptember() throws -> (household: SharedFinanceHousehold, month
     #expect(BudgetLine(category: "x", limit: 100, spent: 100).state(pace: 1) == .onTrack, "Exactly on budget at month end")
 }
 
+@MainActor
+@Test func everyCategoryInTheMonthIsOnTheBudgetScreen() throws {
+    let household = makeHousehold()
+    let card = SharedFinanceAccount(institution: "Chase", name: "Card", category: .card, household: household)
+    let month = SharedFinanceMonth(period: september, household: household)
+    month.setBudget(600, for: "Food")
+    month.setBudget(nil, for: "Gifts")         // Kept with no budget.
+    month.setBudget(nil, for: "Parking")       // No budget, nothing spent.
+
+    func spend(_ cost: Double, on category: String) {
+        let transaction = SharedFinanceTransaction(date: day(2026, 9, 3), cost: cost, merchant: "M", household: household, card: card)
+        transaction.category = category
+    }
+    spend(100, on: "Food")
+    spend(80, on: "gifts")
+    spend(40, on: "Clothes")                    // Never added anywhere.
+    spend(5, on: " ")                           // No category typed.
+
+    let status = BudgetStatus(month: month, asOf: FinanceCalendar.date(2026, 9, 16))
+    #expect(status.lines.map(\.category) == ["Food"], "Only categories with a limit are budget lines")
+    #expect(status.unbudgetedLines == [
+        UnbudgetedLine(category: "Gifts", spent: 80),
+        UnbudgetedLine(category: "Clothes", spent: 40),
+        UnbudgetedLine(category: SpendingSummary.uncategorised, spent: 5, isUncategorised: true),
+        UnbudgetedLine(category: "Parking", spent: 0),
+    ], "Kept and spent-on categories alike, biggest spend first")
+    #expect(status.unbudgeted == 125)
+    #expect(status.totalLimit == 600, "No budget never adds to the limit")
+    #expect(status.totalSpent == 100)
+    #expect(status.overallState == .onTrack, "80 spent on a no-budget category never reads as over")
+}
+
+@MainActor
+@Test func settingABudgetAddsOrChangesTheMonthsCategory() throws {
+    let household = makeHousehold()
+    let month = SharedFinanceMonth(period: september, household: household)
+
+    let food = try #require(month.setBudget(600, for: " Food "))
+    #expect(food.category == "Food")
+    #expect(food.hasLimit)
+    #expect(month.setBudget(nil, for: "food") === food, "Matched the way budgets are")
+    #expect(food.limit == SharedFinanceBudget.noLimit)
+    #expect(!food.hasLimit)
+    month.setBudget(250, for: "FOOD")
+    #expect(food.limit == 250)
+    #expect(month.setBudget(-40, for: "Travel")?.limit == 0, "A typed limit is never the no-budget sentinel")
+    #expect(month.setBudget(100, for: "  ") == nil)
+    #expect(month.sortedBudgets.map(\.category) == ["Food", "Travel"])
+}
+
+@MainActor
+@Test func aCategoryWithNoBudgetCarriesIntoTheNextMonth() throws {
+    let household = makeHousehold()
+    let month = SharedFinanceMonth(period: september, household: household)
+    month.setBudget(nil, for: "Gifts")
+    let october = try #require(MonthRollover.startMonth(after: month))
+    let gifts = try #require(october.budget(for: "Gifts"))
+    #expect(!gifts.hasLimit)
+}
+
 // MARK: - Spending
 
 @MainActor
@@ -566,6 +626,9 @@ private func makeSeptember() throws -> (household: SharedFinanceHousehold, month
     #expect(days.count == 3)
     #expect(days.first?.total == 55, "Newest day first")
     #expect(SpendingSummary.knownCategories(transactions).prefix(2) == ["Food", "Travel"], "Most used first")
+    let known = SpendingSummary.knownCategories(transactions, added: ["Gifts", "food", "Health"])
+    #expect(Array(known.prefix(3)) == ["Food", "Travel", "Gifts"], "The month's own categories follow those used")
+    #expect(known.filter { SpendingSummary.key($0) == "health" }.count == 1, "A suggestion isn't offered twice")
 }
 
 // MARK: - Home

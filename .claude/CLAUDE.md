@@ -85,6 +85,13 @@ iterates days (`clampPlanToDates()`, `ItineraryReschedule`, day grouping) must s
 drags ideas onto Day 1 — which is exactly what builds from before ideas still do whenever they save a
 trip, and that syncs to every sharer.
 
+**Finance's "No budget" is a sentinel too.** A category kept with no budget is a `SharedFinanceBudget`
+with `limit == SharedFinanceBudget.noLimit` (`-1`); `hasLimit` treats any negative limit that way.
+`BudgetStatus` lists those, and every category spent on without a budget, as `unbudgetedLines`, never
+as budget lines; the Numbers export (Swift spec **and** `export_numbers.py`) leaves them out of the
+Budget table. Anything that sums or compares budget limits must skip negatives. Builds from before
+it read the sentinel as a -$1 budget, always over.
+
 **Adding a @Model.** Write it under `Packages/<Module>/Sources/<Module>/Models/`; add it to that
 module's `models` array — the **only** registration point, and a type left out compiles and runs,
 then fails the moment anything queries it. Then the Console ritual (README → Data and sync): launch a

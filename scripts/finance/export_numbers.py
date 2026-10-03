@@ -149,7 +149,10 @@ def build_spec(document: dict, output: str, troy_fix: bool = False) -> dict:
     tables.append(_table(fn.TRANSACTION_TABLE, 3, rows, 8, group_col=7))
 
     rows = [[[1, "keep", money(b["limit"])], [0, "text", b["category"]]]
-            for b in document.get("budgets", [])]
+            for b in document.get("budgets", [])
+            # A category kept with no budget (a negative limit) has no row:
+            # the sheet would read it as a budget of -$1.
+            if (b.get("limit") or 0) >= 0]
     if rows:  # the user's sheet has no Budget table yet; fill one only if the template has it
         tables.append(_table(fn.BUDGET_TABLE, 0, rows, 2, optional=True))
 

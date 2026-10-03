@@ -25,9 +25,7 @@ struct SpendingView: View {
     @State private var cardFilter: SharedFinanceAccount?
     @State private var editing: SharedFinanceTransaction?
     @State private var adding = false
-    @State private var editingBudgets = false
-    @State private var addingBudget = false
-    @State private var newBudgetCategory = ""
+    @State private var categoryEditor: CategoryBudgetEditorView.Target?
 
     var body: some View {
         let snapshot = data.snapshot
@@ -58,22 +56,7 @@ struct SpendingView: View {
                 }
                 if isEditable {
                     ToolbarItem(placement: .primaryAction) {
-                        switch mode {
-                        case .transactions, .categories:
-                            Button {
-                                adding = true
-                            } label: {
-                                Image(systemName: "plus")
-                            }
-                            .accessibilityLabel("Add Transaction")
-                            .disabled(snapshot.paymentAccounts.isEmpty)
-                        case .budget:
-                            Button(editingBudgets ? "Done" : "Edit") {
-                                if editingBudgets { try? context.saveIfNeeded() }
-                                editingBudgets.toggle()
-                            }
-                            .disabled(snapshot.household?.month(for: period) == nil)
-                        }
+                        addButton(snapshot, month: snapshot.household?.month(for: period))
                     }
                 }
             }
@@ -83,12 +66,50 @@ struct SpendingView: View {
             .sheet(item: $editing) { transaction in
                 TransactionEditorView(transaction: transaction, defaultDate: transaction.date)
             }
-            .textPrompt("Add Budget", isPresented: $addingBudget, text: $newBudgetCategory, prompt: "Category") {
-                addBudget(in: snapshot.household?.month(for: period))
+            .sheet(item: $categoryEditor) { target in
+                CategoryBudgetEditorView(target: target)
             }
             .onChange(of: snapshot.paymentAccounts) { _, accounts in
                 if let cardFilter, !accounts.contains(cardFilter) { self.cardFilter = nil }
             }
+        }
+    }
+
+    /// Transactions adds a transaction, Budget a category, and Categories
+    /// offers both.
+    @ViewBuilder
+    private func addButton(_ snapshot: FinanceSnapshot, month: SharedFinanceMonth?) -> some View {
+        let addTransaction = Button("Add Transaction", systemImage: "creditcard") { adding = true }
+            .disabled(snapshot.paymentAccounts.isEmpty)
+        let addCategory = Button("Add Category", systemImage: "tag") {
+            if let month { categoryEditor = .init(month: month, category: nil) }
+        }
+        .disabled(month == nil)
+        switch mode {
+        case .transactions:
+            Button {
+                adding = true
+            } label: {
+                Image(systemName: "plus")
+            }
+            .accessibilityLabel("Add Transaction")
+            .disabled(snapshot.paymentAccounts.isEmpty)
+        case .categories:
+            Menu {
+                addTransaction
+                addCategory
+            } label: {
+                Image(systemName: "plus")
+            }
+            .accessibilityLabel("Add")
+        case .budget:
+            Button {
+                if let month { categoryEditor = .init(month: month, category: nil) }
+            } label: {
+                Image(systemName: "plus")
+            }
+            .accessibilityLabel("Add Category")
+            .disabled(month == nil)
         }
     }
 
@@ -112,7 +133,7 @@ struct SpendingView: View {
             case .transactions:
                 transactionSections(snapshot, period: period, isEditable: isEditable)
             case .categories:
-                categorySections(snapshot, period: period)
+                categorySections(snapshot, period: period, isEditable: isEditable)
             case .budget:
                 budgetSections(snapshot, period: period, isEditable: isEditable)
             }
@@ -156,7 +177,7 @@ struct SpendingView: View {
     // MARK: - Categories
 
     @ViewBuilder
-    private func categorySections(_ snapshot: FinanceSnapshot, period: YearMonth) -> some View {
+    private func categorySections(_ snapshot: FinanceSnapshot, period: YearMonth, isEditable: Bool) -> some View {
         let monthTransactions = SpendingSummary.transactions(snapshot.transactions, in: period)
         let shown = cardFilter.map { card in monthTransactions.filter { $0.card == card } } ?? monthTransactions
         if Self.filterAccounts(snapshot, period: period).count > 1 {
@@ -165,6 +186,29 @@ struct SpendingView: View {
             }
         }
         CategoryBreakdownSections(transactions: shown, periodTitle: period.title)
+
+        // The month's own categories with nothing spent yet: otherwise one
+        // just added here would appear nowhere on this screen.
+        if cardFilter == nil, let month = snapshot.household?.month(for: period) {
+            let spentKeys = Set(monthTransactions.map { SpendingSummary.key($0.category) })
+            let unspent = month.sortedBudgets.filter { !spentKeys.contains(SpendingSummary.key($0.category)) }
+            if !unspent.isEmpty {
+                Section("Nothing spent yet") {
+                    ForEach(unspent) { budget in
+                        Button {
+                            if isEditable { categoryEditor = .init(month: month, category: budget.category) }
+                        } label: {
+                            LabeledContent(budget.category) {
+                                Text(budget.hasLimit ? "\(FinanceFormat.money(budget.limit)) budget" : "No budget")
+                                    .monospacedDigit()
+                            }
+                            .contentShape(Rectangle())
+                        }
+                        .tint(.primary)
+                    }
+                }
+            }
+        }
     }
 
     /// The Mac's transactions: a table, with the card filter in the toolbar
@@ -291,37 +335,43 @@ struct SpendingView: View {
                 .padding(.vertical, 4)
             }
 
-            Section {
-                if status.lines.isEmpty {
-                    Text("No budgets for \(period.monthName). Tap Edit to add one.")
+            if status.lines.isEmpty, status.unbudgetedLines.isEmpty {
+                Section {
+                    Text(isEditable
+                         ? "No categories in \(period.monthName) yet. Tap + to add one, or add a transaction."
+                         : "No categories in \(period.monthName) yet.")
                         .foregroundStyle(.secondary)
                 }
-                ForEach(status.lines) { line in
-                    if editingBudgets, let budget = month.budget(for: line.category) {
-                        BudgetLimitRow(budget: budget) { try? context.saveIfNeeded() }
-                    } else {
-                        BudgetLineRow(line: line, state: status.state(of: line), pace: status.pace)
-                    }
-                }
-                .onDelete { offsets in
-                    guard isEditable, editingBudgets else { return }
-                    for index in offsets {
-                        if let budget = month.budget(for: status.lines[index].category) {
-                            context.delete(budget)
+            }
+
+            if !status.lines.isEmpty {
+                Section {
+                    ForEach(status.lines) { line in
+                        budgetRow(month: month, category: line.category, isEditable: isEditable) {
+                            BudgetLineRow(line: line, state: status.state(of: line), pace: status.pace)
                         }
                     }
-                    try? context.saveIfNeeded()
+                } header: {
+                    Text("Budgeted")
+                } footer: {
+                    Text("The line on each bar is how far through \(period.monthName) we are. Budgets carry into the next month when it's started.")
                 }
-                if editingBudgets {
-                    Button("Add Budget", systemImage: "plus") {
-                        newBudgetCategory = ""
-                        addingBudget = true
+            }
+
+            if !status.unbudgetedLines.isEmpty {
+                Section {
+                    ForEach(status.unbudgetedLines) { line in
+                        budgetRow(month: month, category: line.isUncategorised ? nil : line.category, isEditable: isEditable) {
+                            UnbudgetedLineRow(line: line)
+                        }
+                    }
+                } header: {
+                    Text("No budget")
+                } footer: {
+                    if isEditable {
+                        Text("Tap a category to give it a budget.")
                     }
                 }
-            } header: {
-                Text("By category")
-            } footer: {
-                Text("The line on each bar is how far through \(period.monthName) we are. Budgets carry into the next month when it's started.")
             }
         } else {
             Section {
@@ -331,11 +381,32 @@ struct SpendingView: View {
         }
     }
 
-    private func addBudget(in month: SharedFinanceMonth?) {
-        let category = newBudgetCategory.trimmingCharacters(in: .whitespaces)
-        guard let month, !category.isEmpty, month.budget(for: category) == nil else { return }
-        _ = SharedFinanceBudget(category: category, limit: 0, month: month)
-        try? context.saveIfNeeded()
+    /// A Budget line that opens its category's editor, with a swipe to take
+    /// the category off the month. `category` is nil for "Other", which no
+    /// budget can match.
+    @ViewBuilder
+    private func budgetRow(
+        month: SharedFinanceMonth,
+        category: String?,
+        isEditable: Bool,
+        @ViewBuilder label: () -> some View
+    ) -> some View {
+        let budget = category.flatMap { month.budget(for: $0) }
+        Button {
+            if isEditable, let category { categoryEditor = .init(month: month, category: category) }
+        } label: {
+            label()
+                .contentShape(Rectangle())
+        }
+        .tint(.primary)
+        .swipeActions(edge: .trailing) {
+            if isEditable, let budget {
+                Button("Remove", systemImage: "trash", role: .destructive) {
+                    context.delete(budget)
+                    try? context.saveIfNeeded()
+                }
+            }
+        }
     }
 
     // MARK: - Month
@@ -486,17 +557,22 @@ private struct BudgetLineRow: View {
     }
 }
 
-private struct BudgetLimitRow: View {
-    @ObservedObject var budget: SharedFinanceBudget
-    let save: () -> Void
+/// A category with no budget: what's gone on it, in grey — never a bar
+/// that can turn orange.
+private struct UnbudgetedLineRow: View {
+    let line: UnbudgetedLine
 
     var body: some View {
-        HStack {
-            Text(budget.category)
+        HStack(alignment: .firstTextBaseline) {
+            Text(line.category)
+                .fontWeight(.semibold)
             Spacer()
-            AmountField(title: "Limit", value: budget.limit, commit: { budget.limit = $0 }, endEditing: save)
-                .frame(maxWidth: 140)
+            Text(line.spent == 0 ? "Nothing spent" : "\(FinanceFormat.money(line.spent)) spent")
+                .font(.subheadline)
+                .monospacedDigit()
+                .foregroundStyle(.secondary)
         }
+        .padding(.vertical, 2)
     }
 }
 

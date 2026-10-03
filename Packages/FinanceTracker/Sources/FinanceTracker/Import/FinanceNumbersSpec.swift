@@ -175,7 +175,9 @@ public struct FinanceNumbersSpec: Encodable, Equatable, Sendable {
         }
         tables.append(Self.table(Self.transactionTable, tokenCol: 3, rows: transactionRows, width: 8, groupCol: 7))
 
-        let budgetRows = document.budgets.map { budget in
+        // A category kept with no budget (a negative limit) has no row:
+        // the sheet would read it as a budget of -$1.
+        let budgetRows = document.budgets.filter { $0.limit >= 0 }.map { budget in
             [Op(1, "keep", .number(Self.money(budget.limit))), Op(0, "text", .text(budget.category))]
         }
         if !budgetRows.isEmpty {

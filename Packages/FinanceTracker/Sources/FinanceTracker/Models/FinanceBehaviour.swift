@@ -196,6 +196,21 @@ public extension SharedFinanceMonth {
         return (budgets ?? []).first { SpendingSummary.key($0.category) == key }
     }
 
+    /// Adds `category` to this month's budget, or changes its limit if it's
+    /// already there; a nil `limit` keeps it with no budget. A blank name
+    /// does nothing.
+    @discardableResult
+    func setBudget(_ limit: Double?, for category: String) -> SharedFinanceBudget? {
+        let name = category.trimmingCharacters(in: .whitespaces)
+        guard !name.isEmpty else { return nil }
+        let value = limit.map { max($0, 0) } ?? SharedFinanceBudget.noLimit
+        if let existing = budget(for: name) {
+            if existing.limit != value { existing.limit = value }
+            return existing
+        }
+        return SharedFinanceBudget(category: name, limit: value, month: self)
+    }
+
     /// The household's transactions dated in this month.
     var transactionsInMonth: [SharedFinanceTransaction] {
         guard let period else { return [] }
@@ -221,6 +236,15 @@ public extension SharedFinanceBalance {
 
 public extension SharedFinanceBudget {
     var id: NSManagedObjectID { objectID }
+
+    /// The limit of a category kept with no budget: tracked, listed on the
+    /// Budget screen, never over. A sentinel rather than a new attribute so
+    /// it needed no CloudKit schema change; builds from before it read it as
+    /// a budget of -$1, always over.
+    static let noLimit: Double = -1
+
+    /// False for a category kept with no budget (any negative limit).
+    var hasLimit: Bool { limit >= 0 }
 }
 
 // MARK: - Metal
