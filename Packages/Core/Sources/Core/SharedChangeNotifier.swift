@@ -158,6 +158,9 @@ public final class SharedChangeNotifier: @unchecked Sendable {
     }
 
     private func cloudKitEventFinished(type: NSPersistentCloudKitContainer.EventType, storeID: String, started: Date) {
+        if type == .import {
+            SharedChangeActivityLog.noteImport(moduleID: moduleID)
+        }
         switch type {
         case .import where bootstrapping.contains(storeID):
             // The first download is done; everything in it is history
@@ -195,7 +198,7 @@ public final class SharedChangeNotifier: @unchecked Sendable {
         }
 
         if let last = transactions.last {
-            let events = events(from: transactions, in: store)
+            let (events, unsharedTitles) = events(from: transactions, in: store)
             // iCloud's own alert about an edit this account made on another
             // device — see SharedChangeServerAlertCleanup.
             let ownEditAlerts = SharedChangeServerAlertCleanup.ownEditAlertIDs(in: events)
@@ -203,9 +206,11 @@ public final class SharedChangeNotifier: @unchecked Sendable {
                 SharedChangeServerAlertInbox.removeDelivered(subscriptionIDs: ownEditAlerts)
             }
             let now = Date.now
-            for event in arrivals.admit(events, asOf: now) {
+            let admitted = arrivals.admit(events, asOf: now)
+            for event in admitted {
                 coalescer.add(event, at: now)
             }
+            logSkipped(events: events, admitted: admitted, unsharedTitles: unsharedTitles)
             saveToken(last.token, for: storeID)
             scheduleFlush()
         }
@@ -213,7 +218,28 @@ public final class SharedChangeNotifier: @unchecked Sendable {
         purgeIfSafe(storeID: storeID)
     }
 
-    private func events(from transactions: [NSPersistentHistoryTransaction], in store: NSPersistentStore) -> [SharedChangeEvent] {
+    /// What the Status page's activity log shows for a batch that produced
+    /// no notification, or only part of one. See `SharedChangeActivityLog`.
+    private func logSkipped(events: [SharedChangeEvent], admitted: [SharedChangeEvent], unsharedTitles: Set<String>) {
+        for title in unsharedTitles.sorted() {
+            SharedChangeActivityLog.record(SharedChangeLogEntry(moduleID: moduleID, outcome: .notShared, detail: title))
+        }
+        let admittedKeys = Set(admitted.map(\.objectKey))
+        let skipped = events.filter { !admittedKeys.contains($0.objectKey) }
+        for title in Set(skipped.filter { $0.author == .currentUser }.map(\.rootTitle)).sorted() {
+            SharedChangeActivityLog.record(SharedChangeLogEntry(moduleID: moduleID, outcome: .ownEdit, detail: title))
+        }
+        for title in Set(skipped.filter { $0.author != .currentUser }.map(\.rootTitle)).sorted() {
+            SharedChangeActivityLog.record(SharedChangeLogEntry(moduleID: moduleID, outcome: .justJoined, detail: title))
+        }
+    }
+
+    /// The batch's events, and the titles of roots it changed that aren't
+    /// shared at all — logged, never notified.
+    private func events(
+        from transactions: [NSPersistentHistoryTransaction],
+        in store: NSPersistentStore
+    ) -> (events: [SharedChangeEvent], unsharedTitles: Set<String>) {
         let isSharedStore = store.url == container.persistentStoreDescriptions
             .first(where: { $0.cloudKitContainerOptions?.databaseScope == .shared })?.url
 
@@ -238,6 +264,7 @@ public final class SharedChangeNotifier: @unchecked Sendable {
         var unshared: Set<NSManagedObjectID> = []
         var serverAlertIDs: [NSManagedObjectID: String?] = [:]
         var events: [SharedChangeEvent] = []
+        var unsharedTitles: Set<String> = []
         for change in SharedChangeFilter.relevantChanges(in: records, entityNames: entityNames) {
             guard let objectID = objectIDs[change.objectKey],
                   let object = try? context.existingObject(with: objectID),
@@ -252,13 +279,25 @@ public final class SharedChangeNotifier: @unchecked Sendable {
             }
             // Everything in the shared store is someone else's share; in the
             // private store only a zone with a CKShare is shared at all.
-            guard share != nil || isSharedStore else { continue }
+            guard share != nil || isSharedStore else {
+                unsharedTitles.insert(description.rootTitle)
+                continue
+            }
 
             let modifiedBy = container.record(for: objectID)?.lastModifiedUserRecordID?.recordName
-            let author = SharedChangeAuthorResolver.author(
+            let participants = share.map(SharedChangeAuthorResolver.participants(of:)) ?? []
+            let author = SharedChangeAuthorResolver.author(lastModifiedBy: modifiedBy, participants: participants)
+            if let reason = SharedChangeAuthorResolver.unnamedReason(
                 lastModifiedBy: modifiedBy,
-                participants: share.map(SharedChangeAuthorResolver.participants(of:)) ?? []
-            )
+                participants: participants,
+                hasShare: share != nil
+            ) {
+                SharedChangeActivityLog.record(SharedChangeLogEntry(
+                    moduleID: moduleID,
+                    outcome: .unnamed,
+                    detail: "\(description.rootTitle) — \(reason)"
+                ))
+            }
             if serverAlertIDs[root] == nil {
                 serverAlertIDs[root] = serverAlertID(for: root, isSharedStore: isSharedStore)
             }
@@ -276,7 +315,7 @@ public final class SharedChangeNotifier: @unchecked Sendable {
         // Don't keep every object from every batch registered and snapshotted
         // for the life of the app.
         context.reset()
-        return events
+        return (events, unsharedTitles)
     }
 
     /// The iCloud alert subscription that would cover `root`: the one on its

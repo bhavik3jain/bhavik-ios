@@ -42,6 +42,12 @@ struct SharedChangeNotificationsSection: View {
                     ModuleNotificationToggle(module: module)
                 }
             }
+            // Always reachable — most of all when something above is off.
+            NavigationLink {
+                NotificationStatusView()
+            } label: {
+                Label("Notification Status", systemImage: "stethoscope")
+            }
         } header: {
             Text("Notifications")
         } footer: {

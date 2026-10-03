@@ -93,11 +93,49 @@ public enum SharedChangeNotifications {
         await UNUserNotificationCenter.current().notificationSettings().authorizationStatus == .denied
     }
 
+    /// What the system's notification settings come to, for the Status page.
+    public static func healthPermission() async -> (permission: SharedChangeHealthFacts.Permission, showsAlerts: Bool) {
+        let settings = await UNUserNotificationCenter.current().notificationSettings()
+        let permission: SharedChangeHealthFacts.Permission
+        switch settings.authorizationStatus {
+        case .notDetermined: permission = .notAsked
+        case .denied: permission = .denied
+        case .provisional: permission = .quiet
+        default: permission = .allowed
+        }
+        // Banners on, or at least the lock screen — anything a person would see.
+        let showsAlerts = settings.alertSetting == .enabled || settings.lockScreenSetting == .enabled
+        return (permission, showsAlerts)
+    }
+
+    /// The Status page's "Send Test Notification": a plain notification
+    /// `delay` seconds from now, so there's time to leave the app or lock
+    /// the screen first. Returns the system's error, if it refused.
+    public static func sendTest(after delay: TimeInterval = 5) async -> String? {
+        let content = UNMutableNotificationContent()
+        content.title = "Multitrack"
+        content.body = "Test notification — if you can see this, notifications reach this device."
+        content.sound = .default
+        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: max(delay, 1), repeats: false)
+        let request = UNNotificationRequest(identifier: "notification-status.test", content: content, trigger: trigger)
+        do {
+            try await UNUserNotificationCenter.current().add(request)
+            SharedChangeActivityLog.record(SharedChangeLogEntry(moduleID: "app", outcome: .test, detail: "scheduled"))
+            return nil
+        } catch {
+            SharedChangeActivityLog.record(SharedChangeLogEntry(moduleID: "app", outcome: .test, detail: "refused: \(error.localizedDescription)"))
+            return error.localizedDescription
+        }
+    }
+
     /// Posts `notice` unless the user has turned its module (or the whole
     /// feature) off. Without permission the center drops it silently, which
     /// is the right outcome.
     static func post(_ notice: SharedChangeNotice, moduleName: String) {
-        guard isEnabled(moduleID: notice.moduleID) else { return }
+        guard isEnabled(moduleID: notice.moduleID) else {
+            SharedChangeActivityLog.record(SharedChangeLogEntry(moduleID: notice.moduleID, outcome: .muted, detail: notice.title))
+            return
+        }
         let content = UNMutableNotificationContent()
         content.title = notice.title
         // Two households are both called "Household" by default, so the title
@@ -110,6 +148,11 @@ public enum SharedChangeNotifications {
         let request = UNNotificationRequest(identifier: notice.identifier, content: content, trigger: nil)
         let serverAlert = notice.serverAlertID
         UNUserNotificationCenter.current().add(request) { error in
+            SharedChangeActivityLog.record(SharedChangeLogEntry(
+                moduleID: notice.moduleID,
+                outcome: error == nil ? .posted : .refused,
+                detail: error.map { "\(notice.body) (\($0.localizedDescription))" } ?? notice.body
+            ))
             // Says who and what, so iCloud's "… was updated" about the same
             // share has nothing left to add.
             guard error == nil, let serverAlert else { return }
@@ -194,12 +237,17 @@ final class SharedChangeNotificationDelegate: NSObject, UNUserNotificationCenter
         let category = content.categoryIdentifier
         let module = content.userInfo[SharedChangeNotifications.moduleUserInfoKey] as? String
         nonisolated(unsafe) let completionHandler = completionHandler
+        let title = notification.request.content.title
         Self.onMain {
-            completionHandler(SharedChangeNotificationRouting.presentationOptions(
+            let options = SharedChangeNotificationRouting.presentationOptions(
                 categoryIdentifier: category,
                 moduleID: module,
                 onScreenModuleID: SharedChangeNotificationRouter.shared.foregroundModuleID
-            ))
+            )
+            if options.isEmpty, let module, category != SharedChangeServerAlertText.category {
+                SharedChangeActivityLog.record(SharedChangeLogEntry(moduleID: module, outcome: .onScreen, detail: title))
+            }
+            completionHandler(options)
         }
     }
 

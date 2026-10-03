@@ -165,6 +165,10 @@ public final class SharedChangeServerAlerts {
                 complete = try await Self.apply(plan, to: container.sharedCloudDatabase, database: .participating) && complete
                 Self.log.info("Saved \(plan.save.count) and deleted \(plan.delete.count) alert subscriptions")
             }
+            SharedChangeActivityLog.noteAlertPass(
+                plan.isEmpty ? "Up to date (\(Self.describe(mode)))" : "Saved \(plan.save.count), deleted \(plan.delete.count) (\(Self.describe(mode)))"
+                    + (complete ? "" : "; one was refused")
+            )
             if !complete {
                 // One subscription was refused; the next foreground retries.
                 lastApplied = nil
@@ -178,7 +182,47 @@ public final class SharedChangeServerAlerts {
             // No iCloud account, offline, or throttled: the next foreground
             // tries again.
             Self.log.error("Alert subscriptions not updated: \(error.localizedDescription)")
+            SharedChangeActivityLog.noteAlertPass("Failed: \(error.localizedDescription)")
             lastApplied = nil
+        }
+    }
+
+    private nonisolated static func describe(_ mode: SharedChangeServerAlertPlan.Mode) -> String {
+        switch mode {
+        case .reconcile: "set up"
+        case .maintain: "not allowed to create — permission or switch off"
+        case .removeAll: "switched off"
+        }
+    }
+
+    /// What the Status page shows about iCloud's alerts: what this device
+    /// shares, and which of our subscriptions the server holds right now.
+    public struct Status: Sendable {
+        public var inputs: SharedChangeServerAlertInputs
+        /// nil when the server couldn't be asked.
+        public var serverAlertIDs: Set<String>?
+        public var error: String?
+        /// Owned zones that should have an alert: shared with someone else,
+        /// in a tracker that isn't muted.
+        public var expectedOwnedAlertCount: Int {
+            inputs.ownedZones.filter { $0.hasOthers && !inputs.mutedModuleIDs.contains($0.moduleID) }.count
+        }
+    }
+
+    /// Reads the local shares and asks the server for our subscriptions.
+    /// One network round trip per database; changes nothing.
+    public func status() async -> Status {
+        let inputs = await Self.gatherInputs(from: sources)
+        guard let containerID else {
+            return Status(inputs: inputs, serverAlertIDs: nil, error: "iCloud isn't set up in this build.")
+        }
+        let container = CKContainer(identifier: containerID)
+        do {
+            let existing = try await Self.existingAlerts(in: container.privateCloudDatabase, as: .owned)
+                + Self.existingAlerts(in: container.sharedCloudDatabase, as: .participating)
+            return Status(inputs: inputs, serverAlertIDs: Set(existing.map(\.id)), error: nil)
+        } catch {
+            return Status(inputs: inputs, serverAlertIDs: nil, error: error.localizedDescription)
         }
     }
 
