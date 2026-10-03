@@ -4,7 +4,7 @@ import CoreData
 import SwiftUI
 
 /// Every month, newest first, with one figure charted across them. + starts
-/// the next month as a copy of the last.
+/// the next month, every balance at zero.
 struct MonthsView: View {
     @Environment(\.moduleLayout) private var layout
     @Environment(\.managedObjectContext) private var context

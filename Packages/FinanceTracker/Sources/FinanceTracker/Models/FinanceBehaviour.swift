@@ -10,7 +10,7 @@ public extension SharedFinanceHousehold {
         (owners ?? []).sorted(by: SharedFinanceOwner.displayOrder)
     }
 
-    /// Every account, category by category, then in the order they were added.
+    /// Every account, category by category, then by institution.
     var sortedAccounts: [SharedFinanceAccount] {
         (accounts ?? []).sorted(by: SharedFinanceAccount.displayOrder)
     }
@@ -87,11 +87,20 @@ public extension SharedFinanceAccount {
         return institution.isEmpty ? name : "\(institution) - \(name)"
     }
 
-    /// Category order, then the order they were added.
+    /// Category order, then institution and name, A to Z. An account with
+    /// no institution sorts by its name among them. Added order is only the
+    /// last tiebreak: lists in the order accounts were typed in put a
+    /// household's two Chase accounts screens apart.
     static func displayOrder(_ lhs: SharedFinanceAccount, _ rhs: SharedFinanceAccount) -> Bool {
         if lhs.category != rhs.category { return lhs.category.sortIndex < rhs.category.sortIndex }
-        if lhs.sortOrder != rhs.sortOrder { return lhs.sortOrder < rhs.sortOrder }
-        return lhs.displayName.localizedStandardCompare(rhs.displayName) == .orderedAscending
+        return institutionOrder(lhs, rhs)
+    }
+
+    /// Institution, then name, then the order they were added.
+    static func institutionOrder(_ lhs: SharedFinanceAccount, _ rhs: SharedFinanceAccount) -> Bool {
+        let byName = lhs.displayName.localizedStandardCompare(rhs.displayName)
+        if byName != .orderedSame { return byName == .orderedAscending }
+        return lhs.sortOrder < rhs.sortOrder
     }
 
     /// A card's balance for a month: what was charged to it that month,

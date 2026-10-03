@@ -26,9 +26,26 @@ struct AmountField: View {
     let commit: (Double) -> Void
     var endEditing: () -> Void = {}
 
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        AmountTextField(title: title, value: value, isFocused: focused, commit: commit, endEditing: endEditing)
+            .focused($focused)
+    }
+}
+
+/// `AmountField` with its focus held by the caller, which applies
+/// `.focused(_:equals:)` and says whether it's focused — so a grid of them
+/// can move to the next on Return (the Mac's month entry).
+struct AmountTextField: View {
+    let title: String
+    let value: Double
+    let isFocused: Bool
+    let commit: (Double) -> Void
+    var endEditing: () -> Void = {}
+
     @State private var text = ""
     @State private var loaded = false
-    @FocusState private var focused: Bool
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
@@ -36,17 +53,16 @@ struct AmountField: View {
             .keyboardType(.decimalPad)
             .multilineTextAlignment(.trailing)
             .monospacedDigit()
-            .focused($focused)
             .onAppear {
                 guard !loaded else { return }
                 loaded = true
                 text = FinanceFormat.editable(value)
             }
             .onChange(of: text) { _, newText in
-                guard focused, let parsed = FinanceInput.parse(newText), parsed != value else { return }
+                guard isFocused, let parsed = FinanceInput.parse(newText), parsed != value else { return }
                 commit(parsed)
             }
-            .onChange(of: focused) { _, isFocused in
+            .onChange(of: isFocused) { _, isFocused in
                 guard !isFocused else { return }
                 // A cleared field means zero, but only once the reader's done
                 // with it — mid-edit an empty field is just a new figure
@@ -61,14 +77,34 @@ struct AmountField: View {
             // was changed in memory but never saved, and lost if the system
             // then ended the app.
             .onChange(of: scenePhase) { _, phase in
-                guard focused, phase != .active else { return }
+                guard isFocused, phase != .active else { return }
                 endEditing()
             }
             // A partner's edit arriving while the field isn't being typed in.
             .onChange(of: value) { _, newValue in
-                guard !focused else { return }
+                guard !isFocused else { return }
                 text = FinanceFormat.editable(newValue)
             }
+    }
+}
+
+/// A person's initials and name — the sub-heading over their accounts within
+/// a category, with what they add up to.
+struct OwnerGroupHeader: View {
+    let group: AccountGroup
+    let total: Double
+
+    var body: some View {
+        HStack(spacing: 8) {
+            OwnerBadge(owner: group.owner)
+            Text(group.title)
+                .font(.subheadline.weight(.semibold))
+            Spacer()
+            Text(FinanceFormat.money(total))
+                .font(.subheadline)
+                .monospacedDigit()
+                .foregroundStyle(.secondary)
+        }
     }
 }
 

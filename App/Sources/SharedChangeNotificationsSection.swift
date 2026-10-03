@@ -1,4 +1,5 @@
 import Core
+import FinanceTracker
 import SwiftUI
 
 /// Settings' Notifications section: "Changes to shared items", plus one
@@ -91,5 +92,23 @@ private struct ModuleNotificationToggle: View {
     var body: some View {
         Toggle(module.accent.name, isOn: $isOn)
             .onChange(of: isOn) { SharedChangeServerAlerts.shared.sync(force: true) }
+    }
+}
+
+/// Finance's "fill in the month" reminder on the 1st. Its own section: it
+/// isn't about shared changes, and works with nothing shared at all. See
+/// `FinanceMonthReminder`.
+struct FinanceReminderSection: View {
+    @AppStorage(FinanceMonthReminder.enabledKey) private var enabled = true
+
+    var body: some View {
+        Section {
+            Toggle(isOn: $enabled) {
+                Label("Monthly Finance reminder", systemImage: "calendar.badge.clock")
+            }
+            .onChange(of: enabled) { Task { await FinanceMonthReminder.reschedule() } }
+        } footer: {
+            Text("On the 1st of each month at 9 AM, a reminder to fill in that month's balances.")
+        }
     }
 }

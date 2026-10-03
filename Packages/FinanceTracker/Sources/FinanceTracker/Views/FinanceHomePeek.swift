@@ -26,11 +26,14 @@ struct FinanceHomePeek: View {
         ModulePeekCard(
             accent: FinanceTrackerModule.accent,
             icon: FinanceTrackerModule.symbolName,
-            subtitle: latest?.title ?? ""
+            subtitle: latest.map { FinanceHome.reportedMonth(for: $0, live: MetalPriceFeed.shared.live).title } ?? ""
         ) {
             if let latest {
-                let summary = MonthSummary(month: latest, live: MetalPriceFeed.shared.live)
-                let delta = FinanceHistory(months: Array(latest.household?.months ?? []), live: MetalPriceFeed.shared.live).delta(.netWorth, at: latest.period ?? YearMonth(containing: .now))
+                // Net worth from the last month filled in; see
+                // `FinanceHome.reportedMonth`.
+                let reported = FinanceHome.reportedMonth(for: latest, live: MetalPriceFeed.shared.live)
+                let summary = MonthSummary(month: reported, live: MetalPriceFeed.shared.live)
+                let delta = FinanceHistory(months: Array(latest.household?.months ?? []), live: MetalPriceFeed.shared.live).delta(.netWorth, at: reported.period ?? YearMonth(containing: .now))
                 VStack(alignment: .leading, spacing: 12) {
                     PeekRow(
                         "Net worth",
@@ -47,7 +50,7 @@ struct FinanceHomePeek: View {
                     PeekRow(
                         "Card spend",
                         detail: latest.monthName,
-                        value: FinanceFormat.money(summary.cardSpend)
+                        value: FinanceFormat.money(MonthSummary(month: latest, live: MetalPriceFeed.shared.live).cardSpend)
                     )
                 }
             } else {

@@ -18,12 +18,19 @@ public struct MonthProgress: Equatable, Sendable {
     public var label: String { "\(updated) of \(total) updated" }
 }
 
-/// Starting a new month the way the Numbers sheet did it: duplicate last
-/// month, then go down the column changing what moved.
+/// Starting a new month: the Numbers sheet's layout carried over, every
+/// balance at zero to be filled in again.
 public enum MonthRollover {
-    /// Makes the month after `previous`, copying every open non-card
-    /// account's balance (marked not yet edited), both metal prices and every
-    /// budget. Returns the existing month instead if it's already there — a
+    /// Makes the month after `previous`: a zero balance, not yet edited, for
+    /// every open non-card account, plus both metal prices and every budget
+    /// copied over. Gold and silver keep their value — that's weight times
+    /// price, and the weights don't change month to month.
+    ///
+    /// Balances used to be copied, the way the Numbers sheet duplicated last
+    /// month. A figure nobody got round to checking then went into the month
+    /// as if it were this month's, and the totals looked finished when they
+    /// weren't. Last month's figure is still one tap away on the entry screen
+    /// (`previousAmount(for:in:)`). Returns the existing month instead if it's already there — a
     /// second tap, or the partner got there first. Two devices doing this
     /// offline still make one each; `FinanceFold` folds them once they meet.
     @discardableResult
@@ -36,8 +43,7 @@ public enum MonthRollover {
         month.goldPricePerOz = previous.goldPricePerOz
         month.silverPricePerOz = previous.silverPricePerOz
         for account in household.sortedAccounts where !account.isArchived && account.category.hasMonthlyBalance {
-            let amount = previous.balance(for: account)?.amount ?? 0
-            _ = SharedFinanceBalance(account: account, month: month, amount: amount, edited: false)
+            _ = SharedFinanceBalance(account: account, month: month, amount: 0, edited: false)
         }
         for budget in previous.sortedBudgets {
             _ = SharedFinanceBudget(category: budget.category, limit: budget.limit, month: month)
@@ -66,6 +72,33 @@ public enum MonthRollover {
             return next
         }
         return startFirstMonth(in: household, asOf: now)
+    }
+
+    /// What `account` stood at in the month before `month`, if it had a
+    /// balance there — the "Same as September" figure.
+    public static func previousAmount(for account: SharedFinanceAccount, in month: SharedFinanceMonth) -> Double? {
+        month.previousMonth?.balance(for: account)?.amount
+    }
+
+    /// The balances "Same as September for the rest" would fill: not yet
+    /// filled in, with a figure last month to take.
+    public static func unfilledWithPrevious(in month: SharedFinanceMonth) -> [SharedFinanceBalance] {
+        (month.balances ?? []).filter { balance in
+            guard !balance.edited, let account = balance.account, account.category.hasMonthlyBalance else { return false }
+            return previousAmount(for: account, in: month) != nil
+        }
+    }
+
+    /// Fills every balance not yet filled in with last month's figure, as if
+    /// each had been confirmed unchanged. Returns how many it filled.
+    @discardableResult
+    public static func carryOverUnfilled(in month: SharedFinanceMonth) -> Int {
+        let balances = unfilledWithPrevious(in: month)
+        for balance in balances {
+            guard let account = balance.account, let amount = previousAmount(for: account, in: month) else { continue }
+            month.setBalance(amount, for: account)
+        }
+        return balances.count
     }
 
     /// Edited balances plus prices that moved, out of every balance plus the

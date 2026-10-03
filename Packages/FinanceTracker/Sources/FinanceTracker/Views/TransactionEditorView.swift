@@ -55,7 +55,7 @@ struct TransactionEditorView: View {
                     Toggle("Refund", isOn: $isRefund)
                     TextField("Merchant", text: $merchant)
                         .textInputAutocapitalization(.words)
-                    TextField("Expense — what it was for", text: $expense)
+                    TextField("Expense", text: $expense, prompt: Text("What it was for"))
                     DatePicker("Date", selection: $date, displayedComponents: .date)
                 }
 
@@ -103,10 +103,12 @@ struct TransactionEditorView: View {
                                 .monospacedDigit()
                         }
                     }
-                    TextField("Break down (optional)", text: $breakDown, axis: .vertical)
+                    TextField("Break down", text: $breakDown, prompt: Text("Optional"), axis: .vertical)
                         .lineLimit(1...4)
                 } footer: {
-                    Text("Totals and budgets count only our share — the rest is what a friend owes back.")
+                    if isPartlyOurs {
+                        Text("Totals and budgets count only our share.")
+                    }
                 }
             }
             .navigationTitle(isNew ? "Add Transaction" : "Edit Transaction")

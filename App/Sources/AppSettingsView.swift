@@ -139,6 +139,8 @@ struct AppSettingsView: View {
 
             SharedChangeNotificationsSection()
 
+            FinanceReminderSection()
+
             TripsIntelligenceSection()
 
             Section {

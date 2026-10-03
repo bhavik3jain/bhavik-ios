@@ -147,8 +147,12 @@ public struct FinanceHistory {
         points.last { $0.period < period }
     }
 
-    public func series(_ metric: FinanceMetric, last count: Int? = nil) -> [Value] {
-        let values = points.map { Value(period: $0.period, value: $0.summary.value(for: metric)) }
+    /// `through` leaves out the months after it — a month still being
+    /// filled in, on the Summary's chart.
+    public func series(_ metric: FinanceMetric, through end: YearMonth? = nil, last count: Int? = nil) -> [Value] {
+        let values = points
+            .filter { point in end.map { point.period <= $0 } ?? true }
+            .map { Value(period: $0.period, value: $0.summary.value(for: metric)) }
         guard let count else { return values }
         return Array(values.suffix(count))
     }
@@ -174,11 +178,25 @@ public struct FinanceHistory {
 
 /// The home screen's line and peek for Finance.
 public enum FinanceHome {
-    /// "Net worth $557,506" for the latest month, or "No months yet".
+    /// "Net worth $557,506" for the reported month, or "No months yet".
     @MainActor
     public static func homeDetail(for months: [SharedFinanceMonth], container: NSPersistentCloudKitContainer?) -> String {
         guard let latest = latestMonth(months, container: container) else { return "No months yet" }
-        return "Net worth \(FinanceFormat.money(MonthSummary(month: latest, live: MetalPriceFeed.shared.live).netWorth))"
+        let live = MetalPriceFeed.shared.live
+        let month = reportedMonth(for: latest, live: live)
+        return "Net worth \(FinanceFormat.money(MonthSummary(month: month, live: live).netWorth))"
+    }
+
+    /// The month whose figures headline the Summary, the peek and the
+    /// Overview: `latest`, unless it's still open and not yet fully filled in,
+    /// and then the month before it. A new month starts every balance at
+    /// zero (`MonthRollover`), so until it's filled in its net worth is a
+    /// fraction of the real one: a half-done October read "−$311,434 on last
+    /// month".
+    public static func reportedMonth(for latest: SharedFinanceMonth, live: MetalPrices?) -> SharedFinanceMonth {
+        guard !latest.isClosed, !MonthRollover.progress(of: latest, live: live).isComplete,
+              let previous = latest.previousMonth else { return latest }
+        return previous
     }
 
     /// How `latest`'s net worth moved on the month before it in its

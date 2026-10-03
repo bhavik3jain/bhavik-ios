@@ -167,8 +167,8 @@ public final class SharedFinanceMonth: NSManagedObject, Identifiable {
 @objc(SharedFinanceBalance)
 public final class SharedFinanceBalance: NSManagedObject, Identifiable {
     @NSManaged public var amount: Double
-    /// False while the figure is still the one copied from last month, which
-    /// is what "Still August" and the month's progress count.
+    /// False until someone has filled it in this month — a new month starts
+    /// every balance at zero, not edited. The month's progress counts these.
     @NSManaged public var edited: Bool
 
     @NSManaged public var account: SharedFinanceAccount?

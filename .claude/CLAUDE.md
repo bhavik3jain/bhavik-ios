@@ -33,6 +33,11 @@ exception, `com.apple.security.automation.apple-events` and `NSAppleEventsUsageD
 any one and every Apple event fails -1743 with no prompt. `-FinanceNumbersExportProbe YES` (Debug,
 Mac) runs it on a made-up month at launch.
 
+**A new Finance month starts every balance at zero** (`MonthRollover`), so a half-filled month's
+totals are a fraction of the real ones. Anything headlining a net worth (Summary, peek, Overview,
+home row) goes through `FinanceHome.reportedMonth`, which falls back to the month before until the
+open one is complete; a new screen that reads `latestMonth` for totals will report a fake crash.
+
 **Gold and silver prices are live and deliberately not stored as they arrive.** `MetalPriceFeed`
 reads GC=F / SI=F (Yahoo's chart endpoint, no key, undocumented) and the household's latest month,
 while open, is valued at them everywhere (`MonthSummary`, `FinanceHistory`, progress, exports all
@@ -201,6 +206,11 @@ navigation, and it belongs where the hub itself lives.
   reopened for networking and file import). Read its inline comments before touching it.
 
 ## Tests
+
+**Never point `-derivedDataPath` or `--scratch-path` at `/tmp`.** Nothing ever cleans it: 147 such
+build folders (`wf5-mac`, `warn-dd`, `trips-ai-dd`, …, 0.1–1G each) filled 33G of the Mac's disk by
+October 2026. Use the default DerivedData, or the session's scratchpad directory, and delete any
+one-off build folder once its run is done.
 
 Swift Testing only — no XCTest, no `@Suite`, no classes. **Views are deliberately untested: extract
 logic into a value type and leave the view declarative.**

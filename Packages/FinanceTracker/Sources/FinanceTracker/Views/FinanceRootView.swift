@@ -37,6 +37,10 @@ struct FinanceRootView: View {
         }
         .environment(\.financeCanCreateHousehold, hasCaughtUp)
         .task { await MetalPriceFeed.shared.refreshIfStale() }
+        // Tops up the year of 1st-of-the-month reminders; opening Finance is
+        // also the one moment asking for notification permission makes sense
+        // for them.
+        .task { await FinanceMonthReminder.reschedule() }
         .task {
             // Holds back creating a household until iCloud has caught up,
             // like Trips' importer and Points' seeder, so a second device —
