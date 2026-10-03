@@ -38,3 +38,20 @@ import Testing
     #expect(await StubLocationProvider(.located(rome)).currentLocation() == .located(rome))
     #expect(await StubLocationProvider(.denied).currentLocation() == .denied)
 }
+
+@Test func aCentroidIsTheSameToTheLastBitInAnyOrder() throws {
+    // Day 1 of the Rome trip in Trips' SuggestionAsk tests: summed in some
+    // orders these came to 12.480266666666667, in others …665.
+    let points = [
+        GeoCoordinate(latitude: 41.9065, longitude: 12.4536),
+        GeoCoordinate(latitude: 41.8902, longitude: 12.4922),
+        GeoCoordinate(latitude: 41.9005, longitude: 12.4950),
+    ]
+    let orders = [[0, 1, 2], [0, 2, 1], [1, 0, 2], [1, 2, 0], [2, 0, 1], [2, 1, 0]]
+    let centres = orders.map { order in GeoCoordinate.centroid(of: order.map { points[$0] }) }
+    let first = try #require(centres.first ?? nil)
+    #expect(centres.allSatisfy { $0 == first })
+    // And unsorted addition really does differ here, or this test proves nothing.
+    let naive = Set(orders.map { order in order.map { points[$0].longitude }.reduce(0, +) })
+    #expect(naive.count > 1)
+}

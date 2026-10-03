@@ -26,12 +26,20 @@ public struct GeoCoordinate: Hashable, Sendable {
     /// The plain average of `points`, or nil when there are none. Fine for the
     /// few streets or few miles a day's plan spans; nothing here straddles the
     /// 180th meridian or a pole, where averaging degrees goes wrong.
+    ///
+    /// The same points in any order give the same answer to the last bit:
+    /// each axis is summed in sorted order. Callers pass points straight from
+    /// a Core Data set, whose order changes run to run, and floating-point
+    /// addition isn't associative — a day's centre came out as
+    /// 12.480266666666667 one time and …665 the next, which failed Trips'
+    /// `stopsAloneSayWhichDayButANamedDayWins` on about half of CI's runs
+    /// and kept `main` red from #32 on.
     public static func centroid(of points: [GeoCoordinate]) -> GeoCoordinate? {
         guard !points.isEmpty else { return nil }
         let count = Double(points.count)
         return GeoCoordinate(
-            latitude: points.map(\.latitude).reduce(0, +) / count,
-            longitude: points.map(\.longitude).reduce(0, +) / count
+            latitude: points.map(\.latitude).sorted().reduce(0, +) / count,
+            longitude: points.map(\.longitude).sorted().reduce(0, +) / count
         )
     }
 }
