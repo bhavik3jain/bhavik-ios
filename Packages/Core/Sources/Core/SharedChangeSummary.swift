@@ -188,6 +188,24 @@ public enum SharedChangeAuthorResolver {
         return .named(name)
     }
 
+    /// Why `author` came back `.someone` — for the Status page's activity
+    /// log, since "Someone made a change" otherwise gives no clue which of
+    /// the three lookups came up empty. nil when a name was found.
+    public static func unnamedReason(
+        lastModifiedBy recordName: String?,
+        participants: [ShareParticipantRecord],
+        hasShare: Bool
+    ) -> String? {
+        guard author(lastModifiedBy: recordName, participants: participants) == .someone else { return nil }
+        guard let recordName else { return "the change carried no record of who made it" }
+        guard hasShare else { return "this device has no copy of the share's people yet" }
+        guard participants.contains(where: { $0.userRecordName == recordName }) else {
+            let known = participants.filter { $0.userRecordName != nil }.count
+            return "whoever made it (\(recordName.prefix(8))…) isn't among the share's \(counted(known, "known person", plural: "known people"))"
+        }
+        return "iCloud gave no name for that person on the share"
+    }
+
     /// The share's participants, read from the locally cached `CKShare` —
     /// no network.
     public static func participants(of share: CKShare) -> [ShareParticipantRecord] {
