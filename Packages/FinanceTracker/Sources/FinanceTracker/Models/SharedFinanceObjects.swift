@@ -37,6 +37,8 @@ public final class SharedFinanceHousehold: NSManagedObject, Identifiable {
 public final class SharedFinanceOwner: NSManagedObject, Identifiable {
     @NSManaged public var name: String
     @NSManaged public var kindRaw: String
+    /// An `OwnerColor` chosen in People; empty until someone picks one.
+    @NSManaged public var colorRaw: String
     @NSManaged public var sortOrder: Int
     @NSManaged public var createdAt: Date
 

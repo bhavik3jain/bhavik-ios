@@ -441,6 +441,8 @@ public enum FinanceFold {
         for owner in source.sortedOwners {
             let key = FinanceMonthExchange.nameKey(owner.name)
             if let match = ownersByKey[key] {
+                // A colour picked on one side survives the fold.
+                if match.colorRaw.isEmpty { match.colorRaw = owner.colorRaw }
                 ownerMap[owner.objectID] = match
                 continue
             }
@@ -451,6 +453,7 @@ public enum FinanceFold {
             } else {
                 moved = SharedFinanceOwner(name: owner.name, kind: owner.kind, household: target)
                 moved.createdAt = owner.createdAt
+                moved.colorRaw = owner.colorRaw
             }
             moved.sortOrder = nextOwnerSort
             nextOwnerSort += 1
