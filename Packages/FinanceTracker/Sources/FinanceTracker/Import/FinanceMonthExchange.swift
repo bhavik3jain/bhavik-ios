@@ -197,8 +197,13 @@ public enum FinanceMonthExchange {
         func account(institution: String, name: String, category: AccountCategory, owner ownerName: String) -> SharedFinanceAccount {
             let institution = institution.trimmingCharacters(in: .whitespaces)
             let name = name.trimmingCharacters(in: .whitespaces)
-            let key = accountKey(SharedFinanceAccount.displayName(institution: institution, name: name), category)
-            if let existing = accountsByKey[key] {
+            let displayName = SharedFinanceAccount.displayName(institution: institution, name: name)
+            let key = accountKey(displayName, category)
+            // The Numbers sheet has no Health table, so an FSA/HSA goes out
+            // under Retirement and comes back as one: match it to the
+            // health account, or every round trip would add a copy.
+            let existingHealth = category == .retirement ? accountsByKey[accountKey(displayName, .health)] : nil
+            if let existing = accountsByKey[key] ?? existingHealth {
                 existing.owner = owner(named: ownerName) ?? existing.owner
                 return existing
             }
@@ -256,8 +261,17 @@ public enum FinanceMonthExchange {
         }
 
         // Transactions.
+        // Paid with a card or a cash account (rent by Zelle from checking);
+        // a card wins when the two share a name. Accounts the file just added
+        // are in `accountsByKey`, not yet in `sortedAccounts`.
         var cardsByName: [String: SharedFinanceAccount] = [:]
-        for card in household.sortedAccounts where card.category == .card {
+        let payable = Array(accountsByKey.values).filter { $0.category.takesTransactions }
+            .sorted { lhs, rhs in
+                (lhs.category == .card) != (rhs.category == .card)
+                    ? lhs.category == .card
+                    : SharedFinanceAccount.displayOrder(lhs, rhs)
+            }
+        for card in payable {
             cardsByName[nameKey(card.displayName)] = cardsByName[nameKey(card.displayName)] ?? card
         }
         var seen = Set((household.transactions ?? []).map {

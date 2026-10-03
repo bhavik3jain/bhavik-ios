@@ -152,3 +152,13 @@ private func table(_ name: String, in spec: FinanceNumbersSpec) throws -> Financ
     #expect(row[0] as? Int == 1 && row[1] as? String == "keep" && row[2] as? Double == 3_000,
             "A cell write is a [column, op, value] array")
 }
+
+@Test func anFSAOrHSAGoesUnderRetirementInTheSheet() throws {
+    var withHealth = document()
+    withHealth.accounts.append(.init(category: "health", institution: "Benefits Co", name: "HSA", owner: "", balance: 4_000))
+    let spec = FinanceNumbersSpec(document: withHealth, outputPath: "/tmp/x.numbers")
+    let retirement = try table("Retirement", in: spec)
+    #expect(retirement.rows.count == 1)
+    #expect(retirement.rows[0].contains(.init(0, "text", .text("Benefits Co - HSA"))))
+    #expect(!spec.tables.contains { $0.name == "Health" }, "The template has no such table")
+}

@@ -33,6 +33,9 @@ TROY_OUNCE_GRAMS = 31.1035
 AVOIRDUPOIS_OUNCE_GRAMS = 28.349523125
 
 ACCOUNT_TABLES = {"Cash": "cash", "Investments": "investments", "Retirement": "retirement"}
+# Categories the template has no table for, and the one they go under: an FSA/HSA counts toward
+# the sheet's assets as retirement. FinanceNumbersSpec.sheetCategory has the same map.
+SHEET_CATEGORY = {"health": "retirement"}
 FIXED_TABLE = "Large and Fixed Assets"
 LOAN_TABLE = "Long-Term Liabilities"
 CARD_TABLE = "Credit Card Details"

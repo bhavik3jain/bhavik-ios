@@ -25,6 +25,7 @@ public struct AssetMix: Equatable, Sendable {
             (.cash, summary.cash),
             (.investments, summary.investments),
             (.retirement, summary.retirement),
+            (.health, summary.health),
             (.fixed, summary.fixed),
             (.metals, summary.metals),
         ]

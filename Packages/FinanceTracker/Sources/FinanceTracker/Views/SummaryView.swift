@@ -137,6 +137,11 @@ struct SummaryView: View {
                     SummaryTile(title: "Cash", value: summary.cash, symbol: AccountCategory.cash.symbolName)
                     SummaryTile(title: "Investments", value: summary.investments, symbol: AccountCategory.investments.symbolName)
                     SummaryTile(title: "Retirement", value: summary.retirement, symbol: AccountCategory.retirement.symbolName)
+                    // Only for a household with an FSA/HSA, so the grid
+                    // doesn't grow an empty tile for everyone else.
+                    if summary.health != 0 {
+                        SummaryTile(title: "Health", value: summary.health, symbol: AccountCategory.health.symbolName)
+                    }
                     SummaryTile(title: "Gold & silver", value: summary.metals, symbol: "circle.hexagongrid")
                     SummaryTile(title: "Cars & property", value: summary.fixed, symbol: AccountCategory.fixed.symbolName)
                     SummaryTile(title: "Owed", value: summary.owed, symbol: AccountCategory.card.symbolName)
@@ -386,6 +391,7 @@ private struct MacFinanceDashboard: View {
             tile("Cash", summary.cash, AccountCategory.cash.symbolName),
             tile("Investments", summary.investments, AccountCategory.investments.symbolName),
             tile("Retirement", summary.retirement, AccountCategory.retirement.symbolName),
+        ] + (summary.health != 0 ? [tile("Health", summary.health, AccountCategory.health.symbolName)] : []) + [
             tile("Gold & silver", summary.metals, "circle.hexagongrid"),
             tile("Cars & property", summary.fixed, AccountCategory.fixed.symbolName),
             tile("Owed", summary.owed, AccountCategory.card.symbolName, share: false),

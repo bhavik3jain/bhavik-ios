@@ -233,11 +233,15 @@ struct HoldingsView: View {
 
     private func deleteMessage(for account: SharedFinanceAccount?) -> String {
         guard let account else { return "" }
+        let count = account.transactionCount
         if account.category == .card {
-            let count = account.transactionCount
             return count == 0
                 ? "The card has no transactions."
                 : "Its \(counted(count, "transaction")) will be deleted too. Archive it instead to keep them."
+        }
+        // A cash account can be paid from too, and its transactions go with it.
+        if count > 0 {
+            return "Its balance in every month and its \(counted(count, "transaction")) will be deleted too. Archive it instead to keep them."
         }
         return "Its balance in every month will be deleted too, changing past months' totals. Archive it instead to keep them."
     }

@@ -130,8 +130,11 @@ values below are made up.
   "budgets": [ { "category": "Food", "limit": 525.0 } ] }
 ```
 
-`category` is `cash | investments | retirement | fixed | loan`; a transaction's `card` is the card's
-sheet name, `"Institution - Name"`. Budgets are written only if the template has a `Budget` table.
+`category` is `cash | investments | retirement | health | fixed | loan`; the template has no table for
+`health` (FSA/HSA), so those rows go under Retirement and import back as retirement, which the app
+matches to its health account by name. A transaction's `card` is the sheet name, `"Institution - Name"`,
+of the card it was charged to — or of the cash account it was paid from (rent by Zelle from checking),
+which the card table's SUMIFS then leaves out. Budgets are written only if the template has a `Budget` table.
 
 ## The template
 

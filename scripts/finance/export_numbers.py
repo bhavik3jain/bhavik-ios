@@ -76,7 +76,7 @@ def build_spec(document: dict, output: str, troy_fix: bool = False) -> dict:
             [[2, "keep", money(a["balance"])],
              [0, "text", fn.display_name(a["institution"], a["name"])],
              [1, "text", a.get("owner") or fn.JOINT]]
-            for a in document["accounts"] if a["category"] == category
+            for a in document["accounts"] if fn.SHEET_CATEGORY.get(a["category"], a["category"]) == category
         ]
         tables.append(_table(table_name, 0, rows, 3, group_col=1))
 
