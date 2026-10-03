@@ -87,8 +87,9 @@ struct BhavikApp: App {
             // empty in-memory container keeps SwiftUI's environment satisfied.
             // `-TripAdvisorProbe YES` takes the same path: its made-up trip
             // lives in the in-memory Trips store, and a Mac's Debug build
-            // otherwise opens the user's real iCloud data.
-            if CloudKitSchemaInitializer.isRequested || TripAdvisorProbe.isRequested {
+            // otherwise opens the user's real iCloud data. So does
+            // `-InMemoryStores YES` (see `InMemoryStoresLaunch`).
+            if CloudKitSchemaInitializer.isRequested || TripAdvisorProbe.isRequested || InMemoryStoresLaunch.isRequested {
                 let scratch = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true, cloudKitDatabase: .none)
                 container = try ModelContainer(for: schema, configurations: [scratch])
                 // Same reasoning, for Trips' and Fuel's Core Data stores: a
@@ -296,7 +297,7 @@ struct BhavikApp: App {
             #if DEBUG
             // The probe runs on made-up data and must leave the account's
             // real subscriptions alone.
-            if TripAdvisorProbe.isRequested { return }
+            if TripAdvisorProbe.isRequested || InMemoryStoresLaunch.isRequested { return }
             #endif
             SharedChangeServerAlerts.shared.sync()
         }
@@ -479,6 +480,19 @@ private struct TripAdvisorStub: ViewModifier {
 /// window's content, and on a Mac with a saved window from a normal launch,
 /// state restoration found no window of the probe's type, opened none, and
 /// the probe never ran.
+/// `-InMemoryStores YES`: the whole app on empty in-memory stores, with no
+/// CloudKit — add a seeder (`-FinanceSeed YES`, …) to fill it. It's how to
+/// look at the Mac app from a build that can't be signed for iCloud: an
+/// unsigned build, signed ad hoc, run directly. Before this flag, the only
+/// in-memory launches were the schema run and `-TripAdvisorProbe`, which
+/// both replace the UI, so checking the Mac month-entry grid took a
+/// temporary patch to BhavikApp.
+#if DEBUG
+enum InMemoryStoresLaunch {
+    static var isRequested: Bool { UserDefaults.standard.bool(forKey: "InMemoryStores") }
+}
+#endif
+
 private enum TripAdvisorProbeRunner {
     @MainActor
     static func start(context: NSManagedObjectContext) {

@@ -17,8 +17,11 @@ struct MacHoldingsView: View {
 
     @State private var selection: NSManagedObjectID?
 
-    private var latest: SharedFinanceMonth? { snapshot.latestMonth }
-    private var previous: SharedFinanceMonth? { snapshot.months.dropLast().last }
+    /// The last month filled in, against the one before it. Against the
+    /// latest, a half-filled October read "−$144,100" beside every account
+    /// not yet typed in. See `FinanceHome.reportedMonth`.
+    private var latest: SharedFinanceMonth? { snapshot.reportedMonth }
+    private var previous: SharedFinanceMonth? { latest?.previousMonth }
 
     var body: some View {
         let grouped = AccountCategory.allCases.map { category in

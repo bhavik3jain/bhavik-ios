@@ -52,6 +52,15 @@ public extension SharedFinanceOwner {
         set { kindRaw = newValue.rawValue }
     }
 
+    /// Their chosen colour, or the automatic one for their place in the list.
+    var color: OwnerColor {
+        get { OwnerColor(rawValue: colorRaw) ?? .automatic(sortOrder: sortOrder) }
+        set { colorRaw = newValue.rawValue }
+    }
+
+    /// Whether `color` was picked rather than worked out.
+    var hasChosenColor: Bool { OwnerColor(rawValue: colorRaw) != nil }
+
     /// "B" for Bhavik, "J" for Joint — the badge on every row.
     var initials: String {
         let letters = name.split(separator: " ").prefix(2).compactMap(\.first)

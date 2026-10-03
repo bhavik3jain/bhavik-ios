@@ -77,6 +77,12 @@ struct FinanceSnapshot {
     var cards: [SharedFinanceAccount] { accounts.filter { $0.category == .card } }
     var latestMonth: SharedFinanceMonth? { months.last }
 
+    /// The latest month, or the one before while the latest is still being
+    /// filled in — see `FinanceHome.reportedMonth`. What Holdings shows.
+    var reportedMonth: SharedFinanceMonth? {
+        latestMonth.map { FinanceHome.reportedMonth(for: $0, live: live) }
+    }
+
     func summary(for month: SharedFinanceMonth, filter: OwnerFilter = .all) -> MonthSummary {
         MonthSummary(month: month, cards: cards, metals: metals, filter: filter, live: live)
     }

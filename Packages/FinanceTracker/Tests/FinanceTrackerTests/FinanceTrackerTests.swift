@@ -465,6 +465,33 @@ private func makeSeptember() throws -> (household: SharedFinanceHousehold, month
     #expect(FinanceMonthReminder.upcoming(asOf: lateOnTheFirst).first?.period == YearMonth(year: 2026, month: 12))
 }
 
+// MARK: - People's colours
+
+@MainActor
+@Test func everyoneStartsWithTheirOwnColour() throws {
+    let household = makeHousehold()
+    let colours = household.sortedOwners.map(\.color)
+    #expect(colours.count == 3)
+    #expect(Set(colours).count == 3, "Bhavik, Saloni and Joint each get a different one")
+    #expect(household.sortedOwners.allSatisfy { !$0.hasChosenColor })
+    #expect(Set((0..<OwnerColor.allCases.count).map(OwnerColor.automatic(sortOrder:))).count == OwnerColor.allCases.count)
+    #expect(OwnerColor.automatic(sortOrder: -1) == OwnerColor.allCases.last, "Never out of range")
+}
+
+@MainActor
+@Test func aChosenColourSticksAndSurvivesReordering() throws {
+    let household = makeHousehold()
+    let joint = try owner("Joint", in: household)
+    joint.color = .yellow
+    joint.sortOrder = 40
+    #expect(joint.color == .yellow)
+    #expect(joint.hasChosenColor)
+    #expect(joint.colorRaw == "yellow")
+
+    joint.colorRaw = "chartreuse"
+    #expect(joint.color == .automatic(sortOrder: 40), "An unknown colour from a newer build falls back")
+}
+
 // MARK: - Budgets
 
 @MainActor

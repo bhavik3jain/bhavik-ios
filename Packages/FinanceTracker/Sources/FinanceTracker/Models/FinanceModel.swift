@@ -61,6 +61,8 @@ public enum FinanceModel {
         owner.properties = [
             string("name", default: ""),
             string("kindRaw", default: OwnerKind.person.rawValue),
+            // An `OwnerColor` raw value; empty means automatic.
+            string("colorRaw", default: ""),
             integer("sortOrder", default: 0),
             date("createdAt", optional: false, default: .now),
         ]

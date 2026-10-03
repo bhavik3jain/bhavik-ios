@@ -90,6 +90,24 @@ public enum OwnerKind: String, Codable, CaseIterable, Identifiable, Sendable {
     }
 }
 
+/// The colour of a person's badge, chosen in People. Stored as a raw string
+/// on `SharedFinanceOwner`, so it syncs to everyone in the household; adding
+/// a case is not a schema change.
+public enum OwnerColor: String, CaseIterable, Identifiable, Sendable {
+    case blue, pink, purple, orange, teal, indigo, red, yellow, brown, gray, green
+
+    public var id: String { rawValue }
+
+    public var displayName: String { rawValue.capitalized }
+
+    /// What someone who hasn't picked a colour gets: a different one for each
+    /// of the first eleven people, by their place in the list. Green comes
+    /// last — it's Finance's own accent, which every badge used to be.
+    public static func automatic(sortOrder: Int) -> OwnerColor {
+        allCases[((sortOrder % allCases.count) + allCases.count) % allCases.count]
+    }
+}
+
 /// Gold or silver. Stored as a raw string on `SharedFinanceMetalItem`.
 public enum MetalKind: String, Codable, CaseIterable, Identifiable, Sendable {
     case gold

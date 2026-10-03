@@ -221,7 +221,8 @@ struct HoldingsView: View {
 
     /// The latest month's balance, or for a card the latest month's spend.
     private func value(of account: SharedFinanceAccount, snapshot: FinanceSnapshot) -> Double {
-        guard let latest = snapshot.latestMonth else { return 0 }
+        // The last month filled in, as the Summary shows.
+        guard let latest = snapshot.reportedMonth else { return 0 }
         return account.value(in: latest)
     }
 

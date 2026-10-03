@@ -2,17 +2,63 @@ import Core // Only reached on macOS, where Core stands in for the iOS-only Swif
 import SwiftUI
 
 /// The owner's initials in a small circle — "B", "S", "J" — on every account
-/// and metal row. Grey for no one.
+/// and metal row, in their colour. Grey and dashed for no one.
 struct OwnerBadge: View {
     let owner: SharedFinanceOwner?
+    var size: CGFloat = 20
 
     var body: some View {
-        Text(owner?.initials ?? "–")
-            .font(.system(size: 10, weight: .bold))
+        if let owner {
+            ObservedOwnerBadge(owner: owner, size: size)
+        } else {
+            BadgeCircle(initials: "–", color: .gray, size: size)
+                .accessibilityLabel("No one")
+        }
+    }
+}
+
+/// Observes the person, so a colour picked in People shows at once: rows
+/// that only read the owner through an account never redrew when it
+/// changed — the store had Joint as teal while every badge stayed purple.
+private struct ObservedOwnerBadge: View {
+    @ObservedObject var owner: SharedFinanceOwner
+    let size: CGFloat
+
+    var body: some View {
+        BadgeCircle(initials: owner.initials, color: owner.color.color, size: size)
+            .accessibilityLabel(owner.name)
+    }
+}
+
+private struct BadgeCircle: View {
+    let initials: String
+    let color: Color
+    let size: CGFloat
+
+    var body: some View {
+        Text(initials)
+            .font(.system(size: size * 0.5, weight: .bold))
             .foregroundStyle(.white)
-            .frame(width: 20, height: 20)
-            .background(owner == nil ? Color.gray : FinanceTrackerModule.accent.color, in: Circle())
-            .accessibilityLabel(owner?.name ?? "No one")
+            .frame(width: size, height: size)
+            .background(color, in: Circle())
+    }
+}
+
+extension OwnerColor {
+    var color: Color {
+        switch self {
+        case .blue: .blue
+        case .pink: .pink
+        case .purple: .purple
+        case .orange: .orange
+        case .teal: .teal
+        case .indigo: .indigo
+        case .red: .red
+        case .yellow: Color(red: 0.85, green: 0.65, blue: 0.0)
+        case .brown: .brown
+        case .gray: .gray
+        case .green: FinanceTrackerModule.accent.color
+        }
     }
 }
 
