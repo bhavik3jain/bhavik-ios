@@ -128,6 +128,16 @@ struct BhavikApp: App {
                 if TripAdvisorProbe.isRequested {
                     TripAdvisorProbeRunner.start(context: tripContainer.viewContext)
                 }
+                if UserDefaults.standard.bool(forKey: "AlertSubscriptionProbe") {
+                    let containerID = Self.cloudContainerID
+                    Task {
+                        for line in await SharedChangeServerAlerts.runProbe(containerID: containerID) {
+                            print("[AlertSubscriptionProbe] \(line)")
+                        }
+                        print("[AlertSubscriptionProbe] done")
+                        exit(0)
+                    }
+                }
                 return
             }
             #endif

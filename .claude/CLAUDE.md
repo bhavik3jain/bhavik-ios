@@ -388,7 +388,11 @@ Don't trust these comments, and don't "fix" the code they describe.
   tracking. What *does* reach a force-quit or rebooted device is iCloud's own alert
   (`SharedChangeServerAlerts`: CloudKit subscriptions with a visible `notificationInfo`, IDs prefixed
   `multitrack.alert.`) — fixed text only, and CloudKit sends it to the account's other devices for the
-  user's own edits too. Never touch a subscription without that prefix: Core Data's silent ones live
+  user's own edits too. **Never set `collapseIDKey` on them**: CloudKit refuses the whole subscription
+  ("cannot add collapseId to this subscription type"), and until October 2026 that meant no iCloud
+  alert had ever been saved for anyone. `-InMemoryStores YES -AlertSubscriptionProbe YES` on a build
+  signed like `scripts/cloudkit/init-schema.sh` signs one saves the real subscriptions to
+  Development, prints CloudKit's answer, and deletes them. Never touch a subscription without that prefix: Core Data's silent ones live
   beside them. (`SyncedSecret.swift` cites "a background parcel refresh" for
   `kSecAttrAccessibleAfterFirstUnlock` — fiction, but the choice is right: ThisDeviceOnly won't sync.)
 - There is no "sync now" in `NSPersistentCloudKitContainer`. Core's `CloudSyncMonitor` (injected at

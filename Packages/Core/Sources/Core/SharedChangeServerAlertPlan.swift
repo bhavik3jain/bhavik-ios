@@ -66,15 +66,6 @@ public enum SharedChangeServerAlertID {
         "\(zonePrefix)\(moduleID).\(zoneName)"
     }
 
-    /// What CloudKit is asked to send as `apns-collapse-id`, which APNs
-    /// caps at 64 bytes — a zone subscription's ID is longer, and a push
-    /// with an oversized one is refused outright. The end of the ID is kept:
-    /// it holds the zone's UUID.
-    public static func collapseID(for id: String) -> String {
-        guard id.utf8.count > 64 else { return id }
-        return "mt." + String(decoding: id.utf8.suffix(61), as: UTF8.self)
-    }
-
     public enum Parsed: Equatable, Sendable {
         case zone(moduleID: String, zoneName: String)
         case shared

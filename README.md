@@ -242,6 +242,7 @@ All debug-only, and inert unless passed (Product → Scheme → Edit Scheme → 
 | Argument | What it does |
 | --- | --- |
 | `-InitializeCloudKitSchema YES` | The schema ritual above — opens a status screen, not the app |
+| `-AlertSubscriptionProbe YES` | With `-InMemoryStores YES` on an iCloud-signed build: saves the iCloud alert subscriptions to Development, prints what CloudKit says to each, deletes them, and quits |
 | `-InMemoryStores YES` | The whole app on empty in-memory stores with no iCloud — for looking at an unsigned Mac build; add a seeder to fill it |
 | `-TVSeedShows YES` | Adds sample shows, looked up on TMDB (needs a key; does nothing if any show exists) |
 | `-FuelSeedCSV YES` | Imports a sample Fuelly export |
