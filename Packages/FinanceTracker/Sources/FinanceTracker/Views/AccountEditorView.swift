@@ -58,7 +58,10 @@ struct AccountEditorView: View {
                             // Changing an existing account into or out of a
                             // card would strand its balances or its
                             // transactions; only a new one can be anything.
-                            .disabled(!isNew && (option == .card) != (account?.category == .card))
+                            // A cash account that's been paid from can't
+                            // leave the categories that take transactions.
+                            .disabled(!isNew && ((option == .card) != (account?.category == .card)
+                                || ((account?.transactionCount ?? 0) > 0 && !option.takesTransactions)))
                         }
                     }
                     .padding(.vertical, 4)

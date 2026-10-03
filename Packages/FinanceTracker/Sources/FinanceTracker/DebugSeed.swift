@@ -41,6 +41,7 @@ public enum FinanceDebugSeed {
             ("Online Brokerage", "Taxable", .investments, saloni, 38_000, 900),
             ("Plan Provider", "401(k)", .retirement, bhavik, 142_000, 2_100),
             ("Plan Provider", "Roth IRA", .retirement, saloni, 57_300, 800),
+            ("Benefits Co", "HSA", .health, bhavik, 4_600, 150),
             ("", "Family car", .fixed, joint, 21_000, -250),
             ("Auto Lender", "Car loan", .loan, joint, 14_800, -420),
         ]
@@ -106,6 +107,16 @@ public enum FinanceDebugSeed {
                 month.close(asOf: period.end)
             }
         }
+
+        // Rent by Zelle, straight from the joint checking account: spending
+        // that isn't owed on a card.
+        let checking = monthly[0].0
+        let rent = SharedFinanceTransaction(
+            date: FinanceCalendar.date(current.year, current.month, 1).addingTimeInterval(9 * 3_600),
+            cost: 2_400, merchant: "Landlord", household: household, card: checking
+        )
+        rent.category = "Home"
+        rent.expense = "Rent (Zelle)"
 
         // (day, cost, merchant, category, expense, card index)
         let transactionSamples: [(Int, Double, String, String, String, Int)] = [

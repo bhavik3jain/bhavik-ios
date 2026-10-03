@@ -873,3 +873,85 @@ private func makeSeptember() throws -> (household: SharedFinanceHousehold, month
     let household = FinanceHouseholdResolver.forWriting(in: container.viewContext, container: container)
     #expect((household.owners ?? []).isEmpty, "Nobody else's names in someone's new household")
 }
+
+// MARK: - Health accounts and paying from cash
+
+@MainActor
+@Test func anFSAOrHSAIsAnAssetOfItsOwn() {
+    let household = makeHousehold()
+    let month = SharedFinanceMonth(period: september, household: household)
+    let hsa = SharedFinanceAccount(institution: "Benefits Co", name: "HSA", category: .health, household: household)
+    month.setBalance(4_000, for: hsa)
+    let summary = MonthSummary(month: month)
+
+    #expect(summary.health == 4_000)
+    #expect(summary.cash == 0 && summary.retirement == 0)
+    #expect(summary.totalAssets == 4_000)
+    #expect(summary.netWorth == 4_000)
+    #expect(AccountCategory.monthlyCases.contains(.health), "Its balance is typed in each month")
+    #expect(AccountCategory.health.isAsset)
+}
+
+@MainActor
+@Test func spendingFromCheckingIsntOwed() {
+    let household = makeHousehold()
+    let month = SharedFinanceMonth(period: september, household: household)
+    let checking = SharedFinanceAccount(institution: "Chase", name: "Checking", category: .cash, household: household)
+    let card = SharedFinanceAccount(institution: "Chase", name: "Sapphire", category: .card, household: household)
+    month.setBalance(5_000, for: checking)
+    _ = SharedFinanceTransaction(date: day(2026, 9, 1), cost: 2_400, merchant: "Landlord", household: household, card: checking)
+    _ = SharedFinanceTransaction(date: day(2026, 9, 2), cost: 100, merchant: "Deli", household: household, card: card)
+    let summary = MonthSummary(month: month)
+
+    #expect(summary.cardSpend == 100, "Rent by Zelle is spending, not a card balance")
+    #expect(summary.cash == 5_000, "A cash account is still worth what was typed in")
+    #expect(checking.value(in: month) == 5_000)
+    #expect(checking.spend(in: september) == 2_400)
+    #expect(SpendingSummary.total(SpendingSummary.transactions(Array(household.transactions ?? []), in: september)) == 2_500)
+}
+
+@MainActor
+@Test func cardsAndCashAccountsCanPayForATransaction() {
+    let household = makeHousehold()
+    let checking = SharedFinanceAccount(institution: "Chase", name: "Checking", category: .cash, household: household)
+    let venmo = SharedFinanceAccount(institution: "", name: "Venmo", category: .cash, household: household)
+    let card = SharedFinanceAccount(institution: "Chase", name: "Sapphire", category: .card, household: household)
+    let closed = SharedFinanceAccount(institution: "Old", name: "Card", category: .card, household: household)
+    closed.isArchived = true
+    _ = SharedFinanceAccount(institution: "Broker", name: "Taxable", category: .investments, household: household)
+    _ = SharedFinanceAccount(institution: "Benefits Co", name: "HSA", category: .health, household: household)
+
+    let unused = SpendingSummary.paymentAccountsByRecentUse(household.sortedAccounts)
+    #expect(unused == [card, checking, venmo], "Never used: cards first, so a new transaction still defaults to one")
+
+    _ = SharedFinanceTransaction(date: day(2026, 9, 1), cost: 20, merchant: "Friend", household: household, card: venmo)
+    let used = SpendingSummary.paymentAccountsByRecentUse(household.sortedAccounts)
+    #expect(used.first == venmo, "The last one paid with comes first")
+}
+
+@MainActor
+@Test func importPaysFromAMatchingCashAccountAndKeepsHealthAccounts() throws {
+    let household = makeHousehold()
+    let context = try #require(household.managedObjectContext)
+    let hsa = SharedFinanceAccount(institution: "Benefits Co", name: "HSA", category: .health, household: household)
+    let document = FinanceMonthDocument(
+        month: "2026-09",
+        accounts: [
+            .init(category: "cash", institution: "Chase", name: "Checking", owner: "", balance: 5_000),
+            // How an HSA comes back from the Numbers sheet, which has no Health table.
+            .init(category: "retirement", institution: "Benefits Co", name: "HSA", owner: "", balance: 4_000),
+        ],
+        transactions: [
+            .init(date: "2026-09-01", cost: 2_400, actualCost: 2_400, merchant: "Landlord", category: "Home", expense: "Rent", breakDown: "", card: "Chase - Checking"),
+        ]
+    )
+    let summary = try FinanceMonthExchange.apply(document, to: household)
+    try context.save()
+
+    #expect(summary.cardsAdded == 0, "Checking isn't remade as a card")
+    #expect(summary.accountsAdded == 1)
+    let transaction = try #require(household.transactions?.first)
+    #expect(transaction.card?.category == .cash)
+    #expect(household.sortedAccounts.filter { $0.name == "HSA" } == [hsa])
+    #expect(household.month(for: september)?.balance(for: hsa)?.amount == 4_000)
+}

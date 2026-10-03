@@ -3,7 +3,8 @@ import Core
 import CoreData
 import SwiftUI
 
-/// A month's card transactions and how they sit against its budgets.
+/// A month's transactions — on cards and from cash accounts — and how they
+/// sit against its budgets.
 struct SpendingView: View {
     @Environment(\.moduleLayout) private var layout
     @Environment(\.managedObjectContext) private var context
@@ -34,7 +35,7 @@ struct SpendingView: View {
         let period = chosenPeriod ?? snapshot.latestMonth?.period ?? YearMonth(containing: .now)
         NavigationStack {
             Group {
-                if layout == .sidebar, mode == .transactions, !snapshot.cards.isEmpty {
+                if layout == .sidebar, mode == .transactions, !snapshot.paymentAccounts.isEmpty {
                     macTransactions(snapshot, period: period, isEditable: isEditable)
                 } else {
                     list(snapshot, period: period, isEditable: isEditable)
@@ -65,7 +66,7 @@ struct SpendingView: View {
                                 Image(systemName: "plus")
                             }
                             .accessibilityLabel("Add Transaction")
-                            .disabled(snapshot.cards.isEmpty)
+                            .disabled(snapshot.paymentAccounts.isEmpty)
                         case .budget:
                             Button(editingBudgets ? "Done" : "Edit") {
                                 if editingBudgets { try? context.saveIfNeeded() }
@@ -85,8 +86,8 @@ struct SpendingView: View {
             .textPrompt("Add Budget", isPresented: $addingBudget, text: $newBudgetCategory, prompt: "Category") {
                 addBudget(in: snapshot.household?.month(for: period))
             }
-            .onChange(of: snapshot.cards) { _, cards in
-                if let cardFilter, !cards.contains(cardFilter) { self.cardFilter = nil }
+            .onChange(of: snapshot.paymentAccounts) { _, accounts in
+                if let cardFilter, !accounts.contains(cardFilter) { self.cardFilter = nil }
             }
         }
     }
@@ -122,7 +123,8 @@ struct SpendingView: View {
         .frame(maxWidth: .infinity)
     }
 
-    /// A chip per card, filtering Transactions and Categories alike.
+    /// A chip per card, and per cash account paid from this month, filtering
+    /// Transactions and Categories alike.
     private func cardChips(_ snapshot: FinanceSnapshot, period: YearMonth, monthTransactions: [SharedFinanceTransaction]) -> some View {
         ChipRow {
             FinanceChip(
@@ -130,7 +132,7 @@ struct SpendingView: View {
                 detail: FinanceFormat.money(SpendingSummary.total(monthTransactions)),
                 isSelected: cardFilter == nil
             ) { cardFilter = nil }
-            ForEach(snapshot.cards.filter { !$0.isArchived || $0.spend(in: period) != 0 }) { card in
+            ForEach(Self.filterAccounts(snapshot, period: period)) { card in
                 FinanceChip(
                     title: card.name.isEmpty ? card.displayName : card.name,
                     detail: FinanceFormat.money(card.spend(in: period)),
@@ -142,13 +144,22 @@ struct SpendingView: View {
         .listRowInsets(EdgeInsets())
     }
 
+    /// What the filter offers: every card still open, and any account —
+    /// cash ones included — with spending in `period`. A checking account
+    /// nobody paid from this month would only be a chip reading $0.
+    static func filterAccounts(_ snapshot: FinanceSnapshot, period: YearMonth) -> [SharedFinanceAccount] {
+        snapshot.paymentAccounts.filter { account in
+            account.spend(in: period) != 0 || (account.category == .card && !account.isArchived)
+        }
+    }
+
     // MARK: - Categories
 
     @ViewBuilder
     private func categorySections(_ snapshot: FinanceSnapshot, period: YearMonth) -> some View {
         let monthTransactions = SpendingSummary.transactions(snapshot.transactions, in: period)
         let shown = cardFilter.map { card in monthTransactions.filter { $0.card == card } } ?? monthTransactions
-        if snapshot.cards.count > 1 {
+        if Self.filterAccounts(snapshot, period: period).count > 1 {
             Section {
                 cardChips(snapshot, period: period, monthTransactions: monthTransactions)
             }
@@ -180,9 +191,9 @@ struct SpendingView: View {
 
     private func cardMenu(_ snapshot: FinanceSnapshot, period: YearMonth) -> some View {
         Picker(selection: $cardFilter) {
-            Text("All Cards").tag(SharedFinanceAccount?.none)
+            Text("All Accounts").tag(SharedFinanceAccount?.none)
             Divider()
-            ForEach(snapshot.cards.filter { !$0.isArchived || $0.spend(in: period) != 0 }) { card in
+            ForEach(Self.filterAccounts(snapshot, period: period)) { card in
                 Text(card.name.isEmpty ? card.displayName : card.name).tag(Optional(card))
             }
         } label: {
@@ -198,9 +209,9 @@ struct SpendingView: View {
         let monthTransactions = SpendingSummary.transactions(snapshot.transactions, in: period)
         let shown = cardFilter.map { card in monthTransactions.filter { $0.card == card } } ?? monthTransactions
 
-        if snapshot.cards.isEmpty {
+        if snapshot.paymentAccounts.isEmpty {
             Section {
-                Text("Add a card under Holdings → Accounts first; transactions are charged to a card.")
+                Text("Add a card or a cash account under Holdings → Accounts first; every transaction is paid with one.")
                     .foregroundStyle(.secondary)
             }
         } else {
@@ -214,7 +225,7 @@ struct SpendingView: View {
             }
         }
 
-        if shown.isEmpty, !snapshot.cards.isEmpty {
+        if shown.isEmpty, !snapshot.paymentAccounts.isEmpty {
             Section {
                 Text("Nothing in \(period.title) yet.")
                     .foregroundStyle(.secondary)

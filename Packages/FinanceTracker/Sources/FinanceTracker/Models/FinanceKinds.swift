@@ -9,6 +9,9 @@ public enum AccountCategory: String, Codable, CaseIterable, Identifiable, Sendab
     case cash
     case investments
     case retirement
+    /// FSA, HSA and the like: money set aside for medical bills, typed in
+    /// each month like cash.
+    case health
     /// Cars and property: things owned outright that hold a value.
     case fixed
     /// A credit card. Its balance for a month is never typed in — it's the
@@ -25,6 +28,7 @@ public enum AccountCategory: String, Codable, CaseIterable, Identifiable, Sendab
         case .cash: "Cash"
         case .investments: "Investments"
         case .retirement: "Retirement"
+        case .health: "Health (FSA/HSA)"
         case .fixed: "Cars & property"
         case .card: "Cards"
         case .loan: "Loans"
@@ -37,6 +41,7 @@ public enum AccountCategory: String, Codable, CaseIterable, Identifiable, Sendab
         case .cash: "Cash"
         case .investments: "Investment"
         case .retirement: "Retirement"
+        case .health: "Health"
         case .fixed: "Car / property"
         case .card: "Card"
         case .loan: "Loan"
@@ -48,6 +53,7 @@ public enum AccountCategory: String, Codable, CaseIterable, Identifiable, Sendab
         case .cash: "banknote"
         case .investments: "chart.line.uptrend.xyaxis"
         case .retirement: "beach.umbrella"
+        case .health: "cross.case"
         case .fixed: "car"
         case .card: "creditcard"
         case .loan: "building.columns"
@@ -56,7 +62,7 @@ public enum AccountCategory: String, Codable, CaseIterable, Identifiable, Sendab
 
     public var isAsset: Bool {
         switch self {
-        case .cash, .investments, .retirement, .fixed: true
+        case .cash, .investments, .retirement, .health, .fixed: true
         case .card, .loan: false
         }
     }
@@ -66,9 +72,15 @@ public enum AccountCategory: String, Codable, CaseIterable, Identifiable, Sendab
     /// Everything but cards has a balance typed in once a month.
     public var hasMonthlyBalance: Bool { self != .card }
 
+    /// What a transaction can be paid with: a card, or a cash account —
+    /// checking (rent by Zelle), savings, Venmo. A cash account's spend is
+    /// only a record of where money went; its balance is still the one
+    /// typed in, so it never counts as owed the way a card's does.
+    public var takesTransactions: Bool { self == .card || self == .cash }
+
     /// The categories whose balances are typed in each month, in the order
     /// the month entry screen lists them.
-    public static let monthlyCases: [AccountCategory] = [.cash, .investments, .retirement, .fixed, .loan]
+    public static let monthlyCases: [AccountCategory] = [.cash, .investments, .retirement, .health, .fixed, .loan]
 
     /// Position in `allCases`, for sorting accounts category by category.
     var sortIndex: Int { Self.allCases.firstIndex(of: self) ?? 0 }
@@ -137,6 +149,7 @@ public enum FinanceMetric: String, CaseIterable, Identifiable, Sendable {
     case cash
     case investments
     case retirement
+    case health
     case metals
     case fixed
     case cardSpend
@@ -149,6 +162,7 @@ public enum FinanceMetric: String, CaseIterable, Identifiable, Sendable {
         case .cash: "Cash"
         case .investments: "Investments"
         case .retirement: "Retirement"
+        case .health: "Health"
         case .metals: "Gold & silver"
         case .fixed: "Cars"
         case .cardSpend: "Card spend"

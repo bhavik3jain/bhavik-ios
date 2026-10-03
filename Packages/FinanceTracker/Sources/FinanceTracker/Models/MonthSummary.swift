@@ -20,13 +20,15 @@ public enum OwnerFilter: Hashable {
 /// One month's balance sheet, added up — the Summary tab's tiles and the
 /// Months tab's figures.
 ///
-/// Assets are cash, investments, retirement, cars & property and gold &
+/// Assets are cash, investments, retirement, health (FSA/HSA), cars & property and gold &
 /// silver. Liabilities are short-term (this month's card spend) plus
 /// long-term (what's left on the loans).
 public struct MonthSummary: Equatable, Sendable {
     public var cash = 0.0
     public var investments = 0.0
     public var retirement = 0.0
+    /// FSA / HSA balances.
+    public var health = 0.0
     /// Cars & property.
     public var fixed = 0.0
     /// Gold & silver — "Personal Items" in the Numbers sheet.
@@ -80,6 +82,7 @@ public struct MonthSummary: Equatable, Sendable {
         case .cash: cash += amount
         case .investments: investments += amount
         case .retirement: retirement += amount
+        case .health: health += amount
         case .fixed: fixed += amount
         case .loan: loans += amount
         // A card's figure is its transactions, never a typed balance; one
@@ -88,7 +91,7 @@ public struct MonthSummary: Equatable, Sendable {
         }
     }
 
-    public var totalAssets: Double { cash + investments + retirement + fixed + metals }
+    public var totalAssets: Double { cash + investments + retirement + health + fixed + metals }
     public var totalLiabilities: Double { cardSpend + loans }
     public var netWorth: Double { totalAssets - totalLiabilities }
 
@@ -101,6 +104,7 @@ public struct MonthSummary: Equatable, Sendable {
         case .cash: cash
         case .investments: investments
         case .retirement: retirement
+        case .health: health
         case .metals: metals
         case .fixed: fixed
         case .cardSpend: cardSpend

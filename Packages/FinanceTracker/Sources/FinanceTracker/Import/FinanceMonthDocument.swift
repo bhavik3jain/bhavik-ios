@@ -153,7 +153,8 @@ public struct FinanceMonthDocument: Codable, Equatable, Sendable {
         public var category: String
         public var expense: String
         public var breakDown: String
-        /// The card's `displayName`, "Chase - Sapphire Preferred".
+        /// The `displayName` of the card it was charged to, "Chase - Sapphire
+        /// Preferred", or of the cash account it was paid from.
         public var card: String
 
         public init(

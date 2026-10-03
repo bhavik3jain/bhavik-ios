@@ -75,6 +75,8 @@ struct FinanceSnapshot {
     var isWaitingForICloud: Bool { household == nil && !canEdit }
 
     var cards: [SharedFinanceAccount] { accounts.filter { $0.category == .card } }
+    /// Cards and cash accounts: what a transaction can be paid with.
+    var paymentAccounts: [SharedFinanceAccount] { accounts.filter { $0.category.takesTransactions } }
     var latestMonth: SharedFinanceMonth? { months.last }
 
     /// The latest month, or the one before while the latest is still being

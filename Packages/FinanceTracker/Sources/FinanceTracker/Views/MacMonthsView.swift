@@ -15,7 +15,7 @@ struct MacMonthsView: View {
 
     @State private var selection: FinanceHistory.Point.ID?
 
-    private static let columns: [FinanceMetric] = [.cash, .investments, .retirement, .metals, .fixed, .cardSpend]
+    private static let columns: [FinanceMetric] = [.cash, .investments, .retirement, .health, .metals, .fixed, .cardSpend]
 
     var body: some View {
         let rows = Array(history.points.reversed())

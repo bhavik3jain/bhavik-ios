@@ -91,6 +91,10 @@ public struct FinanceNumbersSpec: Encodable, Equatable, Sendable {
     public static let accountTables: [(table: String, category: String)] = [
         ("Cash", "cash"), ("Investments", "investments"), ("Retirement", "retirement"),
     ]
+    /// Categories the template has no table for, and the table they go
+    /// under: an FSA/HSA counts toward the sheet's assets as retirement.
+    /// `finance_numbers.SHEET_CATEGORY` has the same map.
+    public static let sheetCategory = ["health": "retirement"]
     public static let fixedTable = "Large and Fixed Assets"
     public static let loanTable = "Long-Term Liabilities"
     public static let cardTable = "Credit Card Details"
@@ -110,7 +114,7 @@ public struct FinanceNumbersSpec: Encodable, Equatable, Sendable {
 
         var tables: [Table] = []
         for (table, category) in Self.accountTables {
-            let rows = document.accounts.filter { $0.category == category }.map { account in
+            let rows = document.accounts.filter { (Self.sheetCategory[$0.category] ?? $0.category) == category }.map { account in
                 [Op(2, "keep", .number(Self.money(account.balance))),
                  Op(0, "text", .text(Self.displayName(account.institution, account.name))),
                  Op(1, "text", .text(account.owner.isEmpty ? Self.joint : account.owner))]

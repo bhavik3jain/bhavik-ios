@@ -162,19 +162,23 @@ public enum SpendingSummary {
         return used + rest
     }
 
-    /// Cards for the editor's picker, the most recently used first; cards
-    /// never used follow in their usual order. Archived cards are left out.
-    public static func cardsByRecentUse(_ cards: [SharedFinanceAccount]) -> [SharedFinanceAccount] {
-        let open = cards.filter { $0.category == .card && !$0.isArchived }
-        func lastUsed(_ card: SharedFinanceAccount) -> Date? {
-            (card.transactions ?? []).map(\.createdAt).max()
+    /// What the editor's "Paid with" picker offers: cards and cash accounts,
+    /// the most recently used first. Those never used follow, cards before
+    /// cash — a new household's first transaction still defaults to a card —
+    /// then in their usual order. Archived accounts are left out.
+    public static func paymentAccountsByRecentUse(_ accounts: [SharedFinanceAccount]) -> [SharedFinanceAccount] {
+        let open = accounts.filter { $0.category.takesTransactions && !$0.isArchived }
+        func lastUsed(_ account: SharedFinanceAccount) -> Date? {
+            (account.transactions ?? []).map(\.createdAt).max()
         }
         return open.sorted { lhs, rhs in
             switch (lastUsed(lhs), lastUsed(rhs)) {
             case let (left?, right?): return left > right
             case (.some, .none): return true
             case (.none, .some): return false
-            case (.none, .none): return SharedFinanceAccount.displayOrder(lhs, rhs)
+            case (.none, .none):
+                if (lhs.category == .card) != (rhs.category == .card) { return lhs.category == .card }
+                return SharedFinanceAccount.displayOrder(lhs, rhs)
             }
         }
     }

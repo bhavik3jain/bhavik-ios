@@ -2,7 +2,8 @@ import Core
 import CoreData
 import SwiftUI
 
-/// Adds a card transaction, or edits one when handed it.
+/// Adds a transaction — on a card, or paid straight from a cash account —
+/// or edits one when handed it.
 struct TransactionEditorView: View {
     let transaction: SharedFinanceTransaction?
     let defaultDate: Date
@@ -43,7 +44,7 @@ struct TransactionEditorView: View {
 
     var body: some View {
         let snapshot = data.snapshot
-        let cards = SpendingSummary.cardsByRecentUse(snapshot.cards)
+        let cards = SpendingSummary.paymentAccountsByRecentUse(snapshot.paymentAccounts)
         let categories = SpendingSummary.knownCategories(snapshot.transactions)
         SheetStack {
             Form {
@@ -59,19 +60,24 @@ struct TransactionEditorView: View {
                     DatePicker("Date", selection: $date, displayedComponents: .date)
                 }
 
-                Section("Card") {
-                    Picker("Card", selection: $card) {
+                Section {
+                    Picker("Paid with", selection: $card) {
                         if card == nil {
                             Text("Choose…").tag(SharedFinanceAccount?.none)
                         }
-                        // The card being edited stays pickable even if it's
-                        // since been archived.
+                        // The account being edited stays pickable even if
+                        // it's since been archived.
                         if let current = transaction?.card, !cards.contains(current) {
                             Text(current.displayName).tag(SharedFinanceAccount?.some(current))
                         }
                         ForEach(cards) { option in
-                            Text(option.displayName).tag(SharedFinanceAccount?.some(option))
+                            Label(option.displayName, systemImage: option.category.symbolName)
+                                .tag(SharedFinanceAccount?.some(option))
                         }
+                    }
+                } footer: {
+                    if card?.category == .cash {
+                        Text("Paid from a bank account, Zelle or Venmo: it counts toward spending and budgets, but not as owed — the account's balance is still the one typed in each month.")
                     }
                 }
 
