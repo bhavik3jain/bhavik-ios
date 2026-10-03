@@ -268,8 +268,8 @@ private func makeSeptember() throws -> (household: SharedFinanceHousehold, month
     let history = FinanceHistory(months: [october, september])
 
     #expect(history.points.map(\.period.rawValue) == ["2026-09", "2026-10"], "Oldest first whatever order they came in")
-    #expect(history.series(.cash).map(\.value) == [4_500, 5_500])
-    #expect(history.delta(.cash, at: YearMonth(year: 2026, month: 10)) == 1_000)
+    #expect(history.series(.cash).map(\.value) == [4_500, 4_000], "October's other cash accounts start at zero")
+    #expect(history.delta(.cash, at: YearMonth(year: 2026, month: 10)) == -500)
     #expect(history.delta(.cash, at: YearMonth(year: 2026, month: 9)) == nil, "The first month has nothing to compare with")
     // October has no card transactions yet, so its liabilities drop by September's 500.
     #expect(history.delta(.cardSpend, at: YearMonth(year: 2026, month: 10)) == -500)
@@ -317,7 +317,7 @@ private func makeSeptember() throws -> (household: SharedFinanceHousehold, month
 // MARK: - Rollover
 
 @MainActor
-@Test func startingAMonthCopiesLastMonth() throws {
+@Test func startingAMonthZeroesBalancesAndCopiesTheRest() throws {
     let (household, september) = try makeSeptember()
     let archived = SharedFinanceAccount(institution: "Old", name: "Closed", category: .cash, household: household)
     september.setBalance(99, for: archived)
@@ -331,10 +331,12 @@ private func makeSeptember() throws -> (household: SharedFinanceHousehold, month
     #expect(october.silverPricePerOz == 50)
     let balances = october.balances ?? []
     #expect(balances.count == 7, "Every open non-card account, and not the archived one")
-    #expect(balances.allSatisfy { !$0.edited }, "Copied figures aren't updated yet")
+    #expect(balances.allSatisfy { !$0.edited }, "Nothing's filled in yet")
+    #expect(balances.allSatisfy { $0.amount == 0 }, "Every balance starts at zero, not last month's figure")
     #expect(balances.allSatisfy { $0.account?.category != .card })
     #expect(!balances.contains { $0.account == archived })
-    #expect(MonthSummary(month: october).cash == 4_500)
+    #expect(MonthSummary(month: october).cash == 0)
+    #expect(approximately(MonthSummary(month: october).metals, MonthSummary(month: september).metals, within: 0.01), "Gold and silver keep their value")
     #expect(october.sortedBudgets.map(\.category) == ["Food"])
     #expect(october.sortedBudgets.first?.limit == 600)
 
@@ -370,6 +372,97 @@ private func makeSeptember() throws -> (household: SharedFinanceHousehold, month
 
     let second = MonthRollover.startNextMonth(in: household, asOf: day(2026, 9, 10))
     #expect(second.yearMonth == "2026-10")
+}
+
+@MainActor
+@Test func lastMonthsFigureIsOneTapAway() throws {
+    let (household, september) = try makeSeptember()
+    let october = try #require(MonthRollover.startMonth(after: september))
+    let joint = try #require(household.sortedAccounts.first { $0.category == .cash && $0.owner?.name == "Joint" })
+    #expect(MonthRollover.previousAmount(for: joint, in: october) == 3_000)
+    #expect(MonthRollover.previousAmount(for: joint, in: september) == nil, "September has no month before it")
+
+    october.setBalance(3_200, for: joint)
+    #expect(MonthRollover.unfilledWithPrevious(in: october).count == 6)
+    #expect(MonthRollover.carryOverUnfilled(in: october) == 6)
+    #expect(october.balance(for: joint)?.amount == 3_200, "A figure already typed is left alone")
+    #expect(MonthSummary(month: october).cash == 4_700)
+    #expect((october.balances ?? []).allSatisfy { $0.edited })
+    #expect(MonthRollover.carryOverUnfilled(in: october) == 0)
+}
+
+@MainActor
+@Test func aHalfFilledMonthReportsTheOneBefore() throws {
+    let (household, september) = try makeSeptember()
+    let october = try #require(MonthRollover.startMonth(after: september))
+    #expect(FinanceHome.reportedMonth(for: october, live: nil) == september, "Zeros aren't a net worth")
+    #expect(FinanceHome.reportedMonth(for: september, live: nil) == september, "The first month has nothing before it")
+
+    october.close(asOf: day(2026, 10, 31))
+    #expect(FinanceHome.reportedMonth(for: october, live: nil) == october, "Closed is done, filled in or not")
+    october.reopen()
+
+    MonthRollover.carryOverUnfilled(in: october)
+    #expect(FinanceHome.reportedMonth(for: october, live: MetalPrices(gold: 4_100, silver: 55)) == october, "Every balance in, prices live")
+
+    let history = FinanceHistory(months: Array(household.months ?? []))
+    #expect(history.series(.netWorth, through: YearMonth(year: 2026, month: 9)).map(\.period) == [september.period!])
+}
+
+// MARK: - Order and grouping
+
+@MainActor
+@Test func accountsSortByInstitutionWithinTheirCategory() {
+    let household = makeHousehold()
+    let late = SharedFinanceAccount(institution: "Ally", name: "Savings", category: .cash, household: household)
+    _ = SharedFinanceAccount(institution: "Chase", name: "Checking", category: .cash, household: household)
+    _ = SharedFinanceAccount(institution: "", name: "Wallet", category: .cash, household: household)
+    _ = SharedFinanceAccount(institution: "Ally", name: "Checking", category: .cash, household: household)
+    _ = SharedFinanceAccount(institution: "Amex", name: "Gold", category: .card, household: household)
+    late.sortOrder = 99
+
+    #expect(household.sortedAccounts.map(\.displayName) == [
+        "Ally - Checking", "Ally - Savings", "Chase - Checking", "Wallet", "Amex - Gold",
+    ], "Category first, then institution and name, whatever order they were added")
+}
+
+@MainActor
+@Test func aCategoryGroupsByPersonThenInstitution() throws {
+    let household = makeHousehold()
+    let bhavik = try owner("Bhavik", in: household)
+    let saloni = try owner("Saloni", in: household)
+    let accounts = [
+        SharedFinanceAccount(institution: "Zeta", name: "A", category: .cash, household: household, owner: saloni),
+        SharedFinanceAccount(institution: "Chase", name: "B", category: .cash, household: household, owner: bhavik),
+        SharedFinanceAccount(institution: "Ally", name: "C", category: .cash, household: household),
+        SharedFinanceAccount(institution: "Ally", name: "D", category: .cash, household: household, owner: saloni),
+        SharedFinanceAccount(institution: "Amex", name: "E", category: .cash, household: household, owner: bhavik),
+    ]
+
+    let groups = AccountGrouping.byOwner(accounts)
+    #expect(groups.map(\.title) == ["Bhavik", "Saloni", "No one"], "People in their own order, no one last")
+    #expect(groups.map { $0.accounts.map(\.institution) } == [["Amex", "Chase"], ["Ally", "Zeta"], ["Ally"]])
+    #expect(AccountGrouping.ordered(accounts).map(\.name) == ["E", "B", "D", "A", "C"])
+    #expect(AccountGrouping.byOwner([]).isEmpty)
+}
+
+// MARK: - Monthly reminder
+
+@Test func theReminderNamesEachMonthOnTheFirst() throws {
+    let reminders = FinanceMonthReminder.upcoming(asOf: day(2026, 10, 2))
+    #expect(reminders.count == 12)
+    let first = try #require(reminders.first)
+    #expect(first.period == YearMonth(year: 2026, month: 11))
+    #expect(first.fireDate == DateComponents(year: 2026, month: 11, day: 1, hour: 9))
+    #expect(first.title == "November has started")
+    #expect(first.identifier == "finance.monthStart.2026-11")
+    #expect(reminders.last?.period == YearMonth(year: 2027, month: 10), "A year of them, across the new year")
+    #expect(Set(reminders.map(\.identifier)).count == 12)
+
+    let earlyOnTheFirst = day(2026, 11, 1, hour: 8)
+    #expect(FinanceMonthReminder.upcoming(asOf: earlyOnTheFirst).first?.period == YearMonth(year: 2026, month: 11), "Before 9 today's still to come")
+    let lateOnTheFirst = day(2026, 11, 1, hour: 10)
+    #expect(FinanceMonthReminder.upcoming(asOf: lateOnTheFirst).first?.period == YearMonth(year: 2026, month: 12))
 }
 
 // MARK: - Budgets
@@ -456,8 +549,12 @@ private func makeSeptember() throws -> (household: SharedFinanceHousehold, month
 
     let (_, september) = try makeSeptember()
     let october = try #require(MonthRollover.startMonth(after: september))
-    let expected = MonthSummary(month: october).netWorth
-    #expect(FinanceHome.homeDetail(for: [october, september], container: nil) == "Net worth \(FinanceFormat.money(expected))")
+    let expected = MonthSummary(month: september).netWorth
+    #expect(FinanceHome.homeDetail(for: [october, september], container: nil) == "Net worth \(FinanceFormat.money(expected))", "October's not filled in yet")
+    MonthRollover.carryOverUnfilled(in: october)
+    october.goldPricePerOz = 4_100
+    october.silverPricePerOz = 55
+    #expect(FinanceHome.homeDetail(for: [october, september], container: nil) == "Net worth \(FinanceFormat.money(MonthSummary(month: october).netWorth))")
     #expect(FinanceTrackerModule.homeDetail(months: [september], container: nil) == "Net worth \(FinanceFormat.money(MonthSummary(month: september).netWorth))")
 }
 

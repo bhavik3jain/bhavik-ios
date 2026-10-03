@@ -31,16 +31,18 @@ struct FinanceOverviewCard: View {
         OverviewCard(
             accent: FinanceTrackerModule.accent,
             icon: FinanceTrackerModule.symbolName,
-            detail: latest?.monthName ?? "",
+            detail: latest.map { FinanceHome.reportedMonth(for: $0, live: MetalPriceFeed.shared.live).monthName } ?? "",
             open: open
         ) {
             if let latest {
                 let live = MetalPriceFeed.shared.live
-                let summary = MonthSummary(month: latest, live: live)
-                let change = FinanceHome.netWorthChange(for: latest, live: live)
+                // The last month filled in; see `FinanceHome.reportedMonth`.
+                let reported = FinanceHome.reportedMonth(for: latest, live: live)
+                let summary = MonthSummary(month: reported, live: live)
+                let change = FinanceHome.netWorthChange(for: reported, live: live)
                 VStack(alignment: .leading, spacing: 4) {
                     OverviewValue(FinanceFormat.money(summary.netWorth))
-                    OverviewCaption("Net worth · \(Self.holdings(in: latest))")
+                    OverviewCaption("Net worth · \(Self.holdings(in: reported))")
                     Spacer(minLength: 6)
                     let mix = AssetMix(summary)
                     if !mix.shares.isEmpty {

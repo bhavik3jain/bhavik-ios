@@ -24,7 +24,7 @@ struct SummaryView: View {
                     ContentUnavailableView {
                         Label("No months yet", systemImage: FinanceTrackerModule.symbolName)
                     } description: {
-                        Text("Start a month, then type in each account's balance. Next month starts as a copy, so only what moved needs changing.")
+                        Text("Start a month, then type in each account's balance. Each new month starts at zero, with last month\u{2019}s figure a tap away.")
                     } actions: {
                         if snapshot.canEdit {
                             Button("Start \(YearMonth(containing: .now).title)") { startFirstMonth() }
@@ -94,8 +94,9 @@ struct SummaryView: View {
 
     private func phoneList(_ snapshot: FinanceSnapshot, latest: SharedFinanceMonth) -> some View {
         let history = snapshot.history(filter: filter)
-        let summary = snapshot.summary(for: latest, filter: filter)
-        let period = latest.period ?? YearMonth(containing: .now)
+        let reported = FinanceHome.reportedMonth(for: latest, live: snapshot.live)
+        let summary = snapshot.summary(for: reported, filter: filter)
+        let period = reported.period ?? YearMonth(containing: .now)
         return List {
             if snapshot.owners.count > 1 {
                 Section {
@@ -113,10 +114,10 @@ struct SummaryView: View {
 
             Section {
                 NetWorthCard(
-                    title: latest.title,
+                    title: reported.title,
                     netWorth: summary.netWorth,
                     delta: history.delta(.netWorth, at: period),
-                    series: history.series(.netWorth, last: 12)
+                    series: history.series(.netWorth, through: period, last: 12)
                 )
                 .listRowInsets(EdgeInsets(top: 12, leading: 16, bottom: 12, trailing: 16))
             }
@@ -250,11 +251,17 @@ private struct MacFinanceDashboard: View {
 
     var body: some View {
         let history = snapshot.history(filter: filter)
-        let summary = snapshot.summary(for: latest, filter: filter)
-        let period = latest.period ?? YearMonth(containing: .now)
+        let reported = FinanceHome.reportedMonth(for: latest, live: snapshot.live)
+        let summary = snapshot.summary(for: reported, filter: filter)
+        let period = reported.period ?? YearMonth(containing: .now)
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
-                hero(summary: summary, delta: history.delta(.netWorth, at: period), series: history.series(.netWorth, last: 12))
+                hero(
+                    title: reported == latest ? nil : reported.title,
+                    summary: summary,
+                    delta: history.delta(.netWorth, at: period),
+                    series: history.series(.netWorth, through: period, last: 12)
+                )
 
                 if !latest.isClosed {
                     progressCard(snapshot.progress(of: latest))
@@ -277,12 +284,14 @@ private struct MacFinanceDashboard: View {
             .frame(maxWidth: 1_100, alignment: .leading)
             .frame(maxWidth: .infinity)
         }
-        .moduleSubtitle(latest.title)
+        .moduleSubtitle(reported.title)
     }
 
-    private func hero(summary: MonthSummary, delta: Double?, series: [FinanceHistory.Value]) -> some View {
+    /// `title` names the month when it isn't the latest — see
+    /// `FinanceHome.reportedMonth`.
+    private func hero(title: String?, summary: MonthSummary, delta: Double?, series: [FinanceHistory.Value]) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text("Net worth")
+            Text(title.map { "Net worth · \($0)" } ?? "Net worth")
                 .font(.headline)
                 .foregroundStyle(.secondary)
             HStack(alignment: .firstTextBaseline, spacing: 12) {

@@ -53,7 +53,7 @@ struct MetalEditorView: View {
                         ForEach(MetalKind.allCases) { Text($0.displayName).tag($0) }
                     }
                     .pickerStyle(.segmented)
-                    TextField("Name, e.g. Gold - Bar 1", text: $name)
+                    TextField("Name", text: $name, prompt: Text("Gold - Bar 1"))
                         .textInputAutocapitalization(.words)
                 }
 
@@ -91,8 +91,6 @@ struct MetalEditorView: View {
                     }
                 } header: {
                     Text("Cost")
-                } footer: {
-                    Text("Leave both empty if the cost isn't known; the item then shows no gain.")
                 }
 
                 Section {
@@ -113,7 +111,7 @@ struct MetalEditorView: View {
                 }
 
                 Section("Where") {
-                    TextField("Location, e.g. Locker", text: $location)
+                    TextField("Location", text: $location, prompt: Text("Locker"))
                         .textInputAutocapitalization(.words)
                     if !snapshot.metalLocations.isEmpty {
                         ChipRow {

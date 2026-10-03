@@ -162,23 +162,33 @@ struct HoldingsView: View {
         ForEach(AccountCategory.allCases) { category in
             let accounts = snapshot.accounts.filter { $0.category == category }
             if !accounts.isEmpty {
+                let groups = AccountGrouping.byOwner(accounts)
                 Section {
                     if !collapsed.contains(category) {
-                        ForEach(accounts) { account in
-                            Button {
-                                if isEditable { editingAccount = account }
-                            } label: {
-                                AccountRow(account: account, value: value(of: account, snapshot: snapshot))
+                        ForEach(groups) { group in
+                            if group.owner != nil || groups.count > 1 {
+                                OwnerGroupHeader(
+                                    group: group,
+                                    total: group.accounts.reduce(0) { $0 + value(of: $1, snapshot: snapshot) }
+                                )
+                                .listRowSeparator(.hidden, edges: .bottom)
                             }
-                            .tint(.primary)
-                            .swipeActions(edge: .trailing) {
-                                if isEditable {
-                                    Button("Delete", systemImage: "trash", role: .destructive) {
-                                        pendingDelete = account
-                                    }
-                                    Button(account.isArchived ? "Unarchive" : "Archive", systemImage: "archivebox") {
-                                        account.isArchived.toggle()
-                                        try? context.saveIfNeeded()
+                            ForEach(group.accounts) { account in
+                                Button {
+                                    if isEditable { editingAccount = account }
+                                } label: {
+                                    AccountRow(account: account, value: value(of: account, snapshot: snapshot))
+                                }
+                                .tint(.primary)
+                                .swipeActions(edge: .trailing) {
+                                    if isEditable {
+                                        Button("Delete", systemImage: "trash", role: .destructive) {
+                                            pendingDelete = account
+                                        }
+                                        Button(account.isArchived ? "Unarchive" : "Archive", systemImage: "archivebox") {
+                                            account.isArchived.toggle()
+                                            try? context.saveIfNeeded()
+                                        }
                                     }
                                 }
                             }
@@ -347,10 +357,8 @@ private struct AccountRow: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            OwnerBadge(owner: account.owner)
             VStack(alignment: .leading, spacing: 2) {
-                Text(account.displayName.isEmpty ? "Untitled" : account.displayName)
-                    .lineLimit(1)
+                AccountNameText(account: account)
                 if !detail.isEmpty {
                     Text(detail)
                         .font(.caption)

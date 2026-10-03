@@ -28,28 +28,20 @@ struct AccountEditorView: View {
         !name.trimmingCharacters(in: .whitespaces).isEmpty && canEdit(account, in: container)
     }
 
-    private var exportedName: String {
-        SharedFinanceAccount.displayName(institution: institution, name: name)
-    }
-
     var body: some View {
         let snapshot = data.snapshot
         let latest = snapshot.latestMonth
         SheetStack {
             Form {
                 Section {
-                    TextField("Institution, e.g. Capital One", text: $institution)
+                    // A label and a short example rather than a sentence of
+                    // placeholder: on the Mac's form the label sits beside
+                    // the field.
+                    TextField("Institution", text: $institution, prompt: Text("Capital One"))
                         .textInputAutocapitalization(.words)
-                    TextField("Account, e.g. Checkings", text: $name)
+                    TextField("Account", text: $name, prompt: Text("Checking"))
                         .textInputAutocapitalization(.words)
-                } footer: {
-                    if !name.trimmingCharacters(in: .whitespaces).isEmpty {
-                        Text("Exported as \u{201C}\(exportedName)\u{201D}.")
-                    }
-                }
-
-                Section("Whose") {
-                    Picker("Owner", selection: $owner) {
+                    Picker("Whose", selection: $owner) {
                         Text("No one").tag(SharedFinanceOwner?.none)
                         ForEach(snapshot.owners) { person in
                             Text(person.name).tag(SharedFinanceOwner?.some(person))
@@ -96,7 +88,7 @@ struct AccountEditorView: View {
                         Text(latest.map { "\($0.title) balance" } ?? "Balance")
                     } footer: {
                         if latest == nil {
-                            Text("Saving starts \(YearMonth(containing: .now).title) for it.")
+                            Text("Starts \(YearMonth(containing: .now).title).")
                         }
                     }
                 }
@@ -105,7 +97,7 @@ struct AccountEditorView: View {
                     Section {
                         Toggle("Archived", isOn: $isArchived)
                     } footer: {
-                        Text("An archived account keeps its history but isn't carried into new months.")
+                        Text("Keeps its history; left out of new months.")
                     }
                 }
             }

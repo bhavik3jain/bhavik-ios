@@ -3,11 +3,15 @@ import CoreData
 import SwiftUI
 
 /// Typing in a month: metal prices (live while it's the open latest month —
-/// see `MetalPriceFeed`), then every account's balance category by category. Rows still showing last month's figure say so until changed or
-/// confirmed. Cards are read-only here — their figure is their transactions.
+/// see `MetalPriceFeed`), then every account's balance category by category,
+/// person by person. A new month starts every balance at zero; a row not yet
+/// filled in offers last month's figure as one tap. Cards are read-only here
+/// — their figure is their transactions. The Mac has its own grid,
+/// `MacMonthEntryView`.
 struct MonthEntryView: View {
     @ObservedObject var month: SharedFinanceMonth
 
+    @Environment(\.moduleLayout) private var layout
     @Environment(\.managedObjectContext) private var context
     @Environment(\.financePersistentContainer) private var container
     var data = FinanceFetches()
@@ -17,14 +21,29 @@ struct MonthEntryView: View {
     }
 
     var body: some View {
+        if layout == .sidebar {
+            MacMonthEntryView(month: month)
+        } else {
+            phoneList
+        }
+    }
+
+    private var phoneList: some View {
         let snapshot = data.snapshot
         let isEditable = canEdit(month, in: container)
         let previousName = month.previousMonth?.monthName
         let feed = MetalPriceFeed.shared
-        List {
+        let carryable = MonthRollover.unfilledWithPrevious(in: month).count
+        return List {
             if !month.isClosed {
                 Section {
                     MonthProgressRow(month: month, progress: MonthRollover.progress(of: month, live: feed.live))
+                    if isEditable, carryable > 0, let previousName {
+                        Button("Same as \(previousName) for the other \(carryable)", systemImage: "arrow.uturn.backward") {
+                            MonthRollover.carryOverUnfilled(in: month)
+                            save()
+                        }
+                    }
                 }
             }
 
@@ -56,29 +75,39 @@ struct MonthEntryView: View {
             ForEach(AccountCategory.monthlyCases) { category in
                 let rows = accounts(in: category, snapshot: snapshot)
                 if !rows.isEmpty {
+                    let groups = AccountGrouping.byOwner(rows)
                     Section {
-                        ForEach(rows) { account in
-                            let balance = month.balance(for: account)
-                            BalanceRow(
-                                account: account,
-                                amount: balance?.amount ?? 0,
-                                edited: balance?.edited ?? false,
-                                hasBalance: balance != nil,
-                                previousName: previousName,
-                                isEditable: isEditable,
-                                commit: { _ = month.setBalance($0, for: account) },
-                                confirm: {
-                                    month.setBalance(balance?.amount ?? 0, for: account)
-                                    save()
-                                },
-                                save: save
-                            )
+                        ForEach(groups) { group in
+                            // A sub-heading per person; none when no one owns
+                            // anything in the category.
+                            if group.owner != nil || groups.count > 1 {
+                                OwnerGroupHeader(group: group, total: total(of: group.accounts))
+                                    .listRowSeparator(.hidden, edges: .bottom)
+                            }
+                            ForEach(group.accounts) { account in
+                                let balance = month.balance(for: account)
+                                BalanceRow(
+                                    account: account,
+                                    amount: balance?.amount ?? 0,
+                                    edited: balance?.edited ?? false,
+                                    hasBalance: balance != nil,
+                                    previous: MonthRollover.previousAmount(for: account, in: month),
+                                    previousName: previousName,
+                                    isEditable: isEditable,
+                                    commit: { _ = month.setBalance($0, for: account) },
+                                    useAmount: { amount in
+                                        month.setBalance(amount, for: account)
+                                        save()
+                                    },
+                                    save: save
+                                )
+                            }
                         }
                     } header: {
                         HStack {
                             Text(category.displayName)
                             Spacer()
-                            Text(FinanceFormat.money(rows.reduce(0) { $0 + (month.balance(for: $1)?.amount ?? 0) }))
+                            Text(FinanceFormat.money(total(of: rows)))
                                 .monospacedDigit()
                         }
                     }
@@ -152,12 +181,20 @@ struct MonthEntryView: View {
         return ", updated \(date.formatted(.relative(presentation: .named)))"
     }
 
+    private func accounts(in category: AccountCategory, snapshot: FinanceSnapshot) -> [SharedFinanceAccount] {
+        Self.accounts(in: category, of: month, snapshot: snapshot)
+    }
+
     /// Every account with a balance this month, plus open accounts added
     /// since it started (which get a balance the moment one's typed).
-    private func accounts(in category: AccountCategory, snapshot: FinanceSnapshot) -> [SharedFinanceAccount] {
+    static func accounts(in category: AccountCategory, of month: SharedFinanceMonth, snapshot: FinanceSnapshot) -> [SharedFinanceAccount] {
         snapshot.accounts.filter { account in
             account.category == category && (month.balance(for: account) != nil || !account.isArchived)
         }
+    }
+
+    private func total(of accounts: [SharedFinanceAccount]) -> Double {
+        accounts.reduce(0) { $0 + (month.balance(for: $1)?.amount ?? 0) }
     }
 
     private func priceRow(_ title: String, value: Double, isEditable: Bool, set: @escaping (Double) -> Void) -> some View {
@@ -181,38 +218,20 @@ private struct BalanceRow: View {
     let amount: Double
     let edited: Bool
     let hasBalance: Bool
+    /// Last month's figure, if it had one.
+    let previous: Double?
     let previousName: String?
     let isEditable: Bool
     let commit: (Double) -> Void
-    let confirm: () -> Void
+    /// Fills in last month's figure and saves.
+    let useAmount: (Double) -> Void
     let save: () -> Void
 
     var body: some View {
         HStack(alignment: .center, spacing: 10) {
-            OwnerBadge(owner: account.owner)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(account.displayName.isEmpty ? "Untitled" : account.displayName)
-                    .lineLimit(1)
-                if !hasBalance {
-                    Text("No balance yet")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                } else if !edited, let previousName {
-                    HStack(spacing: 6) {
-                        Text("Still \(previousName)")
-                            .font(.caption)
-                            .foregroundStyle(.orange)
-                        if isEditable {
-                            // Unchanged is an answer too: this marks the
-                            // copied figure as checked without retyping it.
-                            Button("Same", systemImage: "checkmark.circle", action: confirm)
-                                .labelStyle(.iconOnly)
-                                .font(.caption)
-                                .buttonStyle(.borderless)
-                                .accessibilityLabel("Unchanged since \(previousName)")
-                        }
-                    }
-                }
+            VStack(alignment: .leading, spacing: 3) {
+                AccountNameText(account: account)
+                status
             }
             Spacer(minLength: 8)
             if isEditable {
@@ -221,6 +240,64 @@ private struct BalanceRow: View {
             } else {
                 Text(FinanceFormat.money(amount))
                     .monospacedDigit()
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var status: some View {
+        if edited, let previous {
+            DeltaText(delta: amount - previous, upIsGood: !account.category.isLiability)
+                .font(.caption)
+        } else if !edited {
+            if let previous, let previousName {
+                if isEditable {
+                    // Unchanged is an answer too: this takes last month's
+                    // figure without retyping it.
+                    Button {
+                        useAmount(previous)
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "arrow.uturn.backward")
+                                .imageScale(.small)
+                            Text("\(previousName) \(FinanceFormat.money(previous))")
+                        }
+                        .font(.caption)
+                        .lineLimit(1)
+                    }
+                    .buttonStyle(.borderless)
+                    .tint(FinanceTrackerModule.accent.color)
+                    .accessibilityLabel("Same as \(previousName), \(FinanceFormat.money(previous))")
+                } else {
+                    Text("\(previousName) \(FinanceFormat.money(previous))")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            } else {
+                Text(hasBalance ? "Not filled in" : "No balance yet")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            }
+        }
+    }
+}
+
+/// "Chase" over "Checking" — the institution first, since that's what the
+/// accounts are sorted by, and the account's own name small beneath.
+struct AccountNameText: View {
+    @ObservedObject var account: SharedFinanceAccount
+
+    var body: some View {
+        let institution = account.institution.trimmingCharacters(in: .whitespaces)
+        let name = account.name.trimmingCharacters(in: .whitespaces)
+        VStack(alignment: .leading, spacing: 1) {
+            Text(institution.isEmpty ? (name.isEmpty ? "Untitled" : name) : institution)
+                .lineLimit(1)
+            if !institution.isEmpty, !name.isEmpty {
+                Text(name)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
             }
         }
     }

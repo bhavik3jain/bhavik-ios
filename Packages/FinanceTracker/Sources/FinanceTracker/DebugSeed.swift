@@ -17,6 +17,12 @@ public enum FinanceDebugSeed {
         guard households.allSatisfy(\.isEmpty) else { return }
 
         let household = FinanceHouseholdResolver.forWriting(in: context, container: container)
+        // A new household starts with no people, so the seed makes its own.
+        if household.sortedOwners.isEmpty {
+            _ = SharedFinanceOwner(name: "Bhavik", household: household)
+            _ = SharedFinanceOwner(name: "Saloni", household: household)
+            _ = SharedFinanceOwner(name: "Joint", kind: .joint, household: household)
+        }
         let owners = household.sortedOwners
         func owner(_ name: String) -> SharedFinanceOwner? {
             owners.first { $0.name == name }
@@ -29,6 +35,8 @@ public enum FinanceDebugSeed {
         let accountSamples: [(String, String, AccountCategory, SharedFinanceOwner?, Double, Double)] = [
             ("First Bank", "Checking", .cash, joint, 8_200, 350),
             ("First Bank", "Savings", .cash, joint, 24_000, 500),
+            ("Credit Union", "Checking", .cash, bhavik, 3_100, 120),
+            ("Online Bank", "High-yield savings", .cash, saloni, 12_400, 300),
             ("Online Brokerage", "Taxable", .investments, bhavik, 61_500, 1_200),
             ("Online Brokerage", "Taxable", .investments, saloni, 38_000, 900),
             ("Plan Provider", "401(k)", .retirement, bhavik, 142_000, 2_100),
@@ -85,7 +93,11 @@ public enum FinanceDebugSeed {
             month.goldPricePerOz = goldPrices[index]
             month.silverPricePerOz = silverPrices[index]
             for (account, start, change) in monthly {
-                _ = SharedFinanceBalance(account: account, month: month, amount: start + change * Double(index), edited: index < 2 || account.category == .cash)
+                // The open month the way a new one starts now: zero, except
+                // the cash already filled in.
+                let isOpen = index == 2
+                let filled = !isOpen || account.category == .cash
+                _ = SharedFinanceBalance(account: account, month: month, amount: filled ? start + change * Double(index) : 0, edited: filled)
             }
             for (category, limit) in budgets {
                 _ = SharedFinanceBudget(category: category, limit: limit, month: month)

@@ -3,7 +3,9 @@ import CoreData
 import SwiftUI
 
 /// Holdings' accounts on the Mac: one table, a section per category with its
-/// total, and this month beside last so a moved balance stands out. The
+/// total, person by person within it and by institution under each person,
+/// and this month beside last so a moved balance stands out. A table can't
+/// nest sections, so a person's name shows on their first row only. The
 /// phone's list put each account in its own full-width card, one figure a
 /// window-width from its name. Double-click edits.
 struct MacHoldingsView: View {
@@ -19,11 +21,29 @@ struct MacHoldingsView: View {
     private var previous: SharedFinanceMonth? { snapshot.months.dropLast().last }
 
     var body: some View {
+        let grouped = AccountCategory.allCases.map { category in
+            (category, AccountGrouping.byOwner(snapshot.accounts.filter { $0.category == category }))
+        }
+        let firstOfGroup = Set(grouped.flatMap { $0.1.compactMap(\.accounts.first?.objectID) })
         Table(of: SharedFinanceAccount.self, selection: $selection) {
+            TableColumn("Person") { account in
+                if firstOfGroup.contains(account.objectID) {
+                    HStack(spacing: 6) {
+                        OwnerBadge(owner: account.owner)
+                        Text(account.owner?.name ?? "No one")
+                            .fontWeight(.medium)
+                    }
+                }
+            }
+            .width(min: 90, ideal: 120)
+            TableColumn("Institution") { account in
+                Text(account.institution)
+                    .opacity(account.isArchived ? 0.6 : 1)
+            }
+            .width(min: 100, ideal: 160)
             TableColumn("Account") { account in
                 HStack(spacing: 8) {
-                    OwnerBadge(owner: account.owner)
-                    Text(account.displayName.isEmpty ? "Untitled" : account.displayName)
+                    Text(account.name.isEmpty ? "Untitled" : account.name)
                         .lineLimit(1)
                     if account.isArchived {
                         Text("Archived")
@@ -33,12 +53,7 @@ struct MacHoldingsView: View {
                 }
                 .opacity(account.isArchived ? 0.6 : 1)
             }
-            .width(min: 200, ideal: 300)
-            TableColumn("Person") { account in
-                Text(account.owner?.name ?? "")
-                    .foregroundStyle(.secondary)
-            }
-            .width(min: 70, ideal: 100)
+            .width(min: 140, ideal: 200)
             // Last month and the change only once there is one: a household's
             // first month showed two columns of dashes.
             if let previous {
@@ -65,8 +80,8 @@ struct MacHoldingsView: View {
                 .alignment(.numeric)
             }
         } rows: {
-            ForEach(AccountCategory.allCases) { category in
-                let accounts = snapshot.accounts.filter { $0.category == category }
+            ForEach(grouped, id: \.0) { category, groups in
+                let accounts = groups.flatMap(\.accounts)
                 if !accounts.isEmpty {
                     Section {
                         ForEach(accounts) { TableRow($0) }
