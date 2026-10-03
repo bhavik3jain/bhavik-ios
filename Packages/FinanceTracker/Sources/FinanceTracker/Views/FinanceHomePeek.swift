@@ -3,16 +3,17 @@ import CoreData
 import SwiftUI
 
 public extension FinanceTrackerModule {
-    /// What long-pressing Finance on the home screen shows: the latest net
-    /// worth, how far through typing in its month we are, and what's gone on
-    /// the cards. `container` picks the household the module shows — see
-    /// `FinanceHome.latestMonth`.
+    /// What long-pressing Finance on the home screen shows: the net worth,
+    /// then investments, cash and retirement, from the last month filled in
+    /// (`FinanceHome.reportedMonth`). The hub row itself shows only spending —
+    /// see `FinanceHome.homeDetail`. `container` picks the household the
+    /// module shows — see `FinanceHome.latestMonth`.
     @MainActor
     static func homePeek(months: [SharedFinanceMonth], container: NSPersistentCloudKitContainer?) -> some View {
         FinanceHomePeek(latest: FinanceHome.latestMonth(months, container: container))
     }
 
-    /// The home screen's one-line summary: "Net worth $557,506".
+    /// The home screen's one-line summary: "October · $2,345 spent".
     @MainActor
     static func homeDetail(months: [SharedFinanceMonth], container: NSPersistentCloudKitContainer?) -> String {
         FinanceHome.homeDetail(for: months, container: container)
@@ -41,17 +42,9 @@ struct FinanceHomePeek: View {
                         value: FinanceFormat.money(summary.netWorth),
                         tint: FinanceTrackerModule.accent.color
                     )
-                    if !latest.isClosed {
-                        PeekRow(
-                            "\(latest.monthName) in progress",
-                            detail: MonthRollover.progress(of: latest, live: MetalPriceFeed.shared.live).label
-                        )
-                    }
-                    PeekRow(
-                        "Card spend",
-                        detail: latest.monthName,
-                        value: FinanceFormat.money(MonthSummary(month: latest, live: MetalPriceFeed.shared.live).cardSpend)
-                    )
+                    PeekRow("Investments", value: FinanceFormat.money(summary.investments))
+                    PeekRow("Cash", value: FinanceFormat.money(summary.cash))
+                    PeekRow("Retirement", value: FinanceFormat.money(summary.retirement))
                 }
             } else {
                 PeekEmpty("No months yet.")

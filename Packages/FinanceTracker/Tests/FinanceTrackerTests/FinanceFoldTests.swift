@@ -364,7 +364,7 @@ private func count<T: NSManagedObject>(_ type: T.Type, in context: NSManagedObje
     #expect(FinanceHouseholdResolver.forDisplay(among: households, container: container) == partners)
     // The newest month overall is my own October, which the module hides.
     #expect(FinanceHome.latestMonth([theirSeptember, myOctober], container: container) == theirSeptember)
-    #expect(FinanceHome.homeDetail(for: [theirSeptember, myOctober], container: container) == "Net worth \(FinanceFormat.money(2_500))")
+    #expect(FinanceHome.homeDetail(for: [theirSeptember, myOctober], container: container).hasPrefix("September"))
 }
 
 // MARK: - Review fixes
