@@ -129,3 +129,51 @@ private let people = [
     let nameless = try #require(SharedChangeAuthorResolver.unnamedReason(lastModifiedBy: "_nameless", participants: people, hasShare: true))
     #expect(nameless.contains("no name"))
 }
+
+// MARK: - Holding the app open for an upload
+
+@Test func aHoldEndsWithTheFirstUploadThatStartedAfterTheLatestSave() {
+    var hold = CloudExportHold()
+    let began = hold.saved(at: start)
+    #expect(began, "The first save begins a hold")
+    #expect(hold.isHolding)
+    let endedByEarlier = hold.exportFinished(startedAt: start - 1)
+    #expect(!endedByEarlier, "An upload already running when it saved may not carry it")
+    let beganAgain = hold.saved(at: start + 2)
+    #expect(!beganAgain, "A second save extends the hold, not a new one")
+    let endedBeforeLatest = hold.exportFinished(startedAt: start + 1)
+    #expect(!endedBeforeLatest, "Started before the latest save")
+    let ended = hold.exportFinished(startedAt: start + 3)
+    #expect(ended)
+    #expect(!hold.isHolding)
+    let endedNothing = hold.exportFinished(startedAt: start + 4)
+    #expect(!endedNothing, "Nothing left to end")
+}
+
+@Test func aHoldCanTimeOut() {
+    var hold = CloudExportHold()
+    _ = hold.saved(at: start)
+    hold.timedOut()
+    #expect(!hold.isHolding)
+    let fresh = hold.saved(at: start + 30)
+    #expect(fresh, "The next save begins a fresh hold")
+}
+
+@Test func onlyTheAppsOwnSavesStartAHold() {
+    #expect(CloudExportHold.isLocalSave(author: SharedChangeFilter.appAuthor))
+    #expect(CloudExportHold.isLocalSave(author: nil), "A background context with no author is still this app")
+    #expect(!CloudExportHold.isLocalSave(author: SharedChangeFilter.cloudKitImportAuthor))
+    #expect(!CloudExportHold.isLocalSave(author: "NSCloudKitMirroringDelegate.export"))
+}
+
+@Test func lastUploadReportsAFailureOnlyWhenItsNewer() throws {
+    let defaults = try #require(UserDefaults(suiteName: "CloudExportTests-\(UUID().uuidString)"))
+    #expect(SharedChangeActivityLog.lastExport(moduleID: "finance", defaults: defaults).date == nil)
+    SharedChangeActivityLog.noteExport(moduleID: "finance", at: start, defaults: defaults)
+    SharedChangeActivityLog.noteExportFailure(moduleID: "finance", error: "Offline", at: start + 60, defaults: defaults)
+    let failed = SharedChangeActivityLog.lastExport(moduleID: "finance", defaults: defaults)
+    #expect(failed.date == start)
+    #expect(failed.failure?.error == "Offline")
+    SharedChangeActivityLog.noteExport(moduleID: "finance", at: start + 120, defaults: defaults)
+    #expect(SharedChangeActivityLog.lastExport(moduleID: "finance", defaults: defaults).failure == nil, "A later success clears it")
+}

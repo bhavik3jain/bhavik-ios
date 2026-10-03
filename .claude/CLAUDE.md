@@ -383,7 +383,9 @@ Don't trust these comments, and don't "fix" the code they describe.
   in `App-macOS.entitlements` (both `development`; export rewrites them from the profile), plus
   `UIBackgroundModes: [remote-notification]` and `registerForRemoteNotifications()` in
   `ShareAcceptDelegate.swift`. Until they were added a partner's change only arrived at the next
-  launch or foreground, minutes later. Silent-push delivery is still at the system's discretion and
+  launch or foreground, minutes later. Uploads have no "now" either: Core's `CloudExportKeeper` holds
+  the app open (a background task, at most 25 s) after each save until an upload that started after it
+  finishes — left at once, the change used to wait for the next launch. Silent-push delivery is still at the system's discretion and
   there is no `BGTaskScheduler` anywhere, so don't promise instant sync or background parcel
   tracking. What *does* reach a force-quit or rebooted device is iCloud's own alert
   (`SharedChangeServerAlerts`: CloudKit subscriptions with a visible `notificationInfo`, IDs prefixed

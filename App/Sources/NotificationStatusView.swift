@@ -147,21 +147,39 @@ struct NotificationStatusView: View {
         }
     }
 
+    /// Upload beside download per tracker: whether a slow notification was
+    /// this device not sending a change, or the other one not fetching it.
     private var downloadsSection: some View {
         Section {
             ForEach(SharedChangeNotificationsSection.modules) { module in
+                let upload = SharedChangeActivityLog.lastExport(moduleID: module.rawValue)
                 LabeledContent(module.accent.name) {
-                    if let date = SharedChangeActivityLog.lastImport(moduleID: module.rawValue) {
-                        Text(date, format: .relative(presentation: .named))
-                    } else {
-                        Text("Not this launch").foregroundStyle(.secondary)
+                    VStack(alignment: .trailing, spacing: 2) {
+                        if let failure = upload.failure {
+                            Text("Upload failed \(failure.date.formatted(.relative(presentation: .named)))")
+                                .foregroundStyle(.red)
+                        } else {
+                            syncLine("Uploaded", upload.date)
+                        }
+                        syncLine("Downloaded", SharedChangeActivityLog.lastImport(moduleID: module.rawValue))
                     }
+                    .font(.callout)
                 }
             }
         } header: {
-            Text("Last download from iCloud")
+            Text("Sync with iCloud")
         } footer: {
-            Text("A detailed notification only comes once this device has downloaded the change. With the app swiped away, that waits until it's next opened.")
+            Text("After a change is saved, the app stays open in the background for up to \(Int(CloudExportKeeper.limit)) seconds to upload it. Someone you share with gets iCloud's alert once it's uploaded; the detailed notification waits until their device has downloaded it.")
+        }
+    }
+
+    private func syncLine(_ verb: String, _ date: Date?) -> some View {
+        Group {
+            if let date {
+                Text("\(verb) \(date.formatted(.relative(presentation: .named)))")
+            } else {
+                Text("\(verb): not yet").foregroundStyle(.secondary)
+            }
         }
     }
 
@@ -321,8 +339,13 @@ struct NotificationStatusView: View {
             lines.append("Last alert update: \(pass.date.formatted()) — \(pass.result)")
         }
         for module in SharedChangeNotificationsSection.modules {
-            let date = SharedChangeActivityLog.lastImport(moduleID: module.rawValue)
-            lines.append("Last download, \(module.accent.name): \(date?.formatted() ?? "not this launch")")
+            let download = SharedChangeActivityLog.lastImport(moduleID: module.rawValue)
+            let upload = SharedChangeActivityLog.lastExport(moduleID: module.rawValue)
+            var line = "\(module.accent.name): uploaded \(upload.date?.formatted() ?? "never"), downloaded \(download?.formatted() ?? "never")"
+            if let failure = upload.failure {
+                line += "; last upload failed \(failure.date.formatted()): \(failure.error)"
+            }
+            lines.append(line)
         }
         lines.append("Recent activity:")
         for entry in entries.prefix(30) {
