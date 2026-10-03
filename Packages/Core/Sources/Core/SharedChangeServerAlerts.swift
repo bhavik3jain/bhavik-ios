@@ -159,16 +159,14 @@ public final class SharedChangeServerAlerts {
             if !settled && mode != .removeAll {
                 plan.delete = []
             }
-            var complete = true
+            var failures: [String] = []
             if !plan.isEmpty {
-                complete = try await Self.apply(plan, to: container.privateCloudDatabase, database: .owned)
-                complete = try await Self.apply(plan, to: container.sharedCloudDatabase, database: .participating) && complete
+                failures = try await Self.apply(plan, to: container.privateCloudDatabase, database: .owned)
+                failures += try await Self.apply(plan, to: container.sharedCloudDatabase, database: .participating)
                 Self.log.info("Saved \(plan.save.count) and deleted \(plan.delete.count) alert subscriptions")
             }
-            SharedChangeActivityLog.noteAlertPass(
-                plan.isEmpty ? "Up to date (\(Self.describe(mode)))" : "Saved \(plan.save.count), deleted \(plan.delete.count) (\(Self.describe(mode)))"
-                    + (complete ? "" : "; one was refused")
-            )
+            let complete = failures.isEmpty
+            SharedChangeActivityLog.noteAlertPass(Self.passSummary(plan: plan, mode: mode, failures: failures))
             if !complete {
                 // One subscription was refused; the next foreground retries.
                 lastApplied = nil
@@ -185,6 +183,17 @@ public final class SharedChangeServerAlerts {
             SharedChangeActivityLog.noteAlertPass("Failed: \(error.localizedDescription)")
             lastApplied = nil
         }
+    }
+
+    /// "Saved 4 (set up)", or "Saved 1 of 4 (set up). iCloud refused 3: …".
+    nonisolated static func passSummary(plan: SharedChangeServerAlertPlan, mode: SharedChangeServerAlertPlan.Mode, failures: [String]) -> String {
+        guard !plan.isEmpty else { return "Up to date (\(describe(mode)))" }
+        let attempted = plan.save.count + plan.delete.count
+        guard !failures.isEmpty else {
+            return "Saved \(plan.save.count), deleted \(plan.delete.count) (\(describe(mode)))"
+        }
+        let reasons = Array(Set(failures)).sorted().joined(separator: "; ")
+        return "\(attempted - failures.count) of \(attempted) changes made (\(describe(mode))). iCloud refused \(failures.count): \(reasons)"
     }
 
     private nonisolated static func describe(_ mode: SharedChangeServerAlertPlan.Mode) -> String {
@@ -329,33 +338,121 @@ public final class SharedChangeServerAlerts {
         }
     }
 
+    /// Saves and deletes this database's share of `plan`. Returns CloudKit's
+    /// reason for each subscription it refused — shown on the Status page,
+    /// which used to say only "one was refused" while the reason sat in the
+    /// unified log.
     private nonisolated static func apply(
         _ plan: SharedChangeServerAlertPlan,
         to database: CKDatabase,
         database scope: SharedChangeServerAlert.Database
-    ) async throws -> Bool {
+    ) async throws -> [String] {
         let saving = plan.save.filter { $0.database == scope }.compactMap(subscription(for:))
         let deleting = plan.delete.filter { $0.database == scope }.map(\.id)
-        guard !saving.isEmpty || !deleting.isEmpty else { return true }
+        guard !saving.isEmpty || !deleting.isEmpty else { return [] }
         let (saved, deleted) = try await database.modifySubscriptions(saving: saving, deleting: deleting)
-        var complete = true
+        var failures: [String] = []
         for case (let id, .failure(let error)) in saved {
             log.error("Couldn't save alert subscription \(id): \(error.localizedDescription)")
-            complete = false
+            failures.append(reason(error))
         }
         for case (let id, .failure(let error)) in deleted {
             // Already gone is as good as deleted.
             if (error as? CKError)?.code == .unknownItem { continue }
             log.error("Couldn't delete alert subscription \(id): \(error.localizedDescription)")
-            complete = false
+            failures.append(reason(error))
         }
-        return complete
+        return failures
     }
+
+    /// CloudKit's own words where it gave some — "cannot add collapseId to
+    /// this subscription type" — rather than the generic "Invalid Arguments".
+    private nonisolated static func reason(_ error: Error) -> String {
+        let ckError = error as NSError
+        if let serverMessage = ckError.userInfo["CKErrorServerDescription"] as? String ?? ckError.userInfo[NSLocalizedFailureReasonErrorKey] as? String {
+            return serverMessage
+        }
+        return error.localizedDescription
+    }
+
+    #if DEBUG
+    /// `-AlertSubscriptionProbe YES` (with `-InMemoryStores YES`): saves alert
+    /// subscriptions exactly as a real pass builds them — and, for contrast,
+    /// with the collapse ID they used to carry — to whichever iCloud
+    /// environment the build talks to, prints what CloudKit says to each,
+    /// and deletes them again. Built when TestFlight's Status page read
+    /// "Saved 4 … one was refused" and the server then held none; it showed
+    /// CloudKit refusing "collapseId" on both kinds of subscription.
+    public static func runProbe(containerID: String) async -> [String] {
+        let container = CKContainer(identifier: containerID)
+        var lines: [String] = []
+        let variants: [(String, (CKSubscription.NotificationInfo) -> Void)] = [
+            ("as shipped", { _ in }),
+            ("with a collapse ID (expected: refused)", { $0.collapseIDKey = "probe" }),
+        ]
+
+        func save(_ subscription: CKSubscription, to database: CKDatabase, label: String) async {
+            do {
+                let (saved, _) = try await database.modifySubscriptions(saving: [subscription], deleting: [])
+                for (_, result) in saved {
+                    switch result {
+                    case .success: lines.append("\(label): saved")
+                    case .failure(let error): lines.append("\(label): REFUSED — \(reason(error))")
+                    }
+                }
+            } catch {
+                lines.append("\(label): request failed — \(error)")
+            }
+            _ = try? await database.modifySubscriptions(saving: [], deleting: [subscription.subscriptionID])
+        }
+
+        // The participant's alert: one database subscription on the shared database.
+        for (index, (name, tweak)) in variants.enumerated() {
+            let alert = SharedChangeServerAlert(
+                id: SharedChangeServerAlertID.prefix + "probe.shared.\(index)",
+                database: .participating,
+                title: SharedChangeServerAlertText.title,
+                body: SharedChangeServerAlertText.participantBody,
+                category: SharedChangeServerAlertText.category
+            )
+            guard let subscription = subscription(for: alert), let info = subscription.notificationInfo else { continue }
+            tweak(info)
+            subscription.notificationInfo = info
+            await save(subscription, to: container.sharedCloudDatabase, label: "shared database, \(name)")
+        }
+
+        // An owner's alert: a zone subscription, on a throwaway zone.
+        let zoneID = CKRecordZone.ID(zoneName: "multitrack-alert-probe", ownerName: CKCurrentUserDefaultName)
+        do {
+            _ = try await container.privateCloudDatabase.modifyRecordZones(saving: [CKRecordZone(zoneID: zoneID)], deleting: [])
+            for (index, (name, tweak)) in variants.enumerated() {
+                let alert = SharedChangeServerAlert(
+                    id: SharedChangeServerAlertID.zone(moduleID: "probe", zoneName: zoneID.zoneName + ".\(index)"),
+                    database: .owned,
+                    zoneName: zoneID.zoneName,
+                    zoneOwnerName: zoneID.ownerName,
+                    title: SharedChangeServerAlertText.title,
+                    subtitle: "Probe",
+                    body: SharedChangeServerAlertText.ownerBody(rootTitle: "Household"),
+                    category: SharedChangeServerAlertText.category
+                )
+                guard let subscription = subscription(for: alert), let info = subscription.notificationInfo else { continue }
+                tweak(info)
+                subscription.notificationInfo = info
+                await save(subscription, to: container.privateCloudDatabase, label: "zone, \(name)")
+            }
+        } catch {
+            lines.append("zone: couldn't make the throwaway zone — \(error)")
+        }
+        _ = try? await container.privateCloudDatabase.modifyRecordZones(saving: [], deleting: [zoneID])
+        return lines
+    }
+    #endif
 
     /// A zone subscription for an owned zone, a database subscription for the
     /// shared database — the only kind it accepts. Saving over an existing
     /// ID replaces that subscription, which is how a rename is carried over.
-    private nonisolated static func subscription(for alert: SharedChangeServerAlert) -> CKSubscription? {
+    nonisolated static func subscription(for alert: SharedChangeServerAlert) -> CKSubscription? {
         let subscription: CKSubscription
         switch alert.database {
         case .owned:
@@ -374,9 +471,16 @@ public final class SharedChangeServerAlerts {
         // A visible alert only. Core Data's own subscriptions already send
         // the silent push that wakes the app to import.
         info.shouldSendContentAvailable = false
-        // Sent as apns-collapse-id: an unseen alert about the same share is
-        // replaced rather than stacked.
-        info.collapseIDKey = SharedChangeServerAlertID.collapseID(for: alert.id)
+        // No collapseIDKey. It was set here so an unseen alert about the same
+        // share would replace the last instead of stacking, and CloudKit
+        // refused every subscription carrying it — "Invalid Arguments:
+        // cannot add collapseId to this subscription type", for database and
+        // zone subscriptions alike. No iCloud alert was ever saved, so a
+        // partner with the app closed heard nothing about a shared change;
+        // the Status page read "Saved 4 … one was refused" and "Missing".
+        // (`-AlertSubscriptionProbe YES` is how that was found.) The app's own
+        // notification still removes a delivered iCloud alert about the same
+        // change — see SharedChangeServerAlertInbox.
         subscription.notificationInfo = info
         return subscription
     }

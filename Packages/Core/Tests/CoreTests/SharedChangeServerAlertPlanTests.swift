@@ -1,3 +1,4 @@
+import CloudKit
 import Foundation
 import Testing
 @testable import Core
@@ -21,13 +22,35 @@ private let carZone = "com.apple.coredata.cloudkit.share.7A1C2D3E-0000-4000-8000
     #expect(SharedChangeServerAlertID.parse("multitrack.alert.zone..zone") == nil, "No module")
 }
 
-@Test func collapseIDsFitAPNsLimit() {
-    let long = SharedChangeServerAlertID.zone(moduleID: "finance", zoneName: tripZone)
-    let collapse = SharedChangeServerAlertID.collapseID(for: long)
-    #expect(long.utf8.count > 64)
-    #expect(collapse.utf8.count <= 64)
-    #expect(collapse.hasSuffix("00000000A001"), "Keeps the zone's UUID, so two shares don't collapse together")
-    #expect(SharedChangeServerAlertID.collapseID(for: SharedChangeServerAlertID.shared) == SharedChangeServerAlertID.shared)
+@Test func alertSubscriptionsNeverCarryACollapseID() throws {
+    // CloudKit refuses a subscription with one: "cannot add collapseId to
+    // this subscription type". With it, no iCloud alert was ever saved.
+    let participant = try #require(SharedChangeServerAlerts.subscription(for: SharedChangeServerAlertPlan.participantAlert))
+    #expect(participant is CKDatabaseSubscription)
+    #expect(participant.notificationInfo?.collapseIDKey == nil)
+    #expect(participant.notificationInfo?.alertBody == SharedChangeServerAlertText.participantBody)
+
+    let zone = SharedChangeServerAlert(
+        id: SharedChangeServerAlertID.zone(moduleID: "finance", zoneName: tripZone),
+        database: .owned,
+        zoneName: tripZone,
+        zoneOwnerName: "__defaultOwner__",
+        title: SharedChangeServerAlertText.title,
+        body: SharedChangeServerAlertText.ownerBody(rootTitle: "Household"),
+        category: SharedChangeServerAlertText.category
+    )
+    let owned = try #require(SharedChangeServerAlerts.subscription(for: zone))
+    #expect(owned is CKRecordZoneSubscription)
+    #expect(owned.notificationInfo?.collapseIDKey == nil)
+    #expect(owned.notificationInfo?.shouldSendContentAvailable == false, "Visible alert only")
+}
+
+@Test func aPassThatWasRefusedSaysWhy() {
+    let plan = SharedChangeServerAlertPlan(save: [SharedChangeServerAlertPlan.participantAlert, SharedChangeServerAlertPlan.participantAlert])
+    #expect(SharedChangeServerAlerts.passSummary(plan: plan, mode: .reconcile, failures: []) == "Saved 2, deleted 0 (set up)")
+    let refused = SharedChangeServerAlerts.passSummary(plan: plan, mode: .reconcile, failures: ["cannot add collapseId to this subscription type"])
+    #expect(refused == "1 of 2 changes made (set up). iCloud refused 1: cannot add collapseId to this subscription type")
+    #expect(SharedChangeServerAlerts.passSummary(plan: SharedChangeServerAlertPlan(), mode: .maintain, failures: []).hasPrefix("Up to date"))
 }
 
 @Test func aTappedAlertOpensItsTracker() {
