@@ -18,6 +18,8 @@ struct MacMonthEntryView: View {
 
     @FocusState private var focus: NSManagedObjectID?
     @State private var focusedOnOpen = false
+    /// "September is finished", shown once Close Month has saved the month.
+    @State private var showsFinished = false
 
     private var accent: Color { FinanceTrackerModule.accent.color }
 
@@ -73,6 +75,9 @@ struct MacMonthEntryView: View {
         }
         .onDisappear(perform: save)
         .task { await MetalPriceFeed.shared.refreshIfStale() }
+        .sheet(isPresented: $showsFinished) {
+            MonthFinishedView(month: month)
+        }
         .onAppear {
             // The first field still to fill in, so typing can start at once.
             guard !focusedOnOpen, isEditable, !month.isClosed else { return }
@@ -343,6 +348,7 @@ struct MacMonthEntryView: View {
         month.silverPricePerOz = prices.silver
         month.close()
         save()
+        showsFinished = true
     }
 
     private func save() {

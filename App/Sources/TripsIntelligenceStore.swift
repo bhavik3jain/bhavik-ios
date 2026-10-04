@@ -68,51 +68,5 @@ struct TripsIntelligenceSetting: ViewModifier {
     }
 }
 
-/// Settings' "Apple Intelligence in Trips" switch — in the phone's Settings
-/// screen and, through it, the Mac's Settings window (⌘,), which shows the
-/// same `AppSettingsView` as its General tab.
-///
-/// Hidden, not disabled, where the system or the hardware can never run the
-/// model (`showsSetting`): below iOS 26 / macOS 26 or without Apple
-/// Intelligence hardware a switch could do nothing, and Trips shows only the
-/// plain plan check there anyway.
-struct TripsIntelligenceSection: View {
-    @ObservedObject private var store = TripsIntelligenceStore.shared
-    @Environment(\.tripAdvisor) private var advisor
-
-    private static var deviceName: String {
-        #if os(macOS)
-        "Mac"
-        #else
-        "iPhone"
-        #endif
-    }
-
-    var body: some View {
-        let availability = advisor.availability
-        if availability.showsSetting {
-            Section {
-                Toggle(isOn: Binding(get: { store.isEnabled }, set: { store.setEnabled($0) })) {
-                    Label("Apple Intelligence in Trips", systemImage: "sparkles")
-                }
-            } header: {
-                Text("Apple Intelligence")
-            } footer: {
-                Text(footer(availability: availability))
-            }
-        }
-    }
-
-    private func footer(availability: TripAdvisorAvailability) -> String {
-        // Not "nothing leaves": the model's work stays on the device, but
-        // Suggest Places sends a word ("museum") and a map area to Apple Maps.
-        let about = "Reviews your plan and suggests places with Apple Intelligence, on this \(Self.deviceName). Your trip isn't sent anywhere; place searches use Apple Maps."
-        guard store.isEnabled else { return about }
-        switch availability {
-        case .notEnabled: return "\(about) Turn on Apple Intelligence in Settings to use it."
-        case .notReady: return "\(about) Apple Intelligence is still getting ready."
-        case .unsupportedLanguage: return "\(about) Apple Intelligence doesn't support this \(Self.deviceName)'s language yet."
-        case .available, .deviceNotEligible, .unsupportedOS, .turnedOff: return about
-        }
-    }
-}
+// Settings' switch for this store is in `AppleIntelligenceSection`
+// (FinanceIntelligenceStore.swift), beside Finance's.

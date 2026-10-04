@@ -36,6 +36,12 @@ public enum SharedChangeNotifications {
     /// The burst's change lines (`SharedChangeNotice.changes`), for the list
     /// a tap opens. Absent for a single change.
     public static let changesUserInfoKey = "changes"
+    /// Where inside its tracker a tap goes, in the module's own words — set
+    /// only by a module's own notice, never by a shared-change one: Finance's
+    /// "September's report is ready" carries `finance.report:2026-09`. Core
+    /// passes it on untouched (`SharedChangeNotificationRouter.destinationToOpen`);
+    /// the app hands it to the module that understands it.
+    public static let destinationUserInfoKey = "destination"
 
     public static func isEnabled(moduleID: String, defaults: UserDefaults = .standard) -> Bool {
         (defaults.object(forKey: enabledKey) as? Bool ?? true)
@@ -191,6 +197,12 @@ public final class SharedChangeNotificationRouter: ObservableObject {
     /// `.showsSharedChangeDigest(moduleID:)`, which clears it. Only set for a
     /// notification about more than one change.
     @Published public var digestToShow: SharedChangeDigest?
+
+    /// A tapped notification's `destinationUserInfoKey`, for the app to hand
+    /// to its module (Finance's report for a month) and clear. Published for
+    /// the same reason as `moduleToOpen`: a tap that launched the app must
+    /// still be waiting when the first window appears.
+    @Published public var destinationToOpen: String?
 }
 
 /// What a tapped notification about several changes opens: every change in
@@ -264,6 +276,17 @@ enum SharedChangeNotificationRouting {
         }
         return content.userInfo[SharedChangeNotifications.moduleUserInfoKey] as? String
     }
+
+    /// Where inside the tracker a tapped notification goes, or nil for the
+    /// tracker's own first screen. Only a tap on our own local notification
+    /// carries one — iCloud's alert has no custom payload.
+    static func destinationToOpen(actionIdentifier: String, content: UNNotificationContent) -> String? {
+        guard actionIdentifier == UNNotificationDefaultActionIdentifier,
+              content.categoryIdentifier != SharedChangeServerAlertText.category,
+              content.userInfo[SharedChangeNotifications.moduleUserInfoKey] is String
+        else { return nil }
+        return content.userInfo[SharedChangeNotifications.destinationUserInfoKey] as? String
+    }
 }
 
 /// The notification center's delegate: decides whether a notification shows
@@ -331,9 +354,14 @@ final class SharedChangeNotificationDelegate: NSObject, UNUserNotificationCenter
             participatingModuleIDs: SharedChangeServerAlerts.participatingModuleIDs
         )
         let digest = module == nil ? nil : SharedChangeDigest(content: content, date: date)
+        let destination = module == nil ? nil : SharedChangeNotificationRouting.destinationToOpen(
+            actionIdentifier: actionIdentifier,
+            content: content
+        )
         return {
             if let module { SharedChangeNotificationRouter.shared.moduleToOpen = module }
             if let digest { SharedChangeNotificationRouter.shared.digestToShow = digest }
+            if let destination { SharedChangeNotificationRouter.shared.destinationToOpen = destination }
         }
     }
 

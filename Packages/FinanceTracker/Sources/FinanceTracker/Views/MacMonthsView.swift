@@ -11,6 +11,8 @@ struct MacMonthsView: View {
     let metric: FinanceMetric
     let isEditable: Bool
     let open: (SharedFinanceMonth) -> Void
+    /// The month's report, in a window of its own.
+    let viewReport: (SharedFinanceMonth) -> Void
     let delete: (SharedFinanceMonth) -> Void
 
     @State private var selection: FinanceHistory.Point.ID?
@@ -78,6 +80,7 @@ struct MacMonthsView: View {
             .contextMenu(forSelectionType: FinanceHistory.Point.ID.self) { ids in
                 if let month = month(for: ids) {
                     Button("Open", systemImage: "arrow.up.forward.square") { open(month) }
+                    Button("View Report", systemImage: "doc.text") { viewReport(month) }
                     if isEditable {
                         Divider()
                         Button("Delete Month…", systemImage: "trash", role: .destructive) { delete(month) }

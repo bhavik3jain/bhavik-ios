@@ -9,12 +9,16 @@ struct MonthsView: View {
     @Environment(\.moduleLayout) private var layout
     @Environment(\.managedObjectContext) private var context
     @Environment(\.financePersistentContainer) private var container
+    @Environment(\.financeReportPreferences) private var reportPreferences
     var data = FinanceFetches()
 
     @AppStorage("finance.monthsMetric") private var metricRaw = FinanceMetric.netWorth.rawValue
     @State private var pendingDelete: SharedFinanceMonth?
     /// The month the Mac's table opened by double-click.
     @State private var opened: SharedFinanceMonth?
+    /// A month's report or a year in review: the viewer on the phone, a
+    /// window of its own on the Mac.
+    @State private var reportRequest: FinanceReportWindowValue?
 
     private var metric: FinanceMetric { FinanceMetric(rawValue: metricRaw) ?? .netWorth }
 
@@ -56,6 +60,19 @@ struct MonthsView: View {
                         .pickerStyle(.menu)
                         .help("What the chart shows")
                     }
+                    let years = FinanceReportData.reportYears(in: snapshot.months)
+                    if !years.isEmpty {
+                        ToolbarItem(placement: .primaryAction) {
+                            Menu {
+                                ForEach(years, id: \.self) { year in
+                                    Button("\(String(year)) in Review") { viewReport(.year(year)) }
+                                }
+                            } label: {
+                                Label("Year in Review", systemImage: "calendar.badge.clock")
+                            }
+                            .help("A year's report: net worth, spending and budgets month by month")
+                        }
+                    }
                 }
             }
             .toolbar {
@@ -70,6 +87,7 @@ struct MonthsView: View {
                     }
                 }
             }
+            .presentsReport($reportRequest)
             .confirmationDialog(
                 "Delete \(pendingDelete?.title ?? "month")?",
                 isPresented: Binding(get: { pendingDelete != nil }, set: { if !$0 { pendingDelete = nil } }),
@@ -94,6 +112,7 @@ struct MonthsView: View {
                 metric: metric,
                 isEditable: isEditable,
                 open: { opened = $0 },
+                viewReport: { month in month.period.map { viewReport(.month($0)) } },
                 delete: { pendingDelete = $0 }
             )
             .navigationDestination(item: $opened) { MonthEntryView(month: $0) }
@@ -144,9 +163,42 @@ struct MonthsView: View {
                             }
                         }
                     }
+                    .swipeActions(edge: .leading) {
+                        Button("Report", systemImage: "doc.text") { viewReport(.month(point.period)) }
+                            .tint(FinanceTrackerModule.accent.color)
+                    }
+                    .contextMenu {
+                        Button("View Report", systemImage: "doc.text") { viewReport(.month(point.period)) }
+                    }
+                }
+            }
+
+            let years = FinanceReportData.reportYears(in: snapshot.months)
+            if !years.isEmpty {
+                Section("Year in Review") {
+                    ForEach(years, id: \.self) { year in
+                        Button {
+                            viewReport(.year(year))
+                        } label: {
+                            HStack {
+                                Label("\(String(year)) in Review", systemImage: "calendar.badge.clock")
+                                Spacer()
+                                Image(systemName: "chevron.right")
+                                    .font(.footnote.weight(.semibold))
+                                    .foregroundStyle(.tertiary)
+                            }
+                            .contentShape(.rect)
+                        }
+                        .buttonStyle(.plain)
+                    }
                 }
             }
         }
+    }
+
+    /// Opens `scope`'s report on Settings' "Whose by default".
+    private func viewReport(_ scope: ReportScope) {
+        reportRequest = FinanceReportWindowValue(scope: scope, ownerName: reportPreferences.defaultOwnerName)
     }
 
     private func nextMonthLabel(_ snapshot: FinanceSnapshot) -> String {

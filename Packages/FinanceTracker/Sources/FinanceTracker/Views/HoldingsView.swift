@@ -115,6 +115,13 @@ struct HoldingsView: View {
                 Text(deleteMessage(for: pendingDelete))
             }
         }
+        // A review's "Open Gold & Silver": the module's own tab is already
+        // built with its mode in @State, so it's asked for, not passed in.
+        .onChange(of: HoldingsModeRequest.shared.showsMetals, initial: true) { _, showsMetals in
+            guard showsMetals else { return }
+            mode = .metals
+            HoldingsModeRequest.shared.showsMetals = false
+        }
     }
 
     private func list(_ snapshot: FinanceSnapshot, isEditable: Bool) -> some View {

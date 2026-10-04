@@ -141,7 +141,9 @@ struct AppSettingsView: View {
 
             FinanceReminderSection()
 
-            TripsIntelligenceSection()
+            AppleIntelligenceSection()
+
+            FinanceReportsSection(ownerNames: financeOwnerNames)
 
             Section {
                 // Same order as the home screen, hidden trackers included —
@@ -187,6 +189,12 @@ struct AppSettingsView: View {
             financeOwnerFetch.start(context: financeContext)
             financeAccountFetch.start(context: financeContext)
         }
+    }
+
+    /// "Whose, by default" in Finance reports: each name once, in order.
+    private var financeOwnerNames: [String] {
+        let names = financeOwners.map { $0.name.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+        return Array(Set(names)).sorted { $0.localizedStandardCompare($1) == .orderedAscending }
     }
 
     private func trackerDetail(for module: SelectedModule) -> String {
