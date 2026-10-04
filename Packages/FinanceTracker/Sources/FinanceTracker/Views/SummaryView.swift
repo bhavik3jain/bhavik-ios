@@ -12,6 +12,8 @@ struct SummaryView: View {
 
     @State private var filter = OwnerFilter.all
     @State private var showingExchange = false
+    /// The tile whose accounts are shown — see `BalanceTileDetailView`.
+    @State private var openTile: BalanceTile?
     @Environment(\.moduleLayout) private var layout
 
     var body: some View {
@@ -73,6 +75,21 @@ struct SummaryView: View {
             .sheet(isPresented: $showingExchange) {
                 MonthExchangeView(months: snapshot.months, household: snapshot.household)
             }
+            // The tile's own month — the reported one, so the detail adds up
+            // to the figure that was tapped.
+            .navigationDestination(item: $openTile) { tile in
+                if let latest = snapshot.latestMonth {
+                    BalanceTileDetailView(detail: BalanceTileDetail(
+                        tile: tile,
+                        month: FinanceHome.reportedMonth(for: latest, live: snapshot.live),
+                        months: snapshot.months,
+                        cards: snapshot.cards,
+                        metals: snapshot.metals,
+                        filter: filter,
+                        live: snapshot.live
+                    ))
+                }
+            }
             // An owner deleted (here or by the partner) mustn't leave the
             // filter pointing at nothing.
             .onChange(of: snapshot.owners) { _, owners in
@@ -86,7 +103,7 @@ struct SummaryView: View {
     @ViewBuilder
     private func content(_ snapshot: FinanceSnapshot, latest: SharedFinanceMonth) -> some View {
         if layout == .sidebar {
-            MacFinanceDashboard(snapshot: snapshot, latest: latest, filter: filter)
+            MacFinanceDashboard(snapshot: snapshot, latest: latest, filter: filter) { openTile = $0 }
         } else {
             phoneList(snapshot, latest: latest)
         }
@@ -134,22 +151,23 @@ struct SummaryView: View {
 
             Section {
                 LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
-                    SummaryTile(title: "Cash", value: summary.cash, symbol: AccountCategory.cash.symbolName)
-                    SummaryTile(title: "Investments", value: summary.investments, symbol: AccountCategory.investments.symbolName)
-                    SummaryTile(title: "Retirement", value: summary.retirement, symbol: AccountCategory.retirement.symbolName)
-                    // Only for a household with an FSA/HSA, so the grid
-                    // doesn't grow an empty tile for everyone else.
-                    if summary.health != 0 {
-                        SummaryTile(title: "Health", value: summary.health, symbol: AccountCategory.health.symbolName)
+                    ForEach(BalanceTile.allCases) { tile in
+                        // Health only for a household with an FSA/HSA, so
+                        // the grid doesn't grow an empty tile for everyone else.
+                        if tile != .health || summary.health != 0 {
+                            Button {
+                                openTile = tile
+                            } label: {
+                                SummaryTile(title: tile.title, value: tile.value(in: summary), symbol: tile.symbolName, opensDetail: true)
+                            }
+                            .buttonStyle(.plain)
+                        }
                     }
-                    SummaryTile(title: "Gold & silver", value: summary.metals, symbol: "circle.hexagongrid")
-                    SummaryTile(title: "Cars & property", value: summary.fixed, symbol: AccountCategory.fixed.symbolName)
-                    SummaryTile(title: "Owed", value: summary.owed, symbol: AccountCategory.card.symbolName)
                 }
                 .listRowBackground(Color.clear)
                 .listRowInsets(EdgeInsets())
             } footer: {
-                Text("Owed is this month's card spend plus what's left on the loans.")
+                Text("Owed is this month's card spend plus what's left on the loans. Tap a figure for what makes it up.")
             }
         }
     }
@@ -251,6 +269,7 @@ private struct MacFinanceDashboard: View {
     let snapshot: FinanceSnapshot
     let latest: SharedFinanceMonth
     let filter: OwnerFilter
+    let open: (BalanceTile) -> Void
 
     private var accent: Color { FinanceTrackerModule.accent.color }
 
@@ -277,7 +296,13 @@ private struct MacFinanceDashboard: View {
                         .font(.title3.weight(.semibold))
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 220), spacing: 14)], spacing: 14) {
                         ForEach(tiles(summary)) { tile in
-                            MacBalanceTile(tile: tile, accent: accent)
+                            Button {
+                                open(tile.kind)
+                            } label: {
+                                MacBalanceTile(tile: tile, accent: accent)
+                            }
+                            .buttonStyle(.plain)
+                            .help("Show what makes up \(tile.kind.title)")
                         }
                     }
                     Text("Owed is this month's card spend plus what's left on the loans.")
@@ -384,18 +409,12 @@ private struct MacFinanceDashboard: View {
 
     private func tiles(_ summary: MonthSummary) -> [MacBalanceTile.Tile] {
         let assets = max(summary.totalAssets, 1)
-        func tile(_ title: String, _ value: Double, _ symbol: String, share: Bool = true) -> MacBalanceTile.Tile {
-            MacBalanceTile.Tile(title: title, value: value, symbol: symbol, share: share ? value / assets : nil)
-        }
-        return [
-            tile("Cash", summary.cash, AccountCategory.cash.symbolName),
-            tile("Investments", summary.investments, AccountCategory.investments.symbolName),
-            tile("Retirement", summary.retirement, AccountCategory.retirement.symbolName),
-        ] + (summary.health != 0 ? [tile("Health", summary.health, AccountCategory.health.symbolName)] : []) + [
-            tile("Gold & silver", summary.metals, "circle.hexagongrid"),
-            tile("Cars & property", summary.fixed, AccountCategory.fixed.symbolName),
-            tile("Owed", summary.owed, AccountCategory.card.symbolName, share: false),
-        ]
+        return BalanceTile.allCases
+            .filter { $0 != .health || summary.health != 0 }
+            .map { kind in
+                let value = kind.value(in: summary)
+                return MacBalanceTile.Tile(kind: kind, value: value, share: kind.isAsset ? value / assets : nil)
+            }
     }
 }
 
@@ -403,12 +422,11 @@ private struct MacFinanceDashboard: View {
 /// asset — its share of everything owned, as a thin bar.
 private struct MacBalanceTile: View {
     struct Tile: Identifiable {
-        let title: String
+        let kind: BalanceTile
         let value: Double
-        let symbol: String
         /// 0…1 of total assets; nil for what's owed.
         let share: Double?
-        var id: String { title }
+        var id: BalanceTile { kind }
     }
 
     let tile: Tile
@@ -416,9 +434,15 @@ private struct MacBalanceTile: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Label(tile.title, systemImage: tile.symbol)
-                .font(.subheadline.weight(.medium))
-                .foregroundStyle(.secondary)
+            HStack {
+                Label(tile.kind.title, systemImage: tile.kind.symbolName)
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+            }
+            .font(.subheadline.weight(.medium))
+            .foregroundStyle(.secondary)
             Text(FinanceFormat.money(tile.value))
                 .font(.title2.weight(.semibold))
                 .monospacedDigit()
@@ -440,5 +464,6 @@ private struct MacBalanceTile: View {
         // One height for every tile, whatever its last line says.
         .frame(maxWidth: .infinity, minHeight: 120, alignment: .topLeading)
         .background(.background.secondary, in: .rect(cornerRadius: 14))
+        .contentShape(.rect(cornerRadius: 14))
     }
 }

@@ -237,6 +237,10 @@ the module seeders that are the only way to get a simulator into a state worth l
 (The Points seed, like the others behind `CloudKitImportGate`, waits up to 60 s on a simulator.) Seeders run from the module
 root view's `.task`, so nothing happens until the module is opened. `-WeatherStub YES` injects
 `StubWeatherProvider` at the app root — the only way to see weather on a simulator today. `-CloudSyncRefreshAfter <seconds>` runs one Refresh from iCloud after launch and prints its outcome.
+`-InMemoryStores YES -SharedChangeProbe finance` posts a made-up partner's burst of eight Finance edits as a real
+notification 8 s after launch (leave Finance first: a notification about the tracker on screen is held back); add
+`-SharedChangeProbeTap YES` to also tap it — injected simulator touches never reach a notification banner — which
+opens Finance with the list of changes (`SharedChangeDigest`) over it.
 `-TripAdvisorStub YES` swaps Trips' Apple Intelligence advisor and Apple Maps place search for
 `StubTripAdvisor`/`StubPlaceSearcher` at the app root, the same way: same answers every run,
 offline, on hardware with no Apple Intelligence. `-TripAdvisorProbe YES` (add `-TripAdvisorProbeQuit YES`

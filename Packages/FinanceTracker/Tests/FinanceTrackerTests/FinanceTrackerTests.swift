@@ -293,6 +293,101 @@ private func makeSeptember() throws -> (household: SharedFinanceHousehold, month
     #expect(FinanceHome.netWorthChange(for: september, live: nil) == nil, "The first month has nothing to compare with")
 }
 
+// MARK: - Tile details
+
+@MainActor
+private func detail(_ tile: BalanceTile, _ month: SharedFinanceMonth, filter: OwnerFilter = .all) -> BalanceTileDetail {
+    let household = month.household!
+    return BalanceTileDetail(
+        tile: tile,
+        month: month,
+        months: Array(household.months ?? []),
+        cards: household.sortedAccounts.filter { $0.category == .card },
+        metals: Array(household.metalItems ?? []),
+        filter: filter
+    )
+}
+
+@MainActor
+@Test func everyTilesLinesAddUpToTheTile() throws {
+    let (_, month) = try makeSeptember()
+    let summary = MonthSummary(month: month)
+    for tile in BalanceTile.allCases {
+        let detail = detail(tile, month)
+        let lines = detail.groups.reduce(0) { $0 + $1.total }
+        #expect(approximately(lines, tile.value(in: summary), within: 0.01), "\(tile.title)'s lines are its figure")
+        #expect(approximately(detail.total, tile.value(in: summary), within: 0.01))
+    }
+}
+
+@MainActor
+@Test func cashIsGroupedByPersonWithNoOneLast() throws {
+    let (_, month) = try makeSeptember()
+    let cash = detail(.cash, month)
+    #expect(cash.groups.map(\.title) == ["Bhavik", "Joint", "No one"], "People's order, then accounts nobody owns")
+    #expect(cash.groups.map(\.total) == [1_000, 3_000, 500])
+    #expect(approximately(cash.shareOfAssets ?? 0, 4_500 / 95_500, within: 0.0001))
+    #expect(cash.previousTotal == nil, "September is the first month")
+    #expect(cash.series.map(\.value) == [4_500])
+}
+
+@MainActor
+@Test func owedSplitsIntoCardsAndLoans() throws {
+    let (_, month) = try makeSeptember()
+    let owed = detail(.owed, month)
+    #expect(owed.groups.map(\.title) == ["Cards", "Loans"])
+    #expect(owed.groups[0].lines.map(\.amount) == [300, 200], "Largest first")
+    #expect(owed.groups[0].lines[0].subtitle == "Bhavik · 1 transaction")
+    #expect(owed.groups[1].total == 10_000)
+    #expect(owed.shareOfAssets == nil, "Owed isn't an asset")
+}
+
+@MainActor
+@Test func metalsListEachItemAtTheMonthsPrices() throws {
+    let (household, month) = try makeSeptember()
+    let metals = detail(.metals, month)
+    #expect(metals.groups.map(\.title) == ["Gold"], "No silver, no silver section")
+    #expect(metals.groups[0].lines.map(\.title) == ["Bar", "Ring"])
+    #expect(metals.prices == MetalPrices(gold: 4_000, silver: 50))
+    #expect(!metals.pricesAreLive)
+
+    let saloni = detail(.metals, month, filter: .owner(try owner("Saloni", in: household)))
+    #expect(saloni.groups.flatMap(\.lines).map(\.title) == ["Ring"], "The filter applies to items too")
+}
+
+@MainActor
+@Test func aTilesLinesCompareWithTheMonthBefore() throws {
+    let (household, september) = try makeSeptember()
+    let october = try #require(MonthRollover.startMonth(after: september))
+    let joint = try #require(household.sortedAccounts.first { $0.category == .cash && $0.owner?.name == "Joint" })
+    october.setBalance(3_400, for: joint)
+    let added = SharedFinanceAccount(institution: "Ally", name: "Savings", category: .cash, household: household)
+    october.setBalance(250, for: added)
+
+    let cash = detail(.cash, october)
+    #expect(cash.previousTotal == 4_500)
+    #expect(cash.series.map(\.period.rawValue) == ["2026-09", "2026-10"])
+    let lines = cash.groups.flatMap(\.lines)
+    let jointLine = try #require(lines.first { $0.title == joint.displayName })
+    #expect(jointLine.change == 400)
+    let addedLine = try #require(lines.first { $0.title == "Ally - Savings" })
+    #expect(addedLine.previous == nil, "An account new this month has nothing to compare with")
+}
+
+@MainActor
+@Test func anArchivedAccountAtZeroIsLeftOut() throws {
+    let (household, month) = try makeSeptember()
+    let closed = SharedFinanceAccount(institution: "Old", name: "Bank", category: .cash, household: household)
+    closed.isArchived = true
+    month.setBalance(0, for: closed)
+    let open = SharedFinanceAccount(institution: "New", name: "Bank", category: .cash, household: household)
+    month.setBalance(0, for: open)
+
+    let titles = detail(.cash, month).groups.flatMap(\.lines).map(\.title)
+    #expect(!titles.contains("Old - Bank"))
+    #expect(titles.contains("New - Bank"), "An open account at zero is a balance not typed in yet")
+}
+
 @Test func assetMixIsLargestFirstAndAddsUpToTheWhole() {
     var summary = MonthSummary()
     summary.cash = 10

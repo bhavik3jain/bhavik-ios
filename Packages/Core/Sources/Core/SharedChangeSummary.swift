@@ -301,15 +301,38 @@ public struct SharedChangeNotice: Sendable, Equatable {
     public let rootKey: String
     public let title: String
     public let body: String
+    /// Every change in the burst, one line each, in the order they were
+    /// made — "updated Chase Checking for October 2026". Shown in the
+    /// expanded notification and on the list a tap opens; empty for a
+    /// single change, which `body` already says in full.
+    public let changes: [String]
     /// See `SharedChangeEvent.serverAlertID`.
     public let serverAlertID: String?
 
-    public init(moduleID: String, rootKey: String, title: String, body: String, serverAlertID: String? = nil) {
+    public init(moduleID: String, rootKey: String, title: String, body: String, changes: [String] = [], serverAlertID: String? = nil) {
         self.moduleID = moduleID
         self.rootKey = rootKey
         self.title = title
         self.body = body
+        self.changes = changes
         self.serverAlertID = serverAlertID
+    }
+
+    /// How many change lines the notification's own text lists before
+    /// "and 3 more". The lock screen shows the first few lines and the
+    /// expanded notification the rest; a household's month-end can be fifty
+    /// balances, which no notification should try to hold.
+    public static let changesInBody = 6
+
+    /// `body` followed by the change lines — what the notification shows.
+    /// A tap opens the full list (`SharedChangeDigest`) either way.
+    public var expandedBody: String {
+        guard !changes.isEmpty else { return body }
+        var lines = changes.prefix(Self.changesInBody).map { "• \($0)" }
+        if changes.count > Self.changesInBody {
+            lines.append("and \(changes.count - Self.changesInBody) more")
+        }
+        return ([body] + lines).joined(separator: "\n")
     }
 
     /// One per root, so a later burst replaces an older unread notification
@@ -336,7 +359,7 @@ public struct SharedChangeCoalescer: Sendable {
         /// Changed objects in first-changed order, each with the action that
         /// best describes it: its insert if it had one, else its latest.
         var objectOrder: [String] = []
-        var actions: [String: (action: String, isInsert: Bool)] = [:]
+        var actions: [String: (action: String, isInsert: Bool, author: SharedChangeAuthor)] = [:]
         var authors: [SharedChangeAuthor] = []
         var serverAlertID: String?
     }
@@ -363,10 +386,10 @@ public struct SharedChangeCoalescer: Sendable {
         if !burst.authors.contains(event.author) { burst.authors.append(event.author) }
         let isInsert = event.kind == .inserted
         if let existing = burst.actions[event.objectKey] {
-            if !existing.isInsert { burst.actions[event.objectKey] = (event.action, isInsert) }
+            if !existing.isInsert { burst.actions[event.objectKey] = (event.action, isInsert, event.author) }
         } else {
             burst.objectOrder.append(event.objectKey)
-            burst.actions[event.objectKey] = (event.action, isInsert)
+            burst.actions[event.objectKey] = (event.action, isInsert, event.author)
         }
         bursts[event.rootKey] = burst
     }
@@ -396,18 +419,34 @@ public struct SharedChangeCoalescer: Sendable {
     private static func summarize(_ burst: Burst, rootKey: String) -> SharedChangeNotice {
         let who = subject(for: burst.authors)
         let body: String
+        var changes: [String] = []
         if burst.objectOrder.count == 1, let only = burst.actions[burst.objectOrder[0]] {
             body = "\(who) \(only.action)"
         } else {
             body = "\(who) made \(counted(burst.objectOrder.count, "change")) to \(burst.rootTitle)"
+            // "Saloni made 4 changes" said nothing about which four. Each line
+            // names its person only when more than one person is in the burst.
+            let named = burst.authors.count > 1
+            changes = burst.objectOrder.compactMap { key in
+                guard let entry = burst.actions[key] else { return nil }
+                return named ? "\(subject(for: [entry.author])) \(entry.action)" : capitalizedFirst(entry.action)
+            }
         }
         return SharedChangeNotice(
             moduleID: burst.moduleID,
             rootKey: rootKey,
             title: burst.rootTitle,
             body: body,
+            changes: changes,
             serverAlertID: burst.serverAlertID
         )
+    }
+
+    /// "Updated Chase…" — only the first letter, so a name later in the line
+    /// keeps its own case.
+    static func capitalizedFirst(_ text: String) -> String {
+        guard let first = text.first else { return text }
+        return first.uppercased() + text.dropFirst()
     }
 
     /// "Saloni", "Saloni and Alex", or "Someone" when nobody could be named.

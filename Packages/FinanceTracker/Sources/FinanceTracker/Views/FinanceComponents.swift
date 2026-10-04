@@ -219,13 +219,23 @@ struct SummaryTile: View {
     let title: String
     let value: Double
     let symbol: String
+    /// A chevron, for a tile that opens what it adds up.
+    var opensDetail = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Label(title, systemImage: symbol)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
+            HStack(spacing: 4) {
+                Label(title, systemImage: symbol)
+                    .lineLimit(1)
+                if opensDetail {
+                    Spacer(minLength: 0)
+                    Image(systemName: "chevron.right")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.tertiary)
+                }
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
             Text(FinanceFormat.money(value))
                 .font(.title3.weight(.semibold))
                 .monospacedDigit()
@@ -235,5 +245,6 @@ struct SummaryTile: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(12)
         .background(Color.secondary.opacity(0.12), in: RoundedRectangle(cornerRadius: 12))
+        .contentShape(RoundedRectangle(cornerRadius: 12))
     }
 }
