@@ -200,6 +200,9 @@ struct HomeView: View {
             .fullScreenCover(item: $selectedModule) { module in
                 moduleContent(for: module)
                     .presentsShareSheets()
+                    // A tapped notification's list of changes, over the
+                    // tracker it opened — see SharedChangeDigest.
+                    .showsSharedChangeDigest(moduleID: module.rawValue, tint: module.accent.color)
             }
         }
     }
@@ -250,6 +253,7 @@ struct HomeView: View {
                     tripSection: $tripSection
                 )
                 .environment(\.moduleLayout, .sidebar)
+                .showsSharedChangeDigest(moduleID: selectedModule.rawValue, tint: selectedModule.accent.color)
                 // Every form — editors, sheets, settings panes — in the grouped
                 // style System Settings uses, not the Mac's default two-column
                 // one, which laid the phone's forms out like a 2001 dialog.

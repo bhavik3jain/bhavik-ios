@@ -128,6 +128,27 @@ struct BhavikApp: App {
                 if TripAdvisorProbe.isRequested {
                     TripAdvisorProbeRunner.start(context: tripContainer.viewContext)
                 }
+                // `-SharedChangeProbe finance`: a made-up partner's burst of
+                // edits, posted as a real notification. The real path above
+                // installs the delegate in startSharedChangeNotifications.
+                if UserDefaults.standard.string(forKey: "SharedChangeProbe") == SelectedModule.finance.rawValue {
+                    SharedChangeNotifications.install()
+                    SharedChangeNotifications.postProbe(
+                        moduleID: SelectedModule.finance.rawValue,
+                        moduleName: SelectedModule.finance.accent.name,
+                        rootTitle: "Household",
+                        actions: [
+                            "updated Chase Checking for October 2026",
+                            "updated Fidelity Brokerage for October 2026",
+                            "added a transaction at Whole Foods",
+                            "added a transaction at Shell",
+                            "changed the Groceries budget for October 2026",
+                            "updated Vanguard 401(k) for October 2026",
+                            "changed Gold coin",
+                            "updated Car loan for October 2026",
+                        ]
+                    )
+                }
                 if UserDefaults.standard.bool(forKey: "AlertSubscriptionProbe") {
                     let containerID = Self.cloudContainerID
                     Task {

@@ -119,3 +119,26 @@ private func serverContent(ck kind: [String: Any]) -> UNNotificationContent {
         categoryIdentifier: SharedChangeServerAlertText.category, moduleID: nil, onScreenModuleID: nil
     ) == [])
 }
+
+// MARK: - The list a tap opens
+
+@Test func aTappedBurstCarriesItsListOfChanges() throws {
+    let content = UNMutableNotificationContent()
+    content.title = "Household"
+    content.body = "Saloni made 2 changes to Household\n• Updated Chase Checking\n• Added a transaction at Shell"
+    content.userInfo = [
+        SharedChangeNotifications.moduleUserInfoKey: "finance",
+        SharedChangeNotifications.rootUserInfoKey: "x-coredata://store/SharedFinanceHousehold/p1",
+        SharedChangeNotifications.changesUserInfoKey: ["Updated Chase Checking", "Added a transaction at Shell"],
+    ]
+    let digest = try #require(SharedChangeDigest(content: content))
+    #expect(digest.moduleID == "finance")
+    #expect(digest.title == "Household")
+    #expect(digest.summary == "Saloni made 2 changes to Household", "The first line, without the bullets")
+    #expect(digest.changes == ["Updated Chase Checking", "Added a transaction at Shell"])
+}
+
+@Test func aSingleChangeOrAnICloudAlertOpensNoList() {
+    #expect(SharedChangeDigest(content: localContent(module: "trips")) == nil)
+    #expect(SharedChangeDigest(content: serverContent(zoneSubscriptionID: "multitrack.alert.trips.\(tripZone)")) == nil)
+}

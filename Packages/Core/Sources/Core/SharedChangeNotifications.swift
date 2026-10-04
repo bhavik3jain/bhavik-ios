@@ -33,6 +33,9 @@ public enum SharedChangeNotifications {
     /// `userInfo` keys on every posted notification.
     public static let moduleUserInfoKey = "module"
     public static let rootUserInfoKey = "root"
+    /// The burst's change lines (`SharedChangeNotice.changes`), for the list
+    /// a tap opens. Absent for a single change.
+    public static let changesUserInfoKey = "changes"
 
     public static func isEnabled(moduleID: String, defaults: UserDefaults = .standard) -> Bool {
         (defaults.object(forKey: enabledKey) as? Bool ?? true)
@@ -141,10 +144,16 @@ public enum SharedChangeNotifications {
         // Two households are both called "Household" by default, so the title
         // alone can't say whether it was Points or Finance.
         content.subtitle = moduleName
-        content.body = notice.body
+        // The change lines too: the lock screen shows the first few, a long
+        // press the rest of what fits, and a tap opens all of them.
+        content.body = notice.expandedBody
         content.sound = .default
         content.threadIdentifier = notice.identifier
-        content.userInfo = [moduleUserInfoKey: notice.moduleID, rootUserInfoKey: notice.rootKey]
+        var userInfo: [String: Any] = [moduleUserInfoKey: notice.moduleID, rootUserInfoKey: notice.rootKey]
+        if !notice.changes.isEmpty {
+            userInfo[changesUserInfoKey] = Array(notice.changes.prefix(SharedChangeDigest.maximumChanges))
+        }
+        content.userInfo = userInfo
         let request = UNNotificationRequest(identifier: notice.identifier, content: content, trigger: nil)
         let serverAlert = notice.serverAlertID
         UNUserNotificationCenter.current().add(request) { error in
@@ -177,6 +186,50 @@ public final class SharedChangeNotificationRouter: ObservableObject {
     /// clears it. Published rather than posted, so a tap that launched the
     /// app is still waiting when the hub first appears.
     @Published public var moduleToOpen: String?
+
+    /// The tapped notification's list of changes, shown over its tracker by
+    /// `.showsSharedChangeDigest(moduleID:)`, which clears it. Only set for a
+    /// notification about more than one change.
+    @Published public var digestToShow: SharedChangeDigest?
+}
+
+/// What a tapped notification about several changes opens: every change in
+/// the burst, not just the "made 4 changes" the notification led with.
+public struct SharedChangeDigest: Identifiable, Equatable, Sendable {
+    /// The most lines a notification carries for its list.
+    public static let maximumChanges = 50
+
+    public let id = UUID()
+    public let moduleID: String
+    /// The shared root — "Household", "Rome & Amalfi".
+    public let title: String
+    /// "Saloni made 4 changes to Household", the notification's first line.
+    public let summary: String
+    public let changes: [String]
+    public let date: Date
+
+    public init(moduleID: String, title: String, summary: String, changes: [String], date: Date = .now) {
+        self.moduleID = moduleID
+        self.title = title
+        self.summary = summary
+        self.changes = changes
+        self.date = date
+    }
+
+    /// The digest a tapped notification carries, or nil for one with no
+    /// list: a single change, iCloud's own alert, a test notification.
+    public init?(content: UNNotificationContent, date: Date = .now) {
+        guard content.categoryIdentifier != SharedChangeServerAlertText.category,
+              let moduleID = content.userInfo[SharedChangeNotifications.moduleUserInfoKey] as? String,
+              let changes = content.userInfo[SharedChangeNotifications.changesUserInfoKey] as? [String],
+              !changes.isEmpty
+        else { return nil }
+        // The body is the summary followed by the bulleted lines.
+        let summary = content.body.split(separator: "\n", maxSplits: 1).first.map(String.init) ?? content.body
+        self.init(moduleID: moduleID, title: content.title, summary: summary, changes: changes, date: date)
+    }
+
+    public static func == (lhs: Self, rhs: Self) -> Bool { lhs.id == rhs.id }
 }
 
 /// What the delegate decides about a notification, kept apart from it so it
@@ -256,15 +309,31 @@ final class SharedChangeNotificationDelegate: NSObject, UNUserNotificationCenter
         didReceive response: UNNotificationResponse,
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
-        let module = SharedChangeNotificationRouting.moduleToOpen(
+        let route = Self.route(
             actionIdentifier: response.actionIdentifier,
             content: response.notification.request.content,
-            participatingModuleIDs: SharedChangeServerAlerts.participatingModuleIDs
+            date: response.notification.date
         )
         nonisolated(unsafe) let completionHandler = completionHandler
         Self.onMain {
-            if let module { SharedChangeNotificationRouter.shared.moduleToOpen = module }
+            route()
             completionHandler()
+        }
+    }
+
+    /// What a tap does: open the tracker, and the list of changes when the
+    /// notification carried one. Worked out off the main thread, applied on
+    /// it. `-SharedChangeProbeTap` runs the same thing.
+    static func route(actionIdentifier: String, content: UNNotificationContent, date: Date) -> @MainActor @Sendable () -> Void {
+        let module = SharedChangeNotificationRouting.moduleToOpen(
+            actionIdentifier: actionIdentifier,
+            content: content,
+            participatingModuleIDs: SharedChangeServerAlerts.participatingModuleIDs
+        )
+        let digest = module == nil ? nil : SharedChangeDigest(content: content, date: date)
+        return {
+            if let module { SharedChangeNotificationRouter.shared.moduleToOpen = module }
+            if let digest { SharedChangeNotificationRouter.shared.digestToShow = digest }
         }
     }
 
@@ -278,3 +347,46 @@ final class SharedChangeNotificationDelegate: NSObject, UNUserNotificationCenter
         }
     }
 }
+
+#if DEBUG
+public extension SharedChangeNotifications {
+    /// `-SharedChangeProbe <module>`: one burst of made-up changes by
+    /// "Saloni", through the real coalescer and `post`, `delay` seconds after
+    /// launch — time to leave the app, since a notification about the tracker
+    /// on screen is held back. The only way to see one on a simulator, which
+    /// can't sign in to iCloud to receive a partner's edit.
+    static func postProbe(moduleID: String, moduleName: String, rootTitle: String, actions: [String], after delay: TimeInterval = 8) {
+        Task {
+            await requestAuthorizationIfUndetermined()
+            try? await Task.sleep(for: .seconds(delay))
+            var coalescer = SharedChangeCoalescer()
+            for (index, action) in actions.enumerated() {
+                coalescer.add(SharedChangeEvent(
+                    moduleID: moduleID,
+                    rootKey: "probe",
+                    rootTitle: rootTitle,
+                    objectKey: "probe-\(index)",
+                    kind: .updated,
+                    action: action,
+                    author: .named("Saloni")
+                ))
+            }
+            for notice in coalescer.due(force: true) {
+                post(notice, moduleName: moduleName)
+                // `-SharedChangeProbeTap YES`: tap it too. A simulator's
+                // injected touches never reach a notification banner.
+                guard UserDefaults.standard.bool(forKey: "SharedChangeProbeTap") else { continue }
+                try? await Task.sleep(for: .seconds(2))
+                let delivered = await UNUserNotificationCenter.current().deliveredNotifications()
+                guard let posted = delivered.first(where: { $0.request.identifier == notice.identifier }) else { continue }
+                let route = SharedChangeNotificationDelegate.route(
+                    actionIdentifier: UNNotificationDefaultActionIdentifier,
+                    content: posted.request.content,
+                    date: posted.date
+                )
+                await MainActor.run { route() }
+            }
+        }
+    }
+}
+#endif

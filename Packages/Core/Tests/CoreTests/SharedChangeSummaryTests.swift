@@ -168,6 +168,49 @@ private func event(
     #expect(coalescer.due(asOf: start, force: true).map(\.body) == ["Saloni moved Pasta to Day 2"], "The latest update wins")
 }
 
+@Test func aBurstListsEveryChangeInOrder() throws {
+    var coalescer = SharedChangeCoalescer()
+    coalescer.add(event("a", .updated, "updated Chase Checking for October 2026", title: "Household"))
+    coalescer.add(event("b", .inserted, "added a transaction at Whole Foods", title: "Household"))
+    let notice = try #require(coalescer.due(force: true).first)
+    #expect(notice.body == "Saloni made 2 changes to Household")
+    #expect(notice.changes == ["Updated Chase Checking for October 2026", "Added a transaction at Whole Foods"])
+    #expect(notice.expandedBody == """
+    Saloni made 2 changes to Household
+    • Updated Chase Checking for October 2026
+    • Added a transaction at Whole Foods
+    """)
+}
+
+@Test func aSingleChangeHasNoList() throws {
+    var coalescer = SharedChangeCoalescer()
+    coalescer.add(event("gelato", .inserted, "added Gelato to Day 3"))
+    let notice = try #require(coalescer.due(force: true).first)
+    #expect(notice.changes.isEmpty)
+    #expect(notice.expandedBody == notice.body)
+}
+
+@Test func twoPeoplesChangesNameWhoMadeEach() throws {
+    var coalescer = SharedChangeCoalescer()
+    coalescer.add(event("a", .updated, "changed Pasta"))
+    coalescer.add(event("b", .updated, "changed Pizza", by: .named("Alex")))
+    coalescer.add(event("c", .updated, "changed Gelato", by: .someone))
+    let notice = try #require(coalescer.due(force: true).first)
+    #expect(notice.changes == ["Saloni changed Pasta", "Alex changed Pizza", "Someone changed Gelato"])
+}
+
+@Test func aLongListIsCutShortInTheNotificationOnly() throws {
+    var coalescer = SharedChangeCoalescer()
+    for index in 0..<9 {
+        coalescer.add(event("item\(index)", .updated, "changed item \(index)"))
+    }
+    let notice = try #require(coalescer.due(force: true).first)
+    #expect(notice.changes.count == 9)
+    let lines = notice.expandedBody.split(separator: "\n")
+    #expect(lines.count == 1 + SharedChangeNotice.changesInBody + 1)
+    #expect(lines.last == "and 3 more")
+}
+
 @Test func aLongBurstIsCutOffAtTheMaximumDelay() {
     let start = Date(timeIntervalSinceReferenceDate: 0)
     var coalescer = SharedChangeCoalescer(quietPeriod: 4, maximumDelay: 20)
