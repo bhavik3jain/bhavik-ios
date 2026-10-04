@@ -30,6 +30,11 @@ struct FinanceJSONFile: FileDocument {
 struct MonthExchangeView: View {
     let months: [SharedFinanceMonth]
     let household: SharedFinanceHousehold?
+    /// The month the picker starts on: the Summary's reported month. It used to
+    /// start on the newest, which is usually the open one, still half filled in
+    /// (a new month starts every balance at zero), and that is the month an
+    /// export to Numbers then got — with no transactions yet.
+    var initialMonth: String?
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.managedObjectContext) private var context
@@ -51,7 +56,7 @@ struct MonthExchangeView: View {
 
     private var chosen: SharedFinanceMonth? {
         let newestFirst = months.sorted { $0.yearMonth > $1.yearMonth }
-        return newestFirst.first(where: { $0.yearMonth == selectedMonth }) ?? newestFirst.first
+        return newestFirst.first(where: { $0.yearMonth == (selectedMonth ?? initialMonth) }) ?? newestFirst.first
     }
 
     var body: some View {
@@ -91,7 +96,7 @@ struct MonthExchangeView: View {
                     Text("Export")
                 } footer: {
                     if numbersExporter != nil {
-                        Text("To Numbers fills a copy of the Finance template, growing every table to fit — it takes a minute or two, then asks where to save it. Refresh the two pivot tables in Numbers afterwards (select each, then Refresh in the Organize sidebar). JSON is for the scripts in scripts/finance.")
+                        Text("To Numbers fills a copy of the Finance template, growing every table to fit — it takes a minute or two, then asks where to save it. Like the sheet, a month holds the transactions entered since the month before it was closed. JSON is for the scripts in scripts/finance.")
                     } else {
                         Text("Save it to iCloud Drive › Multitrack › Finance. Then on your Mac, open Finance › Export in the Multitrack Mac app to make the Numbers file — or run “Export Finance to Numbers” in scripts/finance.")
                     }

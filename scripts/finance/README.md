@@ -22,7 +22,9 @@ copy of `Finance Template.numbers` straight from iCloud — no JSON, no Terminal
 minute or two, asks where to save, and opens the result; the first time, macOS asks whether
 Multitrack may control Numbers. It runs this folder's own `numbers_fill.js` and template, bundled
 into the Mac app by project.yml, with a spec from `FinanceNumbersSpec.swift` — a port of
-`export_numbers.build_spec` that must stay in step with it. Refresh the pivots afterwards (step 3).
+`export_numbers.build_spec` that must stay in step with it. The Export sheet starts on the month the
+Summary reports, not the newest: a month still being filled in has zero balances and no
+transactions yet.
 
 Or with the scripts, from any device's JSON:
 
@@ -44,11 +46,6 @@ Or with the scripts, from any device's JSON:
    a spreadsheet you already have open is safe, but don't open the output until the month says
    `wrote`. A month that fails is reported and the others still run; a Numbers file already in
    the folder is only replaced once its replacement is complete.
-3. Open each new file in Numbers and refresh the two pivot tables, `Credit Card` and
-   `Personal Items Pivot`: select each one, and in the Organize sidebar click Refresh. Numbers
-   doesn't refresh them on open or on save, and its scripting has no command for it, so until then
-   they still show the template's "Seed Data" rows. Save after refreshing. The export prints this
-   reminder when it finishes.
 
 One month at a time, anywhere:
 
@@ -95,6 +92,28 @@ on Personal Items, Total Assets and Total Net Worth with it.
   `CONVERT(Weight (g),"g","ozm")` (or a number, with `--troy-fix`), and Current Value is
   `Metal Price × Weight (oz)` for its own metal, since a copied formula would price a gold row
   added below silver at the silver price. A metal with a set value gets that number instead.
+- **Money stays money, with its cents.** Writing a number into a currency cell turns the cell
+  automatic, so "$20,000" came out "20,000" and a Total over a mix of the two lost its format
+  altogether ("113820.6462…", clipped). So amounts are *typed*, as this Mac writes them
+  ("$173,902.21"), into cells the template formats as currency with two places and a thousands
+  separator (rows Numbers adds copy that format), and read back to check. Typed into an automatic
+  cell instead, "$0.08" carried no separator and the Cash Total over it showed "$228856.00"; the
+  template's old whole-dollar currency format showed $173,902.21 as "$173,902". Formula cells
+  (metal Current Value, the card balances) keep the template's own formats. Dates are typed as this Mac writes a short date ("9/3/26"): written as a date value, a row
+  Numbers added showed "9/3/26 12:00 AM", clipped in the Date column.
+- **No pivots.** The user's sheet has two pivot tables, `Credit Card` (Cost by category) and
+  `Personal Items Pivot` (metal items by location). Numbers' scripting can't refresh a pivot, and
+  Numbers doesn't on open or save, so every export showed the template's "Seed Data" in both. The
+  template has plain tables of the same names in their place, filled like the rest: one row per
+  category with a `SUMIF` over Transactions (written into every row: a row added to a plain table
+  copies no formula), and every item under its location, sorted and de-duplicated as the pivot
+  was. Both are optional, like Budget.
+- **The layout holds.** A growing table pushes down everything it overlaps by however much, a
+  sliver included: Gold + Silver once pushed the Liabilities section ~800pt down, and the rule
+  under its heading ended up striking through Credit Card Details. So every item's position is
+  measured before filling and set again after: each section (a heading text box and what's below
+  it) keeps its gap to what's above it, each item keeps its gap to whatever shares its column above
+  it, and items whose tops lined up (Credit Card beside Transactions) stay lined up.
 - **Set values.** A metal whose Current Value was typed over the formula (the engagement ring) has
   a set value. So does one whose formula isn't plain price × weight, such as price × weight plus a
   fixed amount: the month JSON can't say that, so `import_numbers.py` takes the value the sheet
@@ -111,8 +130,19 @@ on Personal Items, Total Assets and Total Net Worth with it.
   the grouped order Numbers shows, so an exported month re-imports with the same rows in a
   different order. `Table.cell()` raises `KeyError` on those tables in numbers-parser 4.19, so
   reading only uses `rows()`.
-- **Card balance** in the sheet is the SUMIFS over whatever is in Transactions. The app's export
-  puts that month's transactions there, so it reads as the month's card spend.
+- **Transactions follow the sheet, not the calendar.** The user's sheet runs from one sheet to the
+  next, not by calendar month: September's began with charges from Aug 23 and kept growing into
+  October. A month's export holds the transactions *entered* after the month before it was closed
+  in the app, up to this month's own close, or up to now while it's open (`SheetPeriod.swift`); a
+  month never closed ends where the next calendar month starts. By calendar date, 19 of
+  September's 116 charges were left out. The app's own screens still go by calendar month.
+- **Card balance** in the sheet is the SUMIFS over whatever is in Transactions, so it's the card
+  spend on that sheet, as in the user's own.
+- **Metal Price is live.** Gold and silver are `=STOCK("GC=F")` and `=STOCK("SI=F")`, as in the
+  user's sheet (the same futures the app's MetalPriceFeed reads), so every metal follows the
+  market whenever the file is opened; the month's own price goes in only if Numbers won't take
+  the formula. An export's metal totals therefore move away from the app's figures for that month
+  as prices move.
 
 ## Month JSON (version 1)
 
@@ -126,7 +156,7 @@ values below are made up.
   "accounts": [ { "category": "cash", "institution": "Example Bank", "name": "Checking", "owner": "Joint", "balance": 2500.0 } ],
   "cards": [ { "institution": "Example Card", "name": "Rewards", "owner": "Alex", "limit": 10000.0, "annualFee": 0.0 } ],
   "metals": [ { "name": "Gold - Coin", "metal": "gold", "grams": 31.1035, "pricePaidPerOz": 2000.0, "purchaseValue": 2000.0, "manualValue": null, "location": "Safe", "owner": "Joint" } ],
-  "transactions": [ { "date": "2026-09-03", "cost": 12.5, "actualCost": 12.5, "merchant": "City Parking", "category": "Travel", "expense": "Parking", "breakDown": "N/A", "card": "Example Card - Rewards" } ],
+  "transactions": [ { "date": "2026-08-23", "cost": 12.5, "actualCost": 12.5, "merchant": "City Parking", "category": "Travel", "expense": "Parking", "breakDown": "N/A", "card": "Example Card - Rewards" } ],
   "budgets": [ { "category": "Food", "limit": 525.0 } ] }
 ```
 
@@ -139,11 +169,15 @@ which the card table's SUMIFS then leaves out. Budgets are written only if the t
 ## The template
 
 `Finance Template.numbers` lives here, next to the scripts, and must never hold real data. It is
-the source of truth for the sheet's look: every table, chart, colour, formula, group and pivot in
-an export comes from it. It's the real sheet with a few fake **"Seed Data"** rows in each table
+the source of truth for the sheet's look: every table, chart, colour, formula and group in an
+export comes from it. It's the real sheet with a few fake **"Seed Data"** rows in each table
 (owners "User 1", "User 2" and "Joint" in the grouped tables, one gold and one silver row, cards
-with made-up round limits) and both pivots refreshed over them, so every grouping and formula has
-a row to copy. Change the look there, in Numbers, and change numbers in it only in Numbers too, so
+with made-up round limits), so every grouping and formula has a row to copy. Where the real sheet
+has its two pivots, the template has plain tables styled like them (built by Numbers' scripting,
+which can set fonts and fills but not borders). Its column widths and spacing are the user's own
+sheet's, with the template's shorter seed tables: an export of a real month lands every table
+where the user's sheet has it. The left column lines up at x = 12, headings at 5, and every money
+cell is currency with two places and a thousands separator. Change the look there, in Numbers, and change numbers in it only in Numbers too, so
 its calculation cache is rebuilt.
 
 Before committing a new one, check it holds nothing from the real sheet:
@@ -170,6 +204,6 @@ uv run --with numbers-parser scripts/finance/check_roundtrip.py test.numbers
 ```
 
 It needs the same month back, the formulas right, no seed row, seed owner, empty group or row
-token left (the pivots excepted), and Total Assets, Total Liabilities and Total Net Worth equal to
+token left, the Credit Card table summing each category's Cost, and Total Assets, Total Liabilities and Total Net Worth equal to
 the sheet's, as Numbers shows them. With `--troy-fix` it exports that way, and Total Assets and
 Total Net Worth are expected to differ.

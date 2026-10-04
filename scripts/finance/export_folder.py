@@ -131,8 +131,6 @@ def main(argv: list[str] | None = None) -> int:
     print()
     print(f"{len(done)} exported, {len(failed)} failed, {len(todo) - len(done) - len(failed)} not tried"
           f" ({args.folder})")
-    if done:
-        print(export_numbers.PIVOT_NOTE)
     return 1 if failed or missing else 0
 
 

@@ -54,12 +54,14 @@ public struct FinanceImportSummary: Equatable, Sendable {
 }
 
 public extension FinanceMonthDocument {
-    /// The document for `month`: its balances and prices, its budgets, its
-    /// transactions, and the household's owners, cards and metals as they
-    /// are now. Everything is sorted, so exporting twice gives the same file.
+    /// The document for `month`: its balances and prices, its budgets, the
+    /// transactions its sheet holds (`SheetPeriod`: entered since the month
+    /// before was closed, not dated in the calendar month), and the
+    /// household's owners, cards and metals as they are now. Everything is
+    /// sorted, so exporting twice gives the same file.
     init(month: SharedFinanceMonth) {
         let household = month.household
-        let period = month.period
+        let sheet = SheetPeriod(month: month)
         self.init(
             month: month.yearMonth,
             metalPrices: Prices(gold: month.goldPricePerOz, silver: month.silverPricePerOz),
@@ -96,7 +98,7 @@ public extension FinanceMonthDocument {
                 )
             },
             transactions: (household?.transactions ?? [])
-                .filter { transaction in period.map { $0.contains(transaction.date) } ?? false }
+                .filter { sheet.contains(entered: $0.createdAt) }
                 .sorted(by: FinanceMonthExchange.exportOrder)
                 .map { transaction in
                     TransactionEntry(
@@ -310,6 +312,10 @@ public enum FinanceMonthExchange {
                 card: card
             )
             transaction.actualCost = entry.actualCost
+            // Entered no later than the month it came in with, so it lands on
+            // that month's sheet (`SheetPeriod` goes by entry): an old month
+            // imported today would otherwise join the sheet of the month open now.
+            transaction.createdAt = min(transaction.createdAt, month.closedAt ?? period.end.addingTimeInterval(-1))
             transaction.category = entry.category.trimmingCharacters(in: .whitespaces)
             transaction.expense = entry.expense.trimmingCharacters(in: .whitespaces)
             transaction.breakDown = entry.breakDown.trimmingCharacters(in: .whitespaces)

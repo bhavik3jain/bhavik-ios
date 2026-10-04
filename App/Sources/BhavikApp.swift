@@ -136,6 +136,12 @@ struct BhavikApp: App {
                 if FinanceAdvisorProbe.isRequested {
                     FinanceAdvisorProbe.start(context: financeContainer.viewContext, container: financeContainer)
                 }
+                #if os(macOS)
+                // It touches no store, so it runs here too: started only from
+                // the real-store path, it never ran on this Mac's unsigned
+                // builds, which can only launch with `-InMemoryStores YES`.
+                MacFinanceNumbers.runProbeIfRequested()
+                #endif
                 // `-SharedChangeProbe finance`: a made-up partner's burst of
                 // edits, posted as a real notification. The real path above
                 // installs the delegate in startSharedChangeNotifications.

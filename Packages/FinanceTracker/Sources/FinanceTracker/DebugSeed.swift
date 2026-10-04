@@ -156,6 +156,10 @@ public enum FinanceDebugSeed {
                 let day = isOpen ? max(1, min(charge.day, today)) : charge.day
                 let date = FinanceCalendar.date(period.year, period.month, day).addingTimeInterval(12 * 3_600)
                 let transaction = SharedFinanceTransaction(date: date, cost: charge.cost, merchant: charge.merchant, household: household, card: payers[charge.account])
+                // Entered on the day, as by hand: a month's sheet holds what was
+                // entered before it closed (`SheetPeriod`), and every seeded
+                // charge made "now" sat on the open month's sheet.
+                transaction.createdAt = min(date, now)
                 transaction.category = charge.category
                 transaction.expense = charge.expense
                 transaction.breakDown = "N/A"

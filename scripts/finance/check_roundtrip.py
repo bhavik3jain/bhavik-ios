@@ -9,8 +9,12 @@ amounts. Beyond the month coming back unchanged it checks what only Numbers can 
 - the formulas the totals hang on survive, and the rows Numbers added price each metal at its own
   metal's price, keep Actual Cost = Cost and sum each card's own transactions;
 - no "Seed Data" row, no seed owner ("User 1", "User 2", "User") and no row token (zzrowNzz) is
-  left in any table but the two pivots, and no grouped table keeps a seed-owner or empty group, as
-  Numbers shows its groups (numbers-parser can't see group rows);
+  left in any table, and no grouped table keeps a seed-owner or empty group, as Numbers shows its
+  groups (numbers-parser can't see group rows);
+- Metal Price is the live STOCK() quote of gold and silver futures, as in the user's sheet (so
+  the month's prices aren't compared: they're whatever was quoted when Numbers saved each file);
+- the Credit Card table beside Transactions (a pivot in the source sheet, a plain table in the
+  template) sums each category's Cost;
 - Total Assets, Total Liabilities and Total Net Worth, as Numbers shows them, match the source's
   exactly. Both files are opened in Numbers for that, the source as a temporary copy. A metal
   whose value isn't price × weight (a formula with a fixed amount added) comes through as a set
@@ -47,7 +51,6 @@ KEY_FORMULAS = [
     ("Total Net Worth", 0, 1), ("Total Assets", 6, 1), ("Total Liabilities", 3, 1),
     ("Cash", -1, 2), ("Gold + Silver", -1, 6),
 ]
-PIVOTS = ("Credit Card", "Personal Items Pivot")
 
 # (label, table, row, column) as Numbers' scripting counts them, from 1, and whether the metals'
 # value is part of it (which --troy-fix changes on purpose).
@@ -147,6 +150,11 @@ def sheet_problems(path: str) -> tuple[list[str], list[str]]:
     t = tables[fn.PRICE_TABLE]
     all_rows = fn.rows(t)
     prices = {fn.text(all_rows[i][0]).strip().lower(): fn.number(all_rows[i][1]) for i in fn.body_rows(t)}
+    for i in fn.body_rows(t):
+        key = fn.text(all_rows[i][0]).strip().lower()
+        formula = (all_rows[i][1].formula if fn.has_formula(all_rows[i][1]) else None) or ""
+        if key in fn.PRICE_FORMULAS and "STOCK(" not in formula:
+            problems.append(f"{fn.PRICE_TABLE} row {i}: no live STOCK() quote")
     t = tables[fn.METAL_TABLE]
     all_rows = fn.rows(t)
     for i in fn.body_rows(t):
@@ -171,6 +179,22 @@ def sheet_problems(path: str) -> tuple[list[str], list[str]]:
         if not math.isclose(spend.get(fn.text(r[0]), 0.0), fn.number(r[4]), abs_tol=0.01):
             problems.append(f"{fn.CARD_TABLE} row {i}: Outstanding Balance isn't that card's spend")
 
+    by_category: dict[str, float] = {}
+    t = tables[fn.TRANSACTION_TABLE]
+    all_rows = fn.rows(t)
+    for i in fn.body_rows(t):
+        key = fn.text(all_rows[i][4]).lower()
+        by_category[key] = by_category.get(key, 0.0) + fn.number(all_rows[i][1])
+    if fn.SPENDING_TABLE in tables:
+        t = tables[fn.SPENDING_TABLE]
+        all_rows = fn.rows(t)
+        for i in fn.body_rows(t):
+            r = all_rows[i]
+            if not fn.has_formula(r[1]):
+                problems.append(f"{fn.SPENDING_TABLE} row {i}: lost its SUMIF")
+            elif not math.isclose(by_category.get(fn.text(r[0]).lower(), 0.0), fn.number(r[1]), abs_tol=0.01):
+                problems.append(f"{fn.SPENDING_TABLE} row {i}: isn't that category's Cost")
+
     for sheet in doc.sheets:
         for table in sheet.tables:
             texts = [v for row in fn.rows(table) for v in map(fn.value, row) if isinstance(v, str)]
@@ -178,9 +202,7 @@ def sheet_problems(path: str) -> tuple[list[str], list[str]]:
             tokens = sum(bool(re.fullmatch(r"zzrow\d+zz", v)) for v in texts)
             if tokens:
                 problems.append(f"{table.name}: {tokens} row token(s) left behind")
-            if seeds and table.name in PIVOTS:
-                notes.append(f"pivot '{table.name}' shows the template's seed rows until it's refreshed")
-            elif seeds:
+            if seeds:
                 problems.append(f"{table.name}: {seeds} seed value(s) left behind")
     return problems, notes
 
@@ -192,10 +214,6 @@ def group_problems(groups: dict[str, list]) -> tuple[list[str], list[str]]:
     for table, found in sorted(groups.items()):
         seeds = sum(name.strip() in SEED_OWNERS or "seed" in name.lower() for name, _ in found)
         empty = sum(count == 0 for _, count in found)
-        if table in PIVOTS:
-            if seeds:
-                notes.append(f"pivot '{table}' shows the template's seed groups until it's refreshed")
-            continue
         if seeds:
             problems.append(f"{table}: {seeds} seed group(s) left behind")
         if empty:
@@ -239,6 +257,9 @@ def main(argv: list[str]) -> int:
         report = export_numbers.fill(args.template, original, filled, troy_fix=args.troy_fix)
         again = import_numbers.read(filled, args.month)
 
+        # Metal Price is a live STOCK() quote in the export, read back as whatever it was quoting
+        # when Numbers saved it; sheet_problems checks the formulas are there instead.
+        again["metalPrices"] = original["metalPrices"]
         problems = same(canonical(original), canonical(again), "month")
         sheet, notes = sheet_problems(filled)
         problems += sheet

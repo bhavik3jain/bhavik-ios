@@ -24,6 +24,9 @@
 //   Numbers shows: "=C5" typed into a grouped row came out #REF!. A named reference,
 //   'Weight (oz)' 'token', resolves by the row's label instead, which is why metal rows are
 //   written while the token is still in their Asset cell.
+// - Writing a number into a currency cell turns the cell's format to automatic: the template's
+//   "$20,000" came out "20,000", a set metal value "2,413.4", and a Total over a mix of the two lost
+//   its format entirely ("113820.6462…", clipped). So a cell op can name the format to put back.
 
 ObjC.import("Foundation");
 
@@ -42,7 +45,7 @@ function run(argv) {
   try {
     const tables = {};
     doc.sheets().forEach(sheet => sheet.tables().forEach(t => { tables[t.name()] = t; }));
-    const layouts = doc.sheets().map(measureSections);
+    const layouts = doc.sheets().map(measureLayout);
     const priceRows = spec.priceTable ? fillLookup(tables, spec.priceTable) : {};
     spec.tables.forEach(ts => {
       const t = tables[ts.name];
@@ -54,7 +57,7 @@ function run(argv) {
         throw new Error(`'${ts.name}': ${e.message}`);
       }
     });
-    layouts.forEach(restoreSections);
+    layouts.forEach(restoreLayout);
     doc.save();
   } finally {
     doc.close({ saving: "no" });
@@ -87,58 +90,98 @@ function openDocument(path, opened) {
   throw new Error(`Numbers didn't open ${path} within two minutes`);
 }
 
-// Section spacing. A table that grows pushes down everything whose horizontal span overlaps it,
-// not just what sits under it. Gold + Silver, in the right-hand column of Assets, overlaps the
-// Liabilities heading and chart by a sliver, so its growth pushed the whole Liabilities section
-// ~800pt below the end of Assets. So the gap above each section is measured in the template before
-// filling and put back after. A section is a text box (the template's only text boxes are its
-// headings: Net Worth: Overview, Assets, Liabilities) and everything below it, up to the next one.
-const SECTION_KINDS = ["textItems", "tables", "charts", "shapes", "images", "groups"];
+// Layout. A table that grows pushes down everything whose horizontal span overlaps it, by however
+// much, not just what sits under it. Gold + Silver, in the right-hand column of Assets, overlaps the
+// Liabilities heading by a sliver, so its growth pushed the whole Liabilities section ~800pt below
+// the end of Assets. Moving each section back by one amount wasn't enough either: its members had
+// been pushed by different amounts, and the rule under the Liabilities heading (a line, which that
+// pass never measured) was left ~750pt down, striking through Credit Card Details.
+//
+// So the whole sheet is measured in the template before filling, and every item is placed again
+// afterwards from those positions and the tables' new heights:
+// - A section is a text box (the template's only text boxes are its headings: Net Worth: Overview,
+//   Assets, Liabilities) and everything below it, up to the next one. A heading keeps the gap it
+//   had to the lowest thing above it.
+// - Anything else moves with its heading, and further down below anything in its section that sits
+//   above it and genuinely shares its column (a sliver of overlap doesn't count), keeping the gap
+//   it had to that.
+// - Items in a section whose tops lined up stay lined up: the Credit Card table beside Transactions
+//   follows Transactions down when Credit Card Details grows above it.
+const LAYOUT_KINDS = ["textItems", "tables", "charts", "shapes", "images", "groups", "lines"];
+const ALIGNED = 2;  // pt between tops that count as one row; Cash sits 4pt below Gold + Silver
 
-function sheetItems(sheet) {
+function measureLayout(sheet) {
   const items = [];
-  SECTION_KINDS.forEach(kind => {
+  LAYOUT_KINDS.forEach(kind => {
     let list = [];
     try { list = sheet[kind](); } catch (e) { return; }
     list.forEach((item, index) => {
       const p = item.position();
-      items.push({ kind, index, x: p.x, y: p.y, height: item.height() });
+      items.push({ kind, index, x: p.x, y: p.y, w: item.width(), h: item.height() });
     });
   });
+  return { sheet, items };
+}
+
+function placeItems(items, heightOf) {
+  items.forEach(m => { m.newH = heightOf(m); });
+  const headings = items.filter(m => m.kind === "textItems").sort((a, b) => a.y - b.y);
+  const sectionOf = m => headings.filter(h => h !== m && h.y <= m.y + 0.5).pop() || null;
+  const sharesColumn = (a, b) =>
+    Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x) > Math.max(1, 0.2 * Math.min(a.w, b.w));
+  const placed = [];
+  const settle = m => { placed.push(m); };
+
+  const order = [...items].sort((a, b) => a.y - b.y || a.x - b.x);
+  for (let i = 0; i < order.length;) {
+    const first = order[i];
+    if (headings.includes(first)) {
+      const above = placed.filter(p => p.y < first.y);
+      first.newY = first.y;
+      if (above.length) {
+        const gap = first.y - Math.max(...above.map(p => p.y + p.h));
+        first.newY = Math.max(first.y, Math.max(...above.map(p => p.newY + p.newH)) + gap);
+      }
+      settle(first);
+      i++;
+      continue;
+    }
+    const section = sectionOf(first);
+    const row = [first];
+    while (i + row.length < order.length) {
+      const next = order[i + row.length];
+      if (headings.includes(next) || next.y - first.y > ALIGNED || sectionOf(next) !== section) break;
+      row.push(next);
+    }
+    const shift = Math.max(...row.map(m => {
+      let y = m.y + (section ? section.newY - section.y : 0);
+      placed.forEach(p => {
+        if (sectionOf(p) !== section && p !== section) return;
+        if (p.y + p.h > m.y + 0.5 || !sharesColumn(p, m)) return;
+        y = Math.max(y, p.newY + p.newH + (m.y - (p.y + p.h)));
+      });
+      return y - m.y;
+    }));
+    row.forEach(m => { m.newY = m.y + shift; settle(m); });
+    i += row.length;
+  }
   return items;
 }
 
-function measureSections(sheet) {
-  const items = sheetItems(sheet);
-  const headings = items.filter(i => i.kind === "textItems").sort((a, b) => a.y - b.y);
-  const sections = headings.map((h, k) => {
-    const next = headings[k + 1];
-    const members = items.filter(i => i.y >= h.y && (!next || i.y < next.y));
-    const above = items.filter(i => i.y < h.y);
-    const gap = above.length ? h.y - Math.max(...above.map(i => i.y + i.height)) : null;
-    return { heading: h, members, gap };
-  });
-  return { sheet, sections };
-}
-
-function restoreSections(layout) {
-  const { sheet, sections } = layout;
-  const current = ({ kind, index }) => sheet[kind][index];
-  sections.forEach((section, k) => {
-    if (k === 0 || section.gap == null) return;
-    const above = sections.slice(0, k).flatMap(s => s.members).map(m => {
-      const item = current(m);
-      return item.position().y + item.height();
+function restoreLayout({ sheet, items }) {
+  const item = m => sheet[m.kind][m.index];
+  placeItems(items, m => item(m).height());
+  // Top down, and checked: an item moved into a gap can be shoved again by one moved after it.
+  for (let pass = 0; pass < 3; pass++) {
+    let moved = false;
+    [...items].sort((a, b) => a.newY - b.newY).forEach(m => {
+      const it = item(m), p = it.position();
+      if (Math.abs(p.y - m.newY) < 0.5 && Math.abs(p.x - m.x) < 0.5) return;
+      it.position = { x: m.x, y: m.newY };
+      moved = true;
     });
-    if (!above.length) return;
-    const delta = Math.max(...above) + section.gap - current(section.heading).position().y;
-    if (Math.abs(delta) < 1) return;
-    section.members.forEach(m => {
-      const item = current(m);
-      const p = item.position();
-      item.position = { x: p.x, y: p.y + delta };
-    });
-  });
+    if (!moved) return;
+  }
 }
 
 function isGrouped(t) {
@@ -155,18 +198,55 @@ function dataRows(t, grouped) {
   return out;
 }
 
+// Money is typed the way this Mac writes an amount ("$173,902.21"), and checked like a date. The
+// template's money cells (and so every row Numbers copies from them) are currency with two places
+// and a thousands separator, and a typed amount keeps that; a number written in turned the cell
+// automatic. Typed into an automatic cell, an amount without a separator ("$0.08") made a Total
+// over it lose its own ("$228856.00"), and a whole-dollar currency format hid the cents
+// ("$173,902" for $173,902.21). Anything that doesn't read back as the same amount is written as a
+// number in the currency format after all.
+const currencyText = (() => {
+  const f = $.NSNumberFormatter.alloc.init;
+  f.numberStyle = $.NSNumberFormatterCurrencyStyle;
+  return f;
+})();
+
+function setMoney(c, v) {
+  if (typeof v === "number") {
+    c.value = currencyText.stringFromNumber($.NSNumber.numberWithDouble(v)).js;
+    let back = null;
+    try { back = c.value(); } catch (e) {}
+    if (typeof back === "number" && Math.abs(back - v) < 0.005) return;
+  }
+  c.value = v == null ? "" : v;
+  c.format = "currency";
+}
+
 // Metal Price: fixed rows found by their label; also tells the metal formulas which row is which.
+// A metal with a formula in ls.formulas gets it (the sheet's live =STOCK("GC=F")), its number only
+// if Numbers won't take the formula.
 function fillLookup(tables, ls) {
   const t = tables[ls.name];
   if (!t) throw new Error(`the template has no table named '${ls.name}'`);
   const offset = isGrouped(t) ? 1 : 0;
+  const formulas = ls.formulas || {};
   const rows = {};
   dataRows(t, offset === 1).forEach(r => {
     const label = t.rows[r - 1].cells[ls.keyCol + offset].value();
     const key = typeof label === "string" ? label.trim().toLowerCase() : "";
     if (!key) return;
     rows[key] = r;
-    if (key in ls.values) t.rows[r - 1].cells[ls.valueCol + offset].value = ls.values[key];
+    const c = t.rows[r - 1].cells[ls.valueCol + offset];
+    if (key in formulas) {
+      c.value = formulas[key];
+      if (c.formula() && !/#REF!/.test(c.formula())) {
+        if (ls.format) c.format = ls.format;
+        return;
+      }
+    }
+    if (!(key in ls.values)) return;
+    if (ls.format === "currency") setMoney(c, ls.values[key]);
+    else c.value = ls.values[key];
   });
   return rows;
 }
@@ -187,6 +267,28 @@ function setText(c, v, force) {
   }
   c.format = "text";
   c.value = v;
+}
+
+// A date goes in typed, as this Mac writes a short date ("9/3/26"), and is checked: written as a
+// JavaScript Date, a cell in a row Numbers added showed "9/3/26 12:00 AM", clipped to "9/3/26 12:0"
+// in the template's Date column (only the template's own row, typed by hand, showed the date
+// alone). Anything that doesn't read back as that same day is written as a Date after all.
+const shortDate = (() => {
+  const f = $.NSDateFormatter.alloc.init;
+  f.dateStyle = $.NSDateFormatterShortStyle;
+  f.timeStyle = $.NSDateFormatterNoStyle;
+  return f;
+})();
+
+function setDate(c, iso) {
+  const [y, m, d] = iso.split("-").map(Number);
+  const parts = $.NSDateComponents.alloc.init;
+  parts.year = y; parts.month = m; parts.day = d;
+  c.value = shortDate.stringFromDate($.NSCalendar.currentCalendar.dateFromComponents(parts)).js;
+  let back = null;
+  try { back = c.value(); } catch (e) {}
+  if (back instanceof Date && back.getFullYear() === y && back.getMonth() === m - 1 && back.getDate() === d) return;
+  c.value = new Date(y, m - 1, d);
 }
 
 function fillTable(t, ts, priceRows) {
@@ -220,13 +322,21 @@ function fillTable(t, ts, priceRows) {
     return i + 1;
   };
 
-  const write = (r, token, [col, op, v]) => {
+  // An op's optional fourth element is the format the cell ends up in ("currency"), set after the
+  // value, since writing a number is what loses it; money is typed with its cents (setMoney). A
+  // kept template formula keeps its own format.
+  const write = (r, token, [col, op, v, format]) => {
     const c = cell(r, col);
+    if ((op === "set" || op === "keep") && format === "currency") {
+      if (op === "keep" && c.formula()) return;  // leave a template formula
+      setMoney(c, v);
+      return;
+    }
     switch (op) {
       case "set": c.value = v == null ? "" : v; break;
       case "text": setText(c, v); break;
-      case "date": { const [y, m, d] = v.split("-").map(Number); c.value = new Date(y, m - 1, d); break; }
-      case "keep": if (!c.formula()) c.value = v == null ? "" : v; break;  // leave a template formula
+      case "date": setDate(c, v); break;
+      case "keep": if (c.formula()) return; c.value = v == null ? "" : v; break;  // leave a template formula
       case "formula": {
         const text = v
           .replace(/\{ROW\}/g, `'${token}'`)
@@ -241,6 +351,7 @@ function fillTable(t, ts, priceRows) {
       }
       default: throw new Error(`unknown cell op ${op}`);
     }
+    if (format) c.format = format;
   };
 
   // The group column (Owner, Metal, Card) moves the row when written, so it goes after every other
