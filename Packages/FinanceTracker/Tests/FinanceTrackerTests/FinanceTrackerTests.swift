@@ -634,18 +634,21 @@ private func makeSeptember() throws -> (household: SharedFinanceHousehold, month
 // MARK: - Home
 
 @MainActor
-@Test func homeDetailShowsTheLatestNetWorth() throws {
+@Test func homeDetailShowsTheLatestMonthsSpendingNotTheNetWorth() throws {
     #expect(FinanceHome.homeDetail(for: [], container: nil) == "No months yet")
 
-    let (_, september) = try makeSeptember()
+    let (household, september) = try makeSeptember()
+    #expect(FinanceHome.homeDetail(for: [september], container: nil) == "September · \(FinanceFormat.money(500)) spent")
+    #expect(FinanceTrackerModule.homeDetail(months: [september], container: nil) == "September · \(FinanceFormat.money(500)) spent")
+
+    // October is the latest even before its balances are filled in, and a
+    // cash payment counts beside the cards.
     let october = try #require(MonthRollover.startMonth(after: september))
-    let expected = MonthSummary(month: september).netWorth
-    #expect(FinanceHome.homeDetail(for: [october, september], container: nil) == "Net worth \(FinanceFormat.money(expected))", "October's not filled in yet")
-    MonthRollover.carryOverUnfilled(in: october)
-    october.goldPricePerOz = 4_100
-    october.silverPricePerOz = 55
-    #expect(FinanceHome.homeDetail(for: [october, september], container: nil) == "Net worth \(FinanceFormat.money(MonthSummary(month: october).netWorth))")
-    #expect(FinanceTrackerModule.homeDetail(months: [september], container: nil) == "Net worth \(FinanceFormat.money(MonthSummary(month: september).netWorth))")
+    #expect(FinanceHome.homeDetail(for: [october, september], container: nil) == "October · \(FinanceFormat.money(0)) spent")
+    let checking = SharedFinanceAccount(institution: "Bank", name: "Checking", category: .cash, household: household)
+    _ = SharedFinanceTransaction(date: day(2026, 10, 2), cost: 40, merchant: "Market", household: household, card: checking)
+    #expect(FinanceHome.homeDetail(for: [october, september], container: nil) == "October · \(FinanceFormat.money(40)) spent")
+    #expect(!FinanceHome.homeDetail(for: [october, september], container: nil).contains("Net worth"))
 }
 
 @MainActor

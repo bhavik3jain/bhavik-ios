@@ -182,13 +182,28 @@ public struct FinanceHistory {
 
 /// The home screen's line and peek for Finance.
 public enum FinanceHome {
-    /// "Net worth $557,506" for the reported month, or "No months yet".
+    /// "October · $2,345 spent": the latest month and every transaction in
+    /// it, cards and cash alike, or "No months yet". Never the net worth —
+    /// the hub row is on screen for anyone looking over a shoulder; that
+    /// waits for the peek. The latest month, not `reportedMonth`: a month's
+    /// spending is real from its first transaction, unlike its balances.
     @MainActor
     public static func homeDetail(for months: [SharedFinanceMonth], container: NSPersistentCloudKitContainer?) -> String {
         guard let latest = latestMonth(months, container: container) else { return "No months yet" }
-        let live = MetalPriceFeed.shared.live
-        let month = reportedMonth(for: latest, live: live)
-        return "Net worth \(FinanceFormat.money(MonthSummary(month: month, live: live).netWorth))"
+        return "\(latest.monthName) · \(FinanceFormat.money(spend(in: latest))) spent"
+    }
+
+    /// Every one of the household's transactions in `month`'s period, cards
+    /// and cash alike, newest first.
+    public static func transactions(in month: SharedFinanceMonth) -> [SharedFinanceTransaction] {
+        guard let period = month.period else { return [] }
+        return SpendingSummary.transactions(Array(month.household?.transactions ?? []), in: period)
+    }
+
+    /// What `transactions(in:)` adds up to, by `actualCost` like the
+    /// Transactions screen.
+    public static func spend(in month: SharedFinanceMonth) -> Double {
+        SpendingSummary.total(transactions(in: month))
     }
 
     /// The month whose figures headline the Summary, the peek and the
