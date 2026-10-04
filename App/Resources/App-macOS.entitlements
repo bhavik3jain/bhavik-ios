@@ -62,5 +62,12 @@
 	     simply never shows up, with nothing in the log to say why. -->
 	<key>com.apple.security.personal-information.location</key>
 	<true/>
+	<!-- Finance's report window prints (Print, ⌘P) and saves as PDF, both
+	     through NSPrintOperation (Core's HTMLDocumentExport). The sandbox
+	     refuses printing without this key; nothing in the app printed before
+	     the report, and the export's one test runs in the unsandboxed test
+	     host, so nothing would have caught it. -->
+	<key>com.apple.security.print</key>
+	<true/>
 </dict>
 </plist>

@@ -249,6 +249,14 @@ engine run on a made-up Rome trip: `PlanCheck`, the brief the model sees, a stre
 real on-device model, and a "Suggest Places" run against Apple Maps. It's the way to check the real
 model on a Mac without touching real iCloud data (it answers on the iOS 27 simulator too): run the built binary directly
 (`…/Multitrack.app/Contents/MacOS/Multitrack -TripAdvisorProbe YES -TripAdvisorProbeQuit YES`) and read stdout.
+Finance has the same pair: `-FinanceAdvisorStub YES` (`StubFinanceAdvisor` at the app root, every scene) and
+`-FinanceAdvisorProbe YES` [`-FinanceAdvisorProbeQuit YES`] — in-memory stores, seeds them, prints `MonthCheck`,
+the `ReportBrief`, a streamed review, Ask answers (including an investment question it must refuse) and the year
+in review, and writes both HTML reports to `Caches/FinanceAdvisorProbe/`. `-FinanceOpenReport YES` /
+`-FinanceOpenReview YES` present the reported month's report / review sheet once Finance opens, after the
+seed (report wins if both). `-FinanceSeed` makes **twelve months**: eleven finished with transactions, the
+current one open with cash only — so the Summary and the report land on *last* month (`reportedMonth`), as
+designed. It is built to set off most `MonthCheck` findings; keep it that way when changing either.
 `-MacOpenTracker <module>[/<section>]` (Mac, e.g. `fuel/trends`) opens a tracker at launch,
 navigation only: the one way to reach a tracker's Mac layout from a script without Accessibility access.
 `trips/next[/<face>]` opens the nearest trip not yet over; `-MacOpenFirstItem YES` then opens the first
@@ -374,14 +382,71 @@ show an error: every failure falls back to the plain check or the nearest places
 
 - FoundationModels is weak-linked; every use is behind `@available`/`#available(iOS 26.0, macOS 26.0, *)`.
   Views see only `TripAdvising`, which has no FoundationModels types.
-- The **"Apple Intelligence in Trips"** switch (Settings, default on) is `App/Sources/TripsIntelligenceStore.swift`,
-  synced through `NSUbiquitousKeyValueStore` like `TrackerLayoutStore`, and reaches Trips only as
+- The **Trips** switch under Settings' **Apple Intelligence** section (default on) is stored by
+  `App/Sources/TripsIntelligenceStore.swift`; the section itself, Trips' and Finance's rows together, is
+  `AppleIntelligenceSection` in `App/Sources/FinanceIntelligenceStore.swift`. The store is synced through `NSUbiquitousKeyValueStore` like `TrackerLayoutStore`, and reaches Trips only as
   `\.tripAdvisorEnabled`, set at the app root. Views go by `advisor.availability(isEnabled:)`; off is
   `.turnedOff`, which means no model UI, no prewarm and nothing sent to the model. The plain plan
   check stays. The switch is hidden where the model can never run (`showsSetting`: below 26, or
   ineligible hardware).
 - On a simulator use `-TripAdvisorStub YES`. `-TripAdvisorProbe YES` exercises the real model without
   touching real data (see Tests above).
+
+## Finance report and review: the same rule as Trips
+
+`Packages/FinanceTracker/Sources/FinanceTracker/Report/` builds the month (or year) report:
+`FinanceReportData.build(scope:household:filter:live:deviceName:)` is a `Sendable` snapshot with every
+figure already computed and formatted; `MonthCheck` / `YearCheck` turn it into `ReportFinding`s, each
+with Swift's own `plainText` plus the `figures` and `names` that must survive into any rewording (a
+test holds every one to appearing verbatim in its `plainText`); `FinanceReportHTML.render` is a pure
+function to one self-contained page (CSP `default-src 'none'`, no script, no fonts, no network; light
+and dark; section ids `brief`, `networth`, … `fixing` that the viewer's Jump to Section and the Mac
+sidebar scroll to). `Intelligence/` mirrors Trips: `ReportBrief` numbers the facts, the model
+(`FoundationModelsFinanceAdvisor`, weak-linked, `#available(iOS 26.0, macOS 26.0, *)`) only ranks and
+words them, `ReportReview.isFaithful` drops any note that loses a figure or a name, adds a number of
+its own, borrows another fact's name, dismisses or sounds like investment advice, and the check's own
+words stand in. Ask answers go through `AskReply` the same way — a number not in the brief and the
+answer becomes "I can only answer from this report's figures." plus the nearest facts. Views see only
+`FinanceAdvising`; every failure falls back to `ReportReview.plain`, never an error.
+
+- Reports follow the same guardrails as the Summary: a report opens on `FinanceHome.reportedMonth`, an
+  open month is valued at `MetalPriceFeed` live prices and the page says so, and "No budget"
+  (`limit == -1`) is an unbudgeted chip, never a budget row. Under an owner filter, balances and spending
+  follow the paying account's owner but **budgets stay household-wide** (`budgetsAreHouseholdWide`) — a
+  household limit is never compared with one person's spend.
+- **The review is cached locally only** (`ReportReviewCache`: `Application Support/FinanceReviews`, one JSON
+  per scope and owner, keyed by the brief's fingerprint, notes by fact number). Never Core Data or
+  iCloud: a synced write fires the partner's iCloud alert subscription — every Summary visit would
+  alert them. Notes are keyed by **fact number, not finding id**, because some finding ids carry a Core
+  Data object URI that changes when a temporary id becomes permanent; keyed by id, a cached review lost
+  its notes the moment the month entry saved.
+- **The in-app browser is Core's `HTMLDocumentView`, a `WKWebView` wrapper — not iOS 26's SwiftUI
+  `WebView`**, because the app targets iOS 18 / macOS 15. It loads the string with no base URL into a
+  non-persistent store and cancels every navigation but the first load and `#anchors`; http(s)/mailto
+  links go to `openURL`. `HTMLDocumentExport` paginates PDFs to US Letter and prints, always in light
+  appearance with print media — the report's light palette must be complete and its print CSS keeps
+  `print-color-adjust: exact`, or bars vanish from PDFs. On macOS AppKit calls the print operation's
+  `didRun` on its own thread: the delegate is nonisolated behind a lock, because a main-actor one
+  trapped at the end of every PDF export. Core's other `WebPage` (`SafariView.swift`) is unrelated.
+- Preferences: `App/Sources/FinanceIntelligenceStore.swift` (key-value store + UserDefaults mirror, like
+  `TripsIntelligenceStore`) feeds `\.financeAdvisorEnabled` and `\.financeReportPreferences` through
+  `FinanceAppEnvironment`, which is on **every scene** — main window, Mac Settings, Mac report window.
+  Settings' Apple Intelligence section is now `AppleIntelligenceSection` (Trips and Finance rows, each
+  hidden by its advisor's `showsSetting`).
+- The Mac report is a scene of its own: `WindowGroup(id: FinanceTrackerModule.reportWindowID, for:
+  FinanceReportWindowValue.self)` opened through `presentsReport(_:)`; on the phone the same modifier is a
+  `fullScreenCover`. A window outside the split view gets nothing from `HomeView`, so the scene sets the
+  Finance context, `.sidebar` layout, form style and share host itself. Its shortcut is **⇧⌘R**: ⌘R is
+  View ▸ Refresh from iCloud, and the menu command takes the key first.
+- **Report-ready notification** rides on `SharedChangeNotifier`: Finance's describer is wrapped in
+  `FinanceReportReady.watching`, which posts "September's report is ready" for an *imported update*
+  that sets `closedAt` (closed under 3 days ago; inserts and reopenings never), once per close (a
+  UserDefaults ledger), gated on "Notify when a report is ready". The tap carries
+  `SharedChangeNotifications.destinationUserInfoKey` ("finance.report:2026-09") through
+  `SharedChangeNotificationRouter.destinationToOpen` to `FinanceReportRouter.shared.pending`, which
+  `FinanceRootView` presents. It reads no persistent history of its own, so the notifier's purge cutoff
+  is unchanged; iCloud's server alerts still get the plain describer. It fires for the person's own
+  other device too, and alongside the ordinary "closed September" shared-change notice — on purpose.
 
 ## Known-stale things in the tree
 

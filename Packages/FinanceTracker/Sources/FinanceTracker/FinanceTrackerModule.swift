@@ -37,4 +37,50 @@ public enum FinanceTrackerModule {
             .environment(\.managedObjectContext, context)
             .environment(\.financePersistentContainer, container)
     }
+
+    /// The id of the Mac's report window scene. The app declares
+    /// `WindowGroup(id: FinanceTrackerModule.reportWindowID, for: FinanceReportWindowValue.self)`
+    /// around `reportWindow(value:context:container:)`; Finance opens it with
+    /// `openWindow(id:value:)` (see `presentsReport(_:)`).
+    public static let reportWindowID = "finance-report"
+
+    /// The Mac's report window: a contents sidebar, the web report and an
+    /// inspector with the review and "Ask about <month>". `value` is the
+    /// window's own and follows its stepping to another month or person while
+    /// it's open. Restoration is disabled on the scene (see BhavikApp), so nil
+    /// only comes from File ▸ New Report Window; it opens the month the
+    /// Summary headlines.
+    ///
+    /// The window is a scene of its own, outside the module's root view, so
+    /// it gets Finance's store here exactly as `rootView` does — a report
+    /// built off another module's context would find no household.
+    @MainActor
+    public static func reportWindow(
+        value: Binding<FinanceReportWindowValue?>,
+        context: NSManagedObjectContext,
+        container: NSPersistentCloudKitContainer
+    ) -> some View {
+        MacReportWindow(value: value)
+            .environment(\.managedObjectContext, context)
+            .environment(\.financePersistentContainer, container)
+            .environment(\.moduleLayout, .sidebar)
+            .tint(accent.color)
+    }
+}
+
+/// What a Mac report window is opened with: the scope and
+/// whose figures. `ownerName` nil is Everyone. Owners are named rather than
+/// referenced because the value is encoded with the window and an owner
+/// object can't leave the store; a name no owner has any more reads as
+/// Everyone.
+public struct FinanceReportWindowValue: Codable, Hashable, Sendable, Identifiable {
+    public var scope: ReportScope
+    public var ownerName: String?
+
+    public init(scope: ReportScope, ownerName: String? = nil) {
+        self.scope = scope
+        self.ownerName = ownerName
+    }
+
+    public var id: String { scope.rawValue + "|" + (ownerName ?? "") }
 }

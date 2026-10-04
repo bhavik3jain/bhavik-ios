@@ -100,6 +100,36 @@ private func serverContent(ck kind: [String: Any]) -> UNNotificationContent {
     ) == nil)
 }
 
+/// Finance's "September's report is ready" opens the report, not just the
+/// tracker: the tap carries the module's own destination through untouched.
+@Test func aTapCarriesItsDestinationIntoTheTracker() {
+    let content = UNMutableNotificationContent()
+    content.userInfo = [
+        SharedChangeNotifications.moduleUserInfoKey: "finance",
+        SharedChangeNotifications.destinationUserInfoKey: "finance.report:2026-09",
+    ]
+    #expect(SharedChangeNotificationRouting.destinationToOpen(
+        actionIdentifier: UNNotificationDefaultActionIdentifier,
+        content: content
+    ) == "finance.report:2026-09")
+    #expect(SharedChangeNotificationRouting.destinationToOpen(
+        actionIdentifier: UNNotificationDismissActionIdentifier,
+        content: content
+    ) == nil, "Dismissing it opens nothing")
+    #expect(SharedChangeNotificationRouting.destinationToOpen(
+        actionIdentifier: UNNotificationDefaultActionIdentifier,
+        content: localContent(module: "trips")
+    ) == nil, "A shared-change notification has no destination")
+
+    let server = UNMutableNotificationContent()
+    server.categoryIdentifier = SharedChangeServerAlertText.category
+    server.userInfo = content.userInfo
+    #expect(SharedChangeNotificationRouting.destinationToOpen(
+        actionIdentifier: UNNotificationDefaultActionIdentifier,
+        content: server
+    ) == nil, "iCloud's alert is never ours to route")
+}
+
 // MARK: - While in front
 
 @Test func aNotificationShowsUnlessItsTrackerIsOnScreen() {

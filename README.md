@@ -12,7 +12,7 @@ through TestFlight; also builds for the Mac.
 | Fuel | Log fill-ups per vehicle, track MPG and cost, import a Fuelly CSV export |
 | Orders | Track FedEx, UPS and USPS deliveries, with an in-app browser for the ones that can't be read automatically |
 | Points | Track credit card, hotel and airline points for everyone in the household, with balance history, expiry warnings, and sharing with a partner |
-| Finance | Track net worth month by month — balances, cards, loans, gold and silver, spending and budgets — shared with a partner, live gold and silver prices, and an Export to Numbers on the Mac that fills the old Numbers sheet |
+| Finance | Track net worth month by month — balances, cards, loans, gold and silver, spending and budgets — shared with a partner, live gold and silver prices, and an Export to Numbers on the Mac that fills the old Numbers sheet; every month (and every year) has a report, a web page built on the device that shares as .html or PDF, and on Apple Intelligence devices a written review of what went well, what to watch and what to try next, with one-tap fixes and "Ask about September" |
 
 Each tracker is its own local Swift package so the modules stay independent and can be developed —
 or removed — without disturbing the others.
@@ -231,9 +231,34 @@ On iOS 26 / macOS 26 with Apple Intelligence, Trips' Review Plan adds a one-line
 Ideas, Nearby and the Mac's Ideas inspector can suggest places from Apple Maps. The on-device model
 picks them and says why. Swift works out every problem, fix and candidate place; the model only
 words and ranks them, and nothing is sent off the device except the Apple Maps search. **Settings →
-Apple Intelligence in Trips** turns it off everywhere, and the setting syncs across your devices. Off,
+Apple Intelligence → Trips** turns it off everywhere, and the setting syncs across your devices. Off,
 or on a device without Apple Intelligence, Review Plan is the plain plan check. The switch is hidden
 where the model can never run.
+
+## Finance reports and Apple Intelligence in Finance
+
+Each Finance month has a **report**: a self-contained web page — net worth and its change, key
+figures, where the money sits, what moved, the last 12 months, accounts, gold and silver, spending
+and budgets, cards, and what's worth fixing — built on the device from the household's own figures
+and shown in an in-app browser. It opens from the Summary's Report button (⇧⌘R on the Mac), a
+month's **View Report** under Months, **Year in Review** for a whole year, and the screen shown after
+finishing a month. It shares as an .html file or a PDF, prints, and can be shown for everyone or one
+person. On the Mac it opens in a window of its own with a contents sidebar and the review in an
+inspector. A month that isn't finished yet says so, and its gold and silver are labelled as live
+prices. Reports are never saved to iCloud: a shared report is a file and won't update.
+
+On iOS 26 / macOS 26 with Apple Intelligence, the Summary's "September in brief" card and the
+review sheet add a **written review**: a headline, what went well, what to watch and what to try
+next month, each with a one-tap fix (adjust a budget, show the charges, update balances, open gold
+and silver), plus **Ask about September** for questions answered only from the report's figures.
+Swift works out every figure and finding; the model only ranks and words them, never adds a number
+and never gives investment advice. Off, or without Apple Intelligence, the same findings appear in
+Swift's own words as "September check". The review is cached on the device only.
+
+**Settings → Apple Intelligence → Finance** turns the model off (synced across your devices), and
+**Settings → Finance reports** sets whether finishing a month writes its review, whether this device
+is told "September's report is ready" when a month is finished on another one, whether shared
+reports carry table views, and whose figures a report opens on.
 
 ## Debug launch arguments
 
@@ -250,7 +275,11 @@ All debug-only, and inert unless passed (Product → Scheme → Edit Scheme → 
 | `-TripSeed YES` | Adds four trips, one under way today with six ideas for Nearby (does nothing if any trip exists) |
 | `-ExploreSeed YES` | Adds three guides with real places (does nothing if any guide exists) |
 | `-PointsSeed YES` | Adds a sample household with people and points accounts (does nothing if any account exists) |
-| `-FinanceSeed YES` | Adds a sample household with accounts, cards, metals, three months and budgets (does nothing if any household has data) |
+| `-FinanceSeed YES` | Adds a sample household with accounts, cards, metals, budgets and twelve months — eleven finished with spending, the current one open — set up to trip most of the report's findings (does nothing if any household has data) |
+| `-FinanceAdvisorStub YES` | A made-up month reviewer in place of Apple Intelligence, for Finance's review and Ask on a simulator |
+| `-FinanceAdvisorProbe YES` | Seeds an in-memory household and prints Finance's month check, the brief the model sees, a streamed review from the real on-device model, Ask answers and the year in review, and writes both HTML reports to Caches; add `-FinanceAdvisorProbeQuit YES` to quit after |
+| `-FinanceOpenReport YES` | Once Finance is opened (after the seed), presents the report for the month the Summary headlines |
+| `-FinanceOpenReview YES` | Likewise, the review sheet (the report wins if both are given) |
 | `-WeatherStub YES` | Made-up weather in place of WeatherKit |
 | `-TripAdvisorStub YES` | A made-up plan reviewer and made-up places in place of Apple Intelligence and Apple Maps, for Trips on a simulator |
 | `-TripAdvisorProbe YES` | Runs Trips' plan check, the real on-device model and an Apple Maps search on a made-up trip in memory only, and prints it all; add `-TripAdvisorProbeQuit YES` to quit after |

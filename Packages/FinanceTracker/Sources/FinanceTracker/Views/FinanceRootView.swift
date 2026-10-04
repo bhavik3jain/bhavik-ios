@@ -26,6 +26,17 @@ struct FinanceRootView: View {
     /// The share whose merge offer was turned down, so it isn't made again.
     @AppStorage("finance.declinedMergeInto") private var declinedMergeInto = ""
 
+    @Environment(\.financeAdvisor) private var advisor
+    @Environment(\.financeAdvisorEnabled) private var isAdvisorEnabled
+    @Environment(\.financeReportPreferences) private var reportPreferences
+    @Environment(\.moduleLayout) private var layout
+    /// A report asked for from outside the Summary — a tapped "report is
+    /// ready" notification, a debug launch: a cover on the phone, a window on
+    /// the Mac (`presentsReport`).
+    @State private var report: FinanceReportWindowValue?
+    /// `-FinanceOpenReview YES`'s review sheet.
+    @State private var debugReview: ReportScope?
+
     var body: some View {
         ModuleTabView(selection: section ?? $ownSection, sections: FinanceTrackerModule.sections) { section in
             switch section.id {
@@ -35,8 +46,54 @@ struct FinanceRootView: View {
             default: SummaryView()
             }
         }
+        .toolbar {
+            // The Mac's Report button (⇧⌘R) for every section but the
+            // Summary, which has its own that follows its Whose filter. With
+            // only the Summary's, the shortcut did nothing while Months,
+            // Spending or Holdings was selected: the sidebar layout shows just
+            // the selected section. On the phone each tab's stack has its own
+            // toolbar, so this one wouldn't show there.
+            if layout == .sidebar, (section ?? $ownSection).wrappedValue != FinanceTrackerModule.sections[0].id {
+                ToolbarItem(placement: .primaryAction) {
+                    let scope = reportedScope
+                    Button {
+                        if let scope { report = FinanceReportWindowValue(scope: scope, ownerName: defaultOwnerName) }
+                    } label: {
+                        Label("Report", systemImage: "doc.text")
+                    }
+                    .keyboardShortcut("r", modifiers: [.command, .shift])
+                    .disabled(scope == nil)
+                    .help(scope.map { "Open the \($0.title) report" } ?? "No month to report on yet")
+                }
+            }
+        }
         .environment(\.financeCanCreateHousehold, hasCaughtUp)
+        // The review's "Open Gold & Silver" switches to Holdings rather than
+        // stacking a second Holdings over the sheet.
+        .environment(\.openFinanceSection, OpenFinanceSectionAction { id in
+            (section ?? $ownSection).wrappedValue = id
+        })
         .task { await MetalPriceFeed.shared.refreshIfStale() }
+        // Loads the model ahead of the Summary's review — only when it can
+        // run and the person hasn't switched it off, like Trips. Keyed on
+        // availability, so a model that finishes downloading is warmed then.
+        .task(id: advisor.availability(isEnabled: isAdvisorEnabled)) {
+            if advisor.availability(isEnabled: isAdvisorEnabled) == .available {
+                advisor.prewarm()
+            }
+        }
+        // A tapped "September's report is ready" (`FinanceReportReady`): the
+        // app sets the router and opens Finance; this presents the report and
+        // clears it, once.
+        .onChange(of: FinanceReportRouter.shared.pending, initial: true) { _, scope in
+            guard let scope else { return }
+            FinanceReportRouter.shared.pending = nil
+            report = FinanceReportWindowValue(scope: scope, ownerName: defaultOwnerName)
+        }
+        .presentsReport($report)
+        .sheet(item: $debugReview) { scope in
+            ReviewSheet(scope: scope, filter: .all)
+        }
         // Tops up the year of 1st-of-the-month reminders; opening Finance is
         // also the one moment asking for notification permission makes sense
         // for them.
@@ -52,6 +109,7 @@ struct FinanceRootView: View {
             if FinanceDebugSeed.isRequested {
                 FinanceDebugSeed.run(context: context, container: container)
             }
+            await openDebugReport()
             #endif
         }
         // Folds a duplicate household or month as soon as a sync brings one
@@ -85,6 +143,46 @@ struct FinanceRootView: View {
         }
         .tint(FinanceTrackerModule.accent.color)
     }
+
+    /// The month the Summary headlines, for the Mac's Report button.
+    private var reportedScope: ReportScope? {
+        _ = months.count
+        guard let household = FinanceHouseholdResolver.forDisplay(among: Array(households), container: container) else { return nil }
+        return FinanceReportData.defaultScope(for: household, live: MetalPriceFeed.shared.live)
+    }
+
+    /// Settings' "Whose by default", while that person is in the household.
+    private var defaultOwnerName: String? {
+        let owners = households.flatMap { Array($0.owners ?? []) }
+        return OwnerFilter.reportDefaultOwnerName(preferred: reportPreferences.defaultOwnerName, owners: owners)
+    }
+
+    #if DEBUG
+    /// `-FinanceOpenReport YES` presents the report for the month the Summary
+    /// headlines, `-FinanceOpenReview YES` its review — the only way to get a
+    /// screenshot of either from a script. Runs after the seed, and waits a
+    /// little for the store to show its months: a seed lands in the same
+    /// turn, a synced household some seconds later.
+    private func openDebugReport() async {
+        let defaults = UserDefaults.standard
+        let opensReport = defaults.bool(forKey: "FinanceOpenReport")
+        let opensReview = defaults.bool(forKey: "FinanceOpenReview")
+        guard opensReport || opensReview else { return }
+        for _ in 0..<20 {
+            if let household = FinanceHouseholdResolver.forDisplay(among: Array(households), container: container),
+               let scope = FinanceReportData.defaultScope(for: household, live: MetalPriceFeed.shared.live) {
+                if opensReport {
+                    report = FinanceReportWindowValue(scope: scope, ownerName: defaultOwnerName)
+                } else {
+                    debugReview = scope
+                }
+                return
+            }
+            try? await Task.sleep(for: .milliseconds(500))
+            if Task.isCancelled { return }
+        }
+    }
+    #endif
 
     private var needsTidying: Bool {
         _ = months.count

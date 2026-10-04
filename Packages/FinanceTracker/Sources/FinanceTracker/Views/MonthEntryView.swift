@@ -15,6 +15,8 @@ struct MonthEntryView: View {
     @Environment(\.managedObjectContext) private var context
     @Environment(\.financePersistentContainer) private var container
     var data = FinanceFetches()
+    /// "September is finished", shown once Close has saved the month.
+    @State private var showsFinished = false
 
     init(month: SharedFinanceMonth) {
         self.month = month
@@ -152,6 +154,7 @@ struct MonthEntryView: View {
                             month.silverPricePerOz = prices.silver
                             month.close()
                             save()
+                            showsFinished = true
                         }
                         .fontWeight(.semibold)
                     }
@@ -167,6 +170,9 @@ struct MonthEntryView: View {
         .navigationBarTitleDisplayMode(.inline)
         .onDisappear(perform: save)
         .task { await MetalPriceFeed.shared.refreshIfStale() }
+        .sheet(isPresented: $showsFinished) {
+            MonthFinishedView(month: month)
+        }
     }
 
     private func livePriceRow(_ title: String, value: Double) -> some View {

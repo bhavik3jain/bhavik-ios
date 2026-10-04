@@ -6,8 +6,9 @@ import TVTracker
 /// The Settings window (⌘,): the phone's Settings screen, and Customize
 /// Trackers as a tab of its own rather than a row that pushes it — a Mac
 /// settings window switches panes from its toolbar and has no back button.
-/// General is the phone's screen itself, so "Apple Intelligence in Trips"
-/// (`TripsIntelligenceSection`) is here with no Mac-only copy to keep in step.
+/// General is the phone's screen itself, so the Apple Intelligence switches
+/// (`AppleIntelligenceSection`) and Finance reports are here with no Mac-only
+/// copy to keep in step.
 /// TV and Orders have their settings here too, as tabs: on the phone they're a
 /// tab of the tracker, which on the Mac read as one of its screens.
 struct MacSettingsView: View {

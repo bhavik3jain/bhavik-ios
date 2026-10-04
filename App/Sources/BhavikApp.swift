@@ -88,8 +88,11 @@ struct BhavikApp: App {
             // `-TripAdvisorProbe YES` takes the same path: its made-up trip
             // lives in the in-memory Trips store, and a Mac's Debug build
             // otherwise opens the user's real iCloud data. So does
-            // `-InMemoryStores YES` (see `InMemoryStoresLaunch`).
-            if CloudKitSchemaInitializer.isRequested || TripAdvisorProbe.isRequested || InMemoryStoresLaunch.isRequested {
+            // `-InMemoryStores YES` (see `InMemoryStoresLaunch`), and
+            // `-FinanceAdvisorProbe YES`, whose seeded household lives in the
+            // in-memory Finance store for the same reason as the Trips probe's.
+            if CloudKitSchemaInitializer.isRequested || TripAdvisorProbe.isRequested
+                || FinanceAdvisorProbe.isRequested || InMemoryStoresLaunch.isRequested {
                 let scratch = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true, cloudKitDatabase: .none)
                 container = try ModelContainer(for: schema, configurations: [scratch])
                 // Same reasoning, for Trips' and Fuel's Core Data stores: a
@@ -127,6 +130,11 @@ struct BhavikApp: App {
                 )
                 if TripAdvisorProbe.isRequested {
                     TripAdvisorProbeRunner.start(context: tripContainer.viewContext)
+                }
+                // Started from `init` for the Trips probe's reason (see
+                // `TripAdvisorProbeRunner`): a window's `.task` may never run.
+                if FinanceAdvisorProbe.isRequested {
+                    FinanceAdvisorProbe.start(context: financeContainer.viewContext, container: financeContainer)
                 }
                 // `-SharedChangeProbe finance`: a made-up partner's burst of
                 // edits, posted as a real notification. The real path above
@@ -273,7 +281,18 @@ struct BhavikApp: App {
                 container: container,
                 moduleID: module.rawValue,
                 moduleName: module.accent.name,
-                describe: describe
+                // Finance's also tells this device "September's report is
+                // ready" when a month is finished on another one. The
+                // notifier's copy only: iCloud's alerts below call the
+                // describer just to look up a household's title.
+                describe: module == .finance
+                    ? FinanceReportReady.watching(
+                        describe,
+                        moduleID: module.rawValue,
+                        moduleName: module.accent.name,
+                        isEnabled: { FinanceIntelligenceStore.storedPreferences().notifyWhenReady }
+                    )
+                    : describe
             )
             // Keeps the app alive after a save until it's uploaded, so a
             // partner hears about it even if the app is left at once.
@@ -302,6 +321,9 @@ struct BhavikApp: App {
                 } else if TripAdvisorProbe.isRequested {
                     Text("Trips advisor probe running: the report goes to the console.")
                         .padding()
+                } else if FinanceAdvisorProbe.isRequested {
+                    Text("Finance advisor probe running: the report goes to the console.")
+                        .padding()
                 } else {
                     HomeView()
                         .preferredColorScheme(Appearance.stored(appearanceRaw).colorScheme)
@@ -321,6 +343,10 @@ struct BhavikApp: App {
                     #endif
                 #endif
             }
+            // Finance's settings, the stub and the report-ready tap, on every
+            // branch: an environment value nobody set reads its default, and
+            // the report-ready tap must be heard whatever the window shows.
+            .modifier(FinanceAppEnvironment())
         }
         .providingStores(of: self)
         // Launch and every return to the foreground: the moments a rename,
@@ -331,7 +357,7 @@ struct BhavikApp: App {
             #if DEBUG
             // The probe runs on made-up data and must leave the account's
             // real subscriptions alone.
-            if TripAdvisorProbe.isRequested || InMemoryStoresLaunch.isRequested { return }
+            if TripAdvisorProbe.isRequested || FinanceAdvisorProbe.isRequested || InMemoryStoresLaunch.isRequested { return }
             #endif
             SharedChangeServerAlerts.shared.sync()
         }
@@ -353,8 +379,49 @@ struct BhavikApp: App {
         Settings {
             MacSettingsView()
                 .preferredColorScheme(Appearance.stored(appearanceRaw).colorScheme)
+                // The Apple Intelligence switches read each advisor's
+                // availability, so a stub run's Settings window needs the
+                // stubs too, or it describes the real model instead.
+                .modifier(TripsIntelligenceSetting())
+                #if DEBUG
+                .modifier(TripAdvisorStub())
+                #endif
+                .modifier(FinanceAppEnvironment())
         }
         .providingStores(of: self)
+
+        // A month's report in a window of its own — opened from Finance with
+        // `openWindow(id: "finance-report", value:)` (the toolbar's Report
+        // button, a month's View Report, Year in Review). The value is the
+        // scope and whose figures, so a second month opens a second window
+        // and the same one brings its window forward.
+        WindowGroup("Report", id: FinanceTrackerModule.reportWindowID, for: FinanceReportWindowValue.self) { $value in
+            FinanceTrackerModule.reportWindow(
+                value: $value,
+                context: financeContainer.viewContext,
+                container: financeContainer
+            )
+            .preferredColorScheme(Appearance.stored(appearanceRaw).colorScheme)
+            // What the main window's split view gives a module's screens (see
+            // HomeView's macBody): a window of its own is outside that split
+            // view, so without these the report read the phone layout, the
+            // Mac's two-column forms and Trips' `managedObjectContext` — the
+            // context a Finance month once crashed fetching from.
+            .environment(\.moduleLayout, .sidebar)
+            .environment(\.managedObjectContext, financeContainer.viewContext)
+            .formStyle(.grouped)
+            .presentsShareSheetsWithoutOutcome()
+            .modifier(FinanceAppEnvironment())
+            .frame(minWidth: 760, minHeight: 520)
+        }
+        .providingStores(of: self)
+        .defaultSize(width: 1180, height: 820)
+        // Not brought back at the next launch: a report window restored on
+        // its own could come back without the main window (saved window
+        // state already kept the schema run's window from opening — see
+        // scripts/cloudkit/init-schema.sh), and a report is cheap to open
+        // again from its month.
+        .restorationBehavior(.disabled)
         #endif
     }
 }
