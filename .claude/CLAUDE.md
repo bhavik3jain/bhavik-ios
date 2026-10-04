@@ -25,7 +25,20 @@ user's sheet seeded with fake "Seed Data" rows, and goes in only after `make_tem
 prints `clean` (it checks text and amounts): pivots and Numbers' calc cache kept card names and
 merchants after every cell was cleared, until Numbers itself re-saved the file, so change the
 template's numbers only in Numbers too. The export drives Numbers itself (JXA) to grow tables —
-numbers-parser's `add_row` on a grouped table makes rows Numbers never shows. The **Mac app** runs
+numbers-parser's `add_row` on a grouped table makes rows Numbers never shows. The template's
+`Credit Card` and `Personal Items Pivot` are **plain tables standing in for the real sheet's
+pivots** — Numbers' scripting can't refresh a pivot, so every export showed seed data in them;
+don't turn them back into pivots. Writing a number into a currency cell turns it automatic, so
+money ops carry a fourth element, `"currency"`, and the fill script *types* the amount
+("$173,902.21") into template cells formatted currency/two places; Metal Price is written as the
+sheet's `=STOCK("GC=F")`/`=STOCK("SI=F")`.
+
+**A month's export holds the transactions *entered* since the month before was closed**
+(`SheetPeriod`, by `createdAt`), not those dated in the calendar month — the user's sheet runs
+from close to close, and by date 19 of September's 116 charges were missing. So `createdAt`
+matters: the importer caps it at the imported month's close (or end), or a backfilled month would
+land on the open month's sheet, and `DebugSeed` sets it to each charge's date. The app's own
+screens (spending, budgets, reports) still go by calendar month. The **Mac app** runs
 the same export in-process (`App/Sources/MacFinanceNumbers.swift`, OSAKit): project.yml bundles
 `numbers_fill.js` and the template into the Mac target, and `FinanceNumbersSpec.swift` is a port of
 `export_numbers.build_spec` — **change one, change the other**. It needs the Apple-events sandbox

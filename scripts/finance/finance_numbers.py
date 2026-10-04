@@ -43,6 +43,21 @@ METAL_TABLE = "Gold + Silver"
 PRICE_TABLE = "Metal Price"
 TRANSACTION_TABLE = "Transactions"
 BUDGET_TABLE = "Budget"  # optional; the user's sheet has none yet
+# Plain tables where the user's sheet has pivots: Cost summed by category beside Transactions, and
+# every metal item listed under its location. Numbers' scripting can't refresh a pivot, so an export
+# showed the template's "Seed Data" in both until someone refreshed them by hand. Optional, so an
+# older template still fills; FinanceNumbersSpec has the same names.
+SPENDING_TABLE = "Credit Card"
+SPENDING_FORMULA = "=SUMIF(Transactions::Category,{COL:0} {ROW},Transactions::Cost)"
+ITEMS_TABLE = "Personal Items Pivot"
+NO_LOCATION = "(blank)"  # what Numbers' own pivot called an item with no location
+
+CURRENCY = "currency"  # the Numbers format money cells end up in
+
+# Metal Price is the user's live STOCK() quote of the same futures the app's MetalPriceFeed reads, so
+# an exported sheet's metals follow the market as the user's own sheet does. The month's price goes
+# in only if Numbers won't take the formula. FinanceNumbersSpec.priceFormulas has the same.
+PRICE_FORMULAS = {"gold": '=STOCK("GC=F")', "silver": '=STOCK("SI=F")'}
 
 JOINT = "Joint"
 
@@ -72,7 +87,8 @@ def body_rows(table) -> list[int]:
         if index < table.num_header_rows:
             continue
         first = row[0].value if row else None
-        if isinstance(first, str) and first.strip() in ("Total", "Total assets", "Total liabilities"):
+        if isinstance(first, str) and first.strip() in ("Total", "Total assets", "Total liabilities",
+                                                   "Grand Total"):
             continue
         out.append(index)
     return out

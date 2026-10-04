@@ -21,7 +21,11 @@ agree on every metal (both ~9.7% above market, since prices are per troy ounce).
 Weight (oz) as grams ÷ 31.1035 instead, valuing metals in troy ounces: nearer the market, but the
 sheet then DISAGREES with the app by ~9.7% on every metal.
 
-The two pivot tables aren't refreshed: Numbers' scripting can't, and Numbers doesn't on open or save.
+Money cells end up in the currency format (writing a number turns a currency cell automatic). The
+user's sheet has two pivot tables, Credit Card (Cost by category) and Personal Items Pivot (metal
+items by location); Numbers' scripting can't refresh a pivot, so the template has plain tables of
+the same names in their place, filled here like the rest: the categories, whose sums are the
+template's own SUMIF over Transactions, and the items under their locations.
 """
 
 from __future__ import annotations
@@ -44,13 +48,21 @@ def money(v) -> float:
     return round(float(v), 2)
 
 
+def price(v) -> float:
+    # A metal price per ounce keeps a futures quote's third decimal: the sheet's STOCK("SI=F") read
+    # 60.725, which went out in cents as 60.73 and came back as a different month.
+    return round(float(v), 4)
+
+
 # A table's rows are lists of [column, op, value], columns counted as numbers-parser counts them
 # (the group column Numbers adds to a grouped table doesn't count). numbers_fill.js runs the ops in
 # order, except that the grouping column (Owner, Metal, Card), whose write moves the row into that
 # group, and then the token column always go last: "set" writes a number, "text" writes text as
 # text (Numbers otherwise parses a merchant "76" as a number), "date" writes a yyyy-MM-dd date,
 # "keep" writes unless the cell has a formula, "formula" writes a formula ({ROW} is this row,
-# {COL:k} column k's header, {PRICE:gold} the Metal Price cell).
+# {COL:k} column k's header, {PRICE:gold} the Metal Price cell). An optional fourth element is the
+# format the cell is left in: writing a number into a currency cell turns it automatic, so money
+# cells say "currency" ("$20,000" had come out "20,000", and a Total over a mix lost its format).
 
 
 def _table(name: str, token_col: int, rows: list, width: int, group_col: int | None = None,
@@ -73,7 +85,7 @@ def build_spec(document: dict, output: str, troy_fix: bool = False) -> dict:
 
     for table_name, category in fn.ACCOUNT_TABLES.items():
         rows = [
-            [[2, "keep", money(a["balance"])],
+            [[2, "keep", money(a["balance"]), fn.CURRENCY],
              [0, "text", fn.display_name(a["institution"], a["name"])],
              [1, "text", a.get("owner") or fn.JOINT]]
             for a in document["accounts"] if fn.SHEET_CATEGORY.get(a["category"], a["category"]) == category
@@ -82,7 +94,7 @@ def build_spec(document: dict, output: str, troy_fix: bool = False) -> dict:
 
     for table_name, category in ((fn.FIXED_TABLE, "fixed"), (fn.LOAN_TABLE, "loan")):
         rows = [
-            [[1, "keep", money(a["balance"])],
+            [[1, "keep", money(a["balance"]), fn.CURRENCY],
              [0, "text", fn.display_name(a["institution"], a["name"])]]
             for a in document["accounts"] if a["category"] == category
         ]
@@ -97,8 +109,8 @@ def build_spec(document: dict, output: str, troy_fix: bool = False) -> dict:
     for c in document["cards"]:
         name = fn.display_name(c["institution"], c["name"])
         rows.append([
-            [2, "set", money(c["limit"])], [3, "set", money(c["annualFee"])],
-            [4, "keep", money(spend.get(name, 0.0))],
+            [2, "set", money(c["limit"]), fn.CURRENCY], [3, "set", money(c["annualFee"]), fn.CURRENCY],
+            [4, "keep", money(spend.get(name, 0.0)), fn.CURRENCY],
             [0, "text", name], [1, "text", c.get("owner") or fn.JOINT],
         ])
     tables.append(_table(fn.CARD_TABLE, 0, rows, 5, group_col=1))
@@ -117,15 +129,16 @@ def build_spec(document: dict, output: str, troy_fix: bool = False) -> dict:
             weights = [[3, "set", grams],
                        [2, "formula", '=CONVERT({COL:3} {ROW},"g","ozm")']]
         if m.get("manualValue") is not None:
-            current = [6, "set", money(m["manualValue"])]
+            current = [6, "set", money(m["manualValue"]), fn.CURRENCY]
         else:
             # Written, never kept: a row Numbers adds copies its neighbour's formula, so a gold
             # row added below a silver one would be priced at the silver price.
-            current = [6, "formula", "=Metal Price::{PRICE:%s}×{COL:2} {ROW}" % m["metal"].lower()]
+            current = [6, "formula", "=Metal Price::{PRICE:%s}×{COL:2} {ROW}" % m["metal"].lower(),
+                       fn.CURRENCY]
         rows.append([
             *weights,
-            [4, "set", money(m["pricePaidPerOz"]) if m.get("pricePaidPerOz") else ""],
-            [5, "set", money(m.get("purchaseValue") or 0.0)],
+            [4, "set", money(m["pricePaidPerOz"]) if m.get("pricePaidPerOz") else "", fn.CURRENCY],
+            [5, "set", money(m.get("purchaseValue") or 0.0), fn.CURRENCY],
             current,  # while the row's token is still in its Asset cell, for {ROW}
             [7, "text", m.get("location") or ""],
             [0, "text", m["name"]],
@@ -148,7 +161,7 @@ def build_spec(document: dict, output: str, troy_fix: bool = False) -> dict:
     # Merchant carries the row's token: Date is a date cell and Card is the grouping column.
     tables.append(_table(fn.TRANSACTION_TABLE, 3, rows, 8, group_col=7))
 
-    rows = [[[1, "keep", money(b["limit"])], [0, "text", b["category"]]]
+    rows = [[[1, "keep", money(b["limit"]), fn.CURRENCY], [0, "text", b["category"]]]
             for b in document.get("budgets", [])
             # A category kept with no budget (a negative limit) has no row:
             # the sheet would read it as a budget of -$1.
@@ -156,10 +169,36 @@ def build_spec(document: dict, output: str, troy_fix: bool = False) -> dict:
     if rows:  # the user's sheet has no Budget table yet; fill one only if the template has it
         tables.append(_table(fn.BUDGET_TABLE, 0, rows, 2, optional=True))
 
+    # Credit Card: one row per category, whose Cost (Sum) is a SUMIF over Transactions, so it stays
+    # right if a transaction is edited in Numbers. Written into every row: unlike a grouped table's,
+    # a row Numbers adds to this plain one copies no formula, and every category but the template
+    # row's came out blank. SUMIF matches without case, so "Food" and "food" are one row, or that
+    # spend would count twice.
+    seen: set[str] = set()
+    categories = []
+    for category in sorted({tx["category"] for tx in document["transactions"]}, key=lambda c: (c.lower(), c)):
+        if category.strip() and category.lower() not in seen:
+            seen.add(category.lower())
+            categories.append(category)
+    rows = [[[1, "formula", fn.SPENDING_FORMULA, fn.CURRENCY], [0, "text", c]] for c in categories]
+    tables.append(_table(fn.SPENDING_TABLE, 0, rows, 2, optional=True))
+
+    # Personal Items: every metal item under its location, the location on its group's first row
+    # only, sorted and de-duplicated as the pivot it stands in for was.
+    items = sorted({(m.get("location") or "", m["name"]) for m in document["metals"]},
+                   key=lambda i: (i[0] == "", i[0].lower(), i[0], i[1].lower(), i[1]))
+    rows, previous = [], None
+    for location, name in items:
+        label = (location or fn.NO_LOCATION) if location != previous else ""
+        rows.append([[0, "text", label], [1, "text", name]])
+        previous = location
+    tables.append(_table(fn.ITEMS_TABLE, 1, rows, 2, optional=True))
+
     return {
         "path": os.path.realpath(output),
-        "priceTable": {"name": fn.PRICE_TABLE, "keyCol": 0, "valueCol": 1,
-                       "values": {k: money(v) for k, v in prices.items()}},
+        "priceTable": {"name": fn.PRICE_TABLE, "keyCol": 0, "valueCol": 1, "format": fn.CURRENCY,
+                       "formulas": fn.PRICE_FORMULAS,
+                       "values": {k: price(v) for k, v in prices.items()}},
         "tables": tables,
     }
 
@@ -172,8 +211,6 @@ NOT_INSTALLED = "Numbers isn't installed. Get it from the App Store, then run th
 # A month of ~120 transactions takes one to two minutes; this is only for a Numbers that hung.
 FILL_TIMEOUT = 20 * 60
 
-PIVOT_NOTE = ("note: refresh the 'Credit Card' and 'Personal Items Pivot' pivot tables (select each, "
-              "Organize sidebar › Refresh) and save; until then they show the template's seed rows")
 
 
 def _explain(stderr: str) -> str:
@@ -280,7 +317,6 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     rows = ", ".join(f"{r['table']} {r['written']}" for r in report if not r.get("missing"))
     print(f"wrote {output} ({rows})")
-    print(PIVOT_NOTE, file=sys.stderr)
     return 0
 
 

@@ -107,7 +107,11 @@ struct SummaryView: View {
                 }
             }
             .sheet(isPresented: $showingExchange) {
-                MonthExchangeView(months: snapshot.months, household: snapshot.household)
+                MonthExchangeView(
+                    months: snapshot.months,
+                    household: snapshot.household,
+                    initialMonth: snapshot.latestMonth.map { FinanceHome.reportedMonth(for: $0, live: snapshot.live).yearMonth }
+                )
             }
             .sheet(isPresented: $showingReview) {
                 if let brief {
