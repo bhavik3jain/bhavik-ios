@@ -52,6 +52,7 @@ struct WatchingListView: View {
             }
             .navigationTitle("Watching")
             .toolbar {
+                TVSettingsToolbarLink(layout: layout)
                 ToolbarItem(placement: .primaryAction) {
                     Button {
                         showingAddShow = true

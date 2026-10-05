@@ -48,6 +48,7 @@ struct MoviesListView: View {
             }
             .navigationTitle("Movies")
             .toolbar {
+                TVSettingsToolbarLink(layout: layout)
                 ToolbarItem(placement: .primaryAction) {
                     Button {
                         showingAddMovie = true

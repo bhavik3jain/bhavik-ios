@@ -114,26 +114,15 @@ struct AddMovieView: View {
         importingID = summary.id
         defer { importingID = nil }
 
-        // Search results carry no runtime, so re-read the movie for it. A
-        // failure here is not worth losing the movie over.
-        let detail = (try? await TMDBClient(apiKey: apiKey).movieDetail(id: summary.id)) ?? summary
-
-        modelContext.insert(
-            Movie(
-                tmdbID: detail.id,
-                title: detail.title,
-                overview: detail.overview,
-                posterPath: detail.posterPath,
-                releaseDate: detail.releaseDate,
-                runtime: detail.runtime
-            )
-        )
+        // Search results carry no runtime, so `TVLibrary` re-reads the movie
+        // for it — the same path a watch list's "Add to My Library" takes. A
+        // failure there is not worth losing the movie over.
+        await TVLibrary.addMovie(WatchListTitle(movie: summary), releaseDate: summary.releaseDate, apiKey: apiKey, to: modelContext)
         dismiss()
     }
 
     private func addManually() {
-        let title = query.trimmingCharacters(in: .whitespaces)
-        modelContext.insert(Movie(title: title.isEmpty ? "New Movie" : title))
+        modelContext.insert(TVLibrary.makeMovie(WatchListTitle(mediaType: .movie, title: query)))
         dismiss()
     }
 }

@@ -122,37 +122,19 @@ struct AddShowView: View {
         importingShowID = summary.id
         defer { importingShowID = nil }
 
-        let show = Show(
-            tmdbID: summary.id,
-            name: summary.name,
-            overview: summary.overview,
-            posterPath: summary.posterPath
-        )
-        modelContext.insert(show)
-
-        do {
-            let episodes = try await TMDBClient(apiKey: apiKey).allEpisodes(showID: summary.id)
-            for payload in episodes {
-                let episode = Episode(
-                    tmdbID: payload.id,
-                    name: payload.name,
-                    seasonNumber: payload.seasonNumber,
-                    episodeNumber: payload.episodeNumber,
-                    airDate: payload.airDate
-                )
-                episode.show = show
-                modelContext.insert(episode)
-            }
-            dismiss()
-        } catch {
+        // Through `TVLibrary`, the same path a watch list's "Add to My
+        // Library" takes.
+        let added = await TVLibrary.addShow(WatchListTitle(show: summary), apiKey: apiKey, to: modelContext)
+        if let error = added.episodesError {
             // The show is kept even if the episode list fails, so the work isn't lost.
             errorMessage = "Added \(summary.name), but its episodes could not be loaded. \(error.localizedDescription)"
+        } else {
+            dismiss()
         }
     }
 
     private func addManually() {
-        let name = query.trimmingCharacters(in: .whitespaces)
-        modelContext.insert(Show(name: name.isEmpty ? "New Show" : name))
+        TVLibrary.insertShow(WatchListTitle(mediaType: .show, title: query), into: modelContext)
         dismiss()
     }
 }
