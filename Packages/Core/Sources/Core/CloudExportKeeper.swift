@@ -55,6 +55,16 @@ public final class CloudExportKeeper {
         return keeper
     }
 
+    /// Starts a hold for `container` as a save by this app would. For uploads
+    /// no save of ours announces: `share(_:to:)` moves the object into its
+    /// share's zone through the mirroring delegate's own context, which
+    /// `isLocalSave` rightly skips, so leaving the app while a share was being
+    /// made let iOS suspend the export it had queued. Does nothing for a
+    /// container no keeper watches (in-memory launches).
+    public static func keepAlive(for container: NSPersistentCloudKitContainer) {
+        running.first { $0.container === container }?.saved()
+    }
+
     private init(container: NSPersistentCloudKitContainer, moduleID: String) {
         self.container = container
         self.moduleID = moduleID

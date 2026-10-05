@@ -36,6 +36,9 @@ import AppKit
 ///   already running joins it rather than starting another.
 /// - `track(_:)` — register a Core Data container, so a scoped refresh knows
 ///   its stores and a finished refresh re-reads its view context.
+/// - `isSyncing(_:)`, `syncingSince(_:)`, `waitUntilIdle(_:timeout:)`,
+///   `waitForExport(_:endingAfter:timeout:)` — one container's stores, for
+///   Share (`SharePreparer`), which must not queue a share behind a sync.
 ///
 /// A `.refreshable` list uses `.refreshesFromCloud()` (see
 /// `CloudSyncRefreshable.swift`) rather than calling `refresh` itself.
@@ -145,6 +148,42 @@ public final class CloudSyncMonitor {
     public func track(_ container: NSPersistentCloudKitContainer) {
         guard !containers.contains(where: { $0 === container }) else { return }
         containers.append(container)
+    }
+
+    // MARK: - One container's sync, for Share
+
+    /// Whether an import, export or setup is under way in `stores` (a
+    /// container's `cloudKitStoreIdentifiers`).
+    public func isSyncing(_ stores: Set<String>) -> Bool {
+        ledger.isSyncing(in: stores)
+    }
+
+    /// When the oldest unfinished sync in `stores` started, if one is running.
+    public func syncingSince(_ stores: Set<String>) -> Date? {
+        ledger.oldestInFlightStart(in: stores)
+    }
+
+    /// Waits until nothing is syncing in `stores`, at most `timeout`. True
+    /// when it got there. Polls the ledger, like `refresh`, so an end that
+    /// never comes can't leave it hanging.
+    public func waitUntilIdle(_ stores: Set<String>, timeout: Duration) async -> Bool {
+        await poll(timeout: timeout) { !$0.isSyncing(in: stores) }
+    }
+
+    /// Waits for an export in `stores` to finish after `date`, at most
+    /// `timeout`. True when one did.
+    public func waitForExport(_ stores: Set<String>, endingAfter date: Date, timeout: Duration) async -> Bool {
+        await poll(timeout: timeout) { $0.exportEnded(after: date, in: stores) }
+    }
+
+    private func poll(timeout: Duration, until done: (CloudSyncLedger) -> Bool) async -> Bool {
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: timeout)
+        while !done(ledger) {
+            guard clock.now < deadline, !Task.isCancelled else { return false }
+            try? await clock.sleep(for: .milliseconds(250))
+        }
+        return true
     }
 
     func ingest(_ event: CloudSyncEvent) {
