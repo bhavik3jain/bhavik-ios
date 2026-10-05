@@ -173,6 +173,9 @@ struct BhavikApp: App {
                         exit(0)
                     }
                 }
+                // TV's new-episode alerts on the in-memory store, and
+                // `-TVEpisodeAlertProbe YES`, which only ever runs here.
+                TVEpisodeAlertsLaunch.start(container: container, inMemory: true)
                 return
             }
             #endif
@@ -252,6 +255,9 @@ struct BhavikApp: App {
                 points: pointsContainer,
                 finance: financeContainer
             )
+            // TV's new-episode alerts, and on iOS their background refresh,
+            // which must be registered before launch finishes.
+            TVEpisodeAlertsLaunch.start(container: container, inMemory: false)
         } catch {
             fatalError("Failed to create ModelContainer: \(error)")
         }

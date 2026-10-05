@@ -86,6 +86,13 @@ targets:
         UILaunchScreen: {}
         UIBackgroundModes:
           - remote-notification
+          # TV's background refresh of episode lists for new-episode alerts
+          # (App/Sources/TVEpisodeAlertsLaunch.swift): a BGAppRefreshTask.
+          - fetch
+        # Every BGTaskScheduler identifier the app registers; registering one
+        # missing from here is an exception at launch.
+        BGTaskSchedulerPermittedIdentifiers:
+          - com.bhavikjain.trackers.tv-refresh
         # Lets you drop a Fuelly CSV into the app's folder from Finder or the Files app.
         UIFileSharingEnabled: true
         LSSupportsOpeningDocumentsInPlace: true
