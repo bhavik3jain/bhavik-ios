@@ -8,6 +8,7 @@ import PointsTracker
 import SwiftData
 import SwiftUI
 import TripTracker
+import TVTracker
 
 /// Pushes the app's whole SwiftData schema to CloudKit's Development
 /// environment, ready to be deployed to Production from the CloudKit Console.
@@ -30,7 +31,8 @@ import TripTracker
 /// — which never creates a record type on its own — refused every export from
 /// those three modules on TestFlight. Each now gets its own pass below, as
 /// do Points (`PointsModel`) and Finance (`FinanceModel`), which were built
-/// on Core Data from the start.
+/// on Core Data from the start, and TV's watch lists (`TVListModel`), the
+/// one Core Data store in an otherwise SwiftData module.
 ///
 /// It works on throwaway stores in a temporary folder, and on a launch that
 /// asks for it the app opens an in-memory database instead of the real one (see
@@ -86,7 +88,7 @@ enum CloudKitSchemaInitializer {
     }
 
     /// The modules on Core Data — the three that moved off SwiftData, plus
-    /// Points and Finance — built fresh, never the instances the app's own containers hold.
+    /// Points, Finance and TV's watch lists — built fresh, never the instances the app's own containers hold.
     @MainActor
     static func coreDataModels() -> [CoreDataModel] {
         [
@@ -95,6 +97,7 @@ enum CloudKitSchemaInitializer {
             CoreDataModel(name: "ExploreSchema", model: GuideModel.make()),
             CoreDataModel(name: "PointsSchema", model: PointsModel.make()),
             CoreDataModel(name: "FinanceSchema", model: FinanceModel.make()),
+            CoreDataModel(name: "TVListSchema", model: TVListModel.make()),
         ]
     }
 
