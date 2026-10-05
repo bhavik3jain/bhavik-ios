@@ -274,6 +274,9 @@ designed. It is built to set off most `MonthCheck` findings; keep it that way wh
 navigation only: the one way to reach a tracker's Mac layout from a script without Accessibility access.
 `trips/next[/<face>]` opens the nearest trip not yet over; `-MacOpenFirstItem YES` then opens the first
 month, guide, order or Points account (screens only a double-click reaches), two seconds in.
+`-ShareProbe YES` (Mac; `scripts/cloudkit/init-schema.sh --share-probe` signs and runs it) shares two cars of its
+own — 150 fill-ups and 3 — from a throwaway on-disk Fuel store in Caches against iCloud **Development**, through
+`SharePreparer`, printing each step's time, then removes only its own zones and files. In-memory launch otherwise.
 **Debug is its own app: `com.bhavikjain.trackers.dev`, "Multitrack Dev"** (`project.yml`, per-config). With
 the release bundle id, a Mac Debug build shared the TestFlight app's sandbox container, so the same
 Core Data stores, while syncing with iCloud **Development**; the first TestFlight build to open those
@@ -302,6 +305,7 @@ release one, or Debug shows no weather.
   exit — `NSUnbufferedIO=YES`. **Deploy Schema Changes to Production is Console-only** (no API;
   `cktool` only imports into Development), and GitHub runners can't sign in to iCloud, so neither
   half can be a workflow. Never run TestFlight for a schema change before that deploy.
+  `--share-probe` builds and signs the same way and runs `-ShareProbe YES` instead (see Tests).
 - **Looking at the Mac UI without signing:** build `bhavik-macOS` with `CODE_SIGNING_ALLOWED=NO`,
   `codesign --force --deep -s -` it, and run the binary directly with
   `-InMemoryStores YES -FinanceSeed YES -MacOpenTracker finance/months -MacOpenFirstItem YES`.
@@ -510,6 +514,23 @@ Don't trust these comments, and don't "fix" the code they describe.
   `status(for:in:)` is only for Finance's rare owned-share checks, which must not act on a stale
   answer. Notification delegate methods use the completion-handler forms, answered on the main
   thread: the `async` forms ran on Swift's cooperative pool and crashed every notification tap.
+- **Share goes through Core's `SharePreparer`; nothing else calls `share()`** except the schema run's
+  throwaway test share. Fuel's Share hung on
+  "generating a link" (October 2026): `UICloudSharingController`'s preparation handler and the Mac
+  sheet waited on `share(_:to:)` for as long as Core Data took, and a `share()` Core Data gave up on
+  ("timed out waiting for request: Share-Export") still filled a new share zone in iCloud without
+  this device recording the move, so `fetchShares` kept answering "not shared" and every retry made
+  another zone — four, for two cars. Each stuck share queued behind a full re-import after a mirroring
+  reset (CKError 2 › 21), which every switch between TestFlight and a release-id Debug build caused.
+  `SharePreparationPlan` (a tested value type) decides each step:
+  only a lookup that *answers* "not shared" leads to `share()` (a failed one used to read as nil);
+  a sync under way on that container gets a bounded wait first; iCloud is asked whether a share zone
+  already holds the object's record (`LeftoverShareZones`), and if one does it stops at Share
+  Anyway; one `share()` per object per process (`ShareCreations` joins a running one); after a
+  failed or timed-out one it waits for the next export and looks again, never makes another. Every
+  wait has a limit, and it ends in a share with a link or iCloud's own error with Try Again. Only
+  then does iOS get `UICloudSharingController(share:container:)`. Each step logs to the `Sharing`
+  category: `log show --last 1h --predicate 'subsystem == "com.bhavikjain.trackers" AND category == "Sharing"'`.
 - `CSVParser.swift`'s `case "\n", "\r\n", "\r":` only *looks* redundant. Swift folds CRLF into a
   single `Character`, so `"\r\n"` matches neither neighbour. Delete it and a Windows-exported CSV
   arrives as one enormous field and parses to zero rows — breaking both importers.
