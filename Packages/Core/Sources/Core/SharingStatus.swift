@@ -59,18 +59,43 @@ public enum SharingStatusResolver {
         return .sharedWithMe(role: currentUser.role, permission: currentUser.permission)
     }
 
-    /// Whether the current user can edit `object` right now — wraps
-    /// `NSPersistentCloudKitContainer.canUpdateRecord(forManagedObjectWith:)`.
+    /// Whether the current user can edit `object` — for a view deciding
+    /// whether to show or enable an edit control. Never waits on iCloud.
     ///
-    /// That method already defaults permissively on its own (its header
-    /// comment lists a temporary objectID, a store not backed by CloudKit, or
-    /// the private database as all returning `true` unconditionally), so
-    /// there's no error path to catch here — the permissive default this
-    /// method's own doc comment promises falls straight out of Apple's own
-    /// implementation for every case that matters to an object that was never
-    /// shared.
+    /// It used to be `canUpdateRecord(forManagedObjectWith:)` straight from
+    /// view bodies. For an object in the shared store that call looks its
+    /// share up through the container's request executor, which iCloud's own
+    /// imports and exports hold — so on the partner's devices every redraw of
+    /// a shared trip, car, guide or household waited on the main thread
+    /// behind whatever import was running, for as long as it ran (after a
+    /// sync reset, minutes). It answers the way that call does, from what's
+    /// known locally:
+    /// - an unsaved object, or one in this person's own (private) store: yes,
+    ///   as `canUpdateRecord` answers for those without asking anything;
+    /// - one in the shared store: the permission its share gave this person
+    ///   when it was last looked up (`SharingStatusCache`, off the main
+    ///   thread); before that lookup lands, the last answer seen for that
+    ///   store, which is right on every launch after the first; with neither,
+    ///   no — an edit control appears a moment late rather than letting a
+    ///   view-only participant save something iCloud will refuse.
+    ///
+    /// Not for deciding where data is written: see `canEditNow`.
     @MainActor
     public static func canEdit(_ object: NSManagedObject, in container: NSPersistentCloudKitContainer) -> Bool {
+        SharingStatusCache.shared.canEdit(object.objectID, in: container)
+    }
+
+    /// `canEdit`, asked of Core Data's own sharing records there and then —
+    /// synchronous, on the main thread, waiting on the container's executor.
+    /// Only for the rare decisions that must not act on a stale or unknown
+    /// answer: which household new data is written into, and folding
+    /// duplicate households. Like `status(for:in:)`, never from a view body.
+    ///
+    /// `canUpdateRecord` already defaults permissively (a temporary objectID,
+    /// a store not backed by CloudKit and the private database all answer
+    /// `true`), so there's no error path to catch.
+    @MainActor
+    public static func canEditNow(_ object: NSManagedObject, in container: NSPersistentCloudKitContainer) -> Bool {
         container.canUpdateRecord(forManagedObjectWith: object.objectID)
     }
 }
@@ -120,6 +145,47 @@ public final class SharingStatusCache {
     public func cachedShare(for objectID: NSManagedObjectID) -> CKShare? {
         shares[objectID]
     }
+
+    /// See `SharingStatusResolver.canEdit(_:in:)`. Reads `statuses` for an
+    /// object in the shared store, so the view asking redraws when its
+    /// lookup lands.
+    public func canEdit(_ objectID: NSManagedObjectID, in container: NSPersistentCloudKitContainer, asOf now: Date = .now) -> Bool {
+        guard !objectID.isTemporaryID,
+              let store = objectID.persistentStore,
+              container.databaseScope(of: store) == .shared
+        else { return true }
+        _ = status(for: objectID, in: container, asOf: now)
+        return Self.editability(
+            lookedUp: statuses[objectID],
+            storeDefault: store.identifier.flatMap { storeEditability[$0] }
+        )
+    }
+
+    /// Whether an object in the shared store is editable: the permission its
+    /// share gives this person once looked up, else the store's last answer,
+    /// else no. A lookup that came back without a share (`fetchShares`
+    /// failed, or hasn't caught up with an accepted share) counts as not
+    /// knowing — everything in the shared store is in someone's share.
+    nonisolated static func editability(lookedUp: SharingStatus?, storeDefault: Bool?) -> Bool {
+        switch lookedUp {
+        case .sharedWithMe(_, let permission)?: permission == .readWrite
+        // The owner's own share can't be in this person's shared store; if it
+        // ever reads that way, the owner can edit.
+        case .owned?: true
+        case .notShared?, nil: storeDefault ?? false
+        }
+    }
+
+    /// The last permission a lookup found in each shared store, by store
+    /// identifier — `canEdit`'s answer while an object's own lookup is still
+    /// out. Kept across launches, since the first redraws after launch are
+    /// exactly when iCloud's import holds the executor longest. One entry
+    /// per store, not per object: a store holds the shares accepted on this
+    /// device, almost always one per tracker.
+    @ObservationIgnored private var storeEditability: [String: Bool] = UserDefaults.standard
+        .dictionary(forKey: SharingStatusCache.storeEditabilityKey) as? [String: Bool] ?? [:]
+
+    nonisolated static let storeEditabilityKey = "SharingStatusCache.storeEditability"
 
     /// Forgets every answer, after a share was made, changed or stopped. The
     /// statuses shown stay until their fresh lookups land, so nothing flickers.
@@ -179,6 +245,13 @@ public final class SharingStatusCache {
         // redraw every screen showing it every `maxAge`.
         if statuses[objectID] != status {
             statuses[objectID] = status
+        }
+        // Only an accepted share says anything about its store's permission.
+        if case .sharedWithMe(_, let permission) = status,
+           let storeID = objectID.persistentStore?.identifier,
+           storeEditability[storeID] != (permission == .readWrite) {
+            storeEditability[storeID] = permission == .readWrite
+            UserDefaults.standard.set(storeEditability, forKey: Self.storeEditabilityKey)
         }
     }
 }

@@ -154,8 +154,9 @@ public final class SharePreparer: Identifiable {
             log("lookup: shared in \(took) ms, zone \(found.recordID.zoneID.zoneName), link \(found.url != nil), needs save \(needsSave)")
             return .lookedUp(.shared(hasLink: found.url != nil, needsSave: needsSave))
         case .success(nil)?:
-            let syncing = monitor?.isSyncing(container.cloudKitStoreIdentifiers) ?? false
-            log("lookup: not shared in \(took) ms, syncing \(syncing)")
+            let since = monitor?.syncingSince(container.cloudKitStoreIdentifiers)
+            let syncing = SharePreparationPlan.isWorthWaiting(forSyncSince: since)
+            log("lookup: not shared in \(took) ms, syncing \(syncing)\(since.map { ", oldest sync started \(Int(Date.now.timeIntervalSince($0))) s ago" } ?? "")")
             return .lookedUp(.notShared(isSyncing: syncing))
         }
     }

@@ -258,6 +258,15 @@ public struct SharePreparationPlan: Sendable, Equatable {
     /// A sync older than this is worth mentioning in a failure (seconds).
     public static let longSync: TimeInterval = 5 * 60
 
+    /// Whether a sync under way since `since` is worth Share waiting for:
+    /// one that started recently may end within the wait; one already
+    /// running for `longSync` is stuck, and waiting out the whole limit for
+    /// it only delayed every Share by that much before going on anyway.
+    public static func isWorthWaiting(forSyncSince since: Date?, asOf now: Date = .now) -> Bool {
+        guard let since else { return false }
+        return now.timeIntervalSince(since) < longSync
+    }
+
     public private(set) var step: Step = .lookingUp
     /// A share with a link this device already knew about. Shown when the
     /// lookup can't answer, rather than nothing; never a reason to skip it.
