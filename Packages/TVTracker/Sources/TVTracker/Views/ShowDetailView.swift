@@ -99,6 +99,7 @@ struct ShowDetailView: View {
         .sheet(isPresented: $showingAddEpisode) {
             AddEpisodeView(show: show)
         }
+        .episodeAlertBell(for: show)
     }
 
     private func isExpanded(_ season: Int) -> Binding<Bool> {

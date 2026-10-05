@@ -30,6 +30,8 @@ struct TVSettingsView: View {
                 LabeledContent("Movies watched", value: "\(movies.count(where: \.isWatched))")
             }
 
+            EpisodeAlertsSettingsSection()
+
             if !shows.isEmpty {
                 Section("Progress") {
                     ForEach(shows.sorted { $0.progress > $1.progress }) { show in

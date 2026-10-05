@@ -150,6 +150,62 @@ private func serverContent(ck kind: [String: Any]) -> UNNotificationContent {
     ) == [])
 }
 
+/// TV's "a new episode is out today", held back while TV is on screen, isn't
+/// a shared change the Notification Status page should list.
+@Test func onlyASharedChangeHeldBackIsLogged() {
+    #expect(SharedChangeNotificationRouting.logsHeldBack(
+        categoryIdentifier: "", userInfo: localContent(module: "trips").userInfo
+    ))
+    // Through real content, as TV posts it. Written as a literal inside
+    // `#expect`, the macro's capture of the mixed dictionary reached
+    // `logsHeldBack` with a "reminder" that `as? Bool` couldn't read, and the
+    // test failed on code that was right.
+    let reminder = UNMutableNotificationContent()
+    reminder.categoryIdentifier = "tv.newEpisode"
+    reminder.userInfo = [
+        SharedChangeNotifications.moduleUserInfoKey: "tv",
+        SharedChangeNotifications.destinationUserInfoKey: "tv.upnext",
+        SharedChangeNotifications.reminderUserInfoKey: true,
+    ]
+    let reminderInfo = reminder.userInfo
+    #expect(!SharedChangeNotificationRouting.logsHeldBack(
+        categoryIdentifier: reminder.categoryIdentifier,
+        userInfo: reminderInfo
+    ), "A tracker's own reminder")
+    #expect(!SharedChangeNotificationRouting.logsHeldBack(
+        categoryIdentifier: SharedChangeServerAlertText.category,
+        userInfo: [SharedChangeNotifications.moduleUserInfoKey: "trips"]
+    ), "iCloud's alert")
+    #expect(!SharedChangeNotificationRouting.logsHeldBack(categoryIdentifier: "", userInfo: [:]), "Nothing to name it by")
+}
+
+/// A reminder still opens its tracker, and where in it, like any of ours.
+@Test func aRemindersTapOpensItsTrackerAndDestination() {
+    let content = UNMutableNotificationContent()
+    content.categoryIdentifier = "tv.newEpisode"
+    content.userInfo = [
+        SharedChangeNotifications.moduleUserInfoKey: "tv",
+        SharedChangeNotifications.destinationUserInfoKey: "tv.upnext",
+        SharedChangeNotifications.reminderUserInfoKey: true,
+    ]
+    #expect(SharedChangeNotificationRouting.moduleToOpen(
+        actionIdentifier: UNNotificationDefaultActionIdentifier,
+        content: content,
+        participatingModuleIDs: []
+    ) == "tv")
+    #expect(SharedChangeNotificationRouting.destinationToOpen(
+        actionIdentifier: UNNotificationDefaultActionIdentifier,
+        content: content
+    ) == "tv.upnext")
+    #expect(SharedChangeDigest(content: content) == nil, "No list of changes to show over it")
+    #expect(SharedChangeNotificationRouting.presentationOptions(
+        categoryIdentifier: content.categoryIdentifier, moduleID: "tv", onScreenModuleID: "tv"
+    ) == [], "Not while TV is on screen")
+    #expect(SharedChangeNotificationRouting.presentationOptions(
+        categoryIdentifier: content.categoryIdentifier, moduleID: "tv", onScreenModuleID: "finance"
+    ) == [.banner, .list, .sound])
+}
+
 // MARK: - The list a tap opens
 
 @Test func aTappedBurstCarriesItsListOfChanges() throws {

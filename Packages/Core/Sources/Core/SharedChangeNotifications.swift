@@ -42,6 +42,13 @@ public enum SharedChangeNotifications {
     /// passes it on untouched (`SharedChangeNotificationRouter.destinationToOpen`);
     /// the app hands it to the module that understands it.
     public static let destinationUserInfoKey = "destination"
+    /// `true` on a tracker's own scheduled reminder — TV's "a new episode is
+    /// out today" — which is no shared change: shown and routed like one,
+    /// but never recorded in `SharedChangeActivityLog`, whose entries the
+    /// Notification Status page reads as the shared-change pipeline's work.
+    /// A reminder held back because TV was on screen read there as "Not
+    /// shown: … was on screen", beside the partner's edits.
+    public static let reminderUserInfoKey = "reminder"
 
     public static func isEnabled(moduleID: String, defaults: UserDefaults = .standard) -> Bool {
         (defaults.object(forKey: enabledKey) as? Bool ?? true)
@@ -261,6 +268,15 @@ enum SharedChangeNotificationRouting {
         return [.banner, .list, .sound]
     }
 
+    /// Whether one held back while the app is in front goes in the activity
+    /// log as `.onScreen`: a shared change does; iCloud's own alert and a
+    /// tracker's reminder (`reminderUserInfoKey`) don't.
+    static func logsHeldBack(categoryIdentifier: String, userInfo: [AnyHashable: Any]) -> Bool {
+        guard categoryIdentifier != SharedChangeServerAlertText.category,
+              userInfo[SharedChangeNotifications.moduleUserInfoKey] is String else { return false }
+        return !(userInfo[SharedChangeNotifications.reminderUserInfoKey] as? Bool ?? false)
+    }
+
     /// The tracker a tapped notification opens, or nil to just open the app.
     static func moduleToOpen(
         actionIdentifier: String,
@@ -312,6 +328,7 @@ final class SharedChangeNotificationDelegate: NSObject, UNUserNotificationCenter
         let content = notification.request.content
         let category = content.categoryIdentifier
         let module = content.userInfo[SharedChangeNotifications.moduleUserInfoKey] as? String
+        let logsHeldBack = SharedChangeNotificationRouting.logsHeldBack(categoryIdentifier: category, userInfo: content.userInfo)
         nonisolated(unsafe) let completionHandler = completionHandler
         let title = notification.request.content.title
         Self.onMain {
@@ -320,7 +337,7 @@ final class SharedChangeNotificationDelegate: NSObject, UNUserNotificationCenter
                 moduleID: module,
                 onScreenModuleID: SharedChangeNotificationRouter.shared.foregroundModuleID
             )
-            if options.isEmpty, let module, category != SharedChangeServerAlertText.category {
+            if options.isEmpty, let module, logsHeldBack {
                 SharedChangeActivityLog.record(SharedChangeLogEntry(moduleID: module, outcome: .onScreen, detail: title))
             }
             completionHandler(options)

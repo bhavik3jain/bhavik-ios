@@ -55,6 +55,9 @@ public enum DebugSeed {
             for episode in show.orderedEpisodes where episode.seasonNumber <= 2 {
                 episode.setWatched(true)
             }
+            // Watching, not "Haven't started": nothing else marks it, and
+            // only a show being watched has new-episode alerts to plan.
+            show.refreshStatus()
         }
 
         for id in movieIDs {
@@ -75,7 +78,9 @@ public enum DebugSeed {
     }
 
     /// Two seasons of eight, all aired, the first half watched; no TMDB ids,
-    /// so nothing tries to look them up.
+    /// so nothing tries to look them up. Then a third season still to come,
+    /// dated the way TMDB dates them, for new-episode alerts to plan from
+    /// (`-TVEpisodeAlertProbe`): a double bill in two days, then weekly.
     @MainActor
     private static func seedOffline(context: ModelContext) {
         let show = Show(name: "Sample Show", overview: "A made-up show from the debug seeder, for when there's no TMDB key.")
@@ -89,6 +94,13 @@ public enum DebugSeed {
                 context.insert(episode)
                 if season == 1, number <= 4 { episode.setWatched(true) }
             }
+        }
+        for (number, days) in [(1, 2), (2, 2), (3, 9), (4, 16), (5, 23)] {
+            let local = Calendar.current.dateComponents([.year, .month, .day], from: Calendar.current.date(byAdding: .day, value: days, to: .now) ?? .now)
+            let airDate = TMDBDate.parse("\(local.year ?? 2026)-\(Episode.twoDigits(local.month ?? 1))-\(Episode.twoDigits(local.day ?? 1))")
+            let episode = Episode(name: number == 1 ? "The Return" : "", seasonNumber: 3, episodeNumber: number, airDate: airDate)
+            episode.show = show
+            context.insert(episode)
         }
         show.refreshStatus()
         try? context.save()
