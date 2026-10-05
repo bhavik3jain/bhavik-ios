@@ -504,7 +504,8 @@ Don't trust these comments, and don't "fix" the code they describe.
   `status(for:in:)` is only for Finance's rare owned-share checks, which must not act on a stale
   answer. Notification delegate methods use the completion-handler forms, answered on the main
   thread: the `async` forms ran on Swift's cooperative pool and crashed every notification tap.
-- **Share goes through Core's `SharePreparer`; nothing else calls `share()`.** Fuel's Share hung on
+- **Share goes through Core's `SharePreparer`; nothing else calls `share()`** except the schema run's
+  throwaway test share. Fuel's Share hung on
   "generating a link" (October 2026): `UICloudSharingController`'s preparation handler and the Mac
   sheet waited on `share(_:to:)` for as long as Core Data took, and a `share()` Core Data gave up on
   ("timed out waiting for request: Share-Export") still filled a new share zone in iCloud without

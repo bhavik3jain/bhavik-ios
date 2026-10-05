@@ -22,8 +22,8 @@ import UIKit
 /// can't run (offline, no iCloud) shouldn't keep the app alive at all.
 ///
 /// One per `CloudSharedStore` container, started by `BhavikApp` beside its
-/// `SharedChangeNotifier`. Main-actor only: every observer delivers on the
-/// main queue, which `beginBackgroundTask` wants anyway.
+/// `SharedChangeNotifier`. Main-actor only: every observer hands its work to
+/// the main queue, which `beginBackgroundTask` wants anyway.
 @MainActor
 public final class CloudExportKeeper {
     private static var running: [CloudExportKeeper] = []
@@ -70,21 +70,40 @@ public final class CloudExportKeeper {
         self.moduleID = moduleID
         let coordinator = container.persistentStoreCoordinator
 
+        // Both observed on the posting thread and handed to the main queue
+        // *asynchronously*, never with `queue: .main` — CloudSyncMonitor's
+        // init has the reason. A `queue: .main` observer makes the post wait
+        // for the main thread, and both of these are posted from inside the
+        // mirroring delegate's own work while it holds the container's request
+        // executor: every save of an import (this filter used to run on the
+        // main thread, so each import's saves of all five containers waited
+        // there before being skipped) and every sync event. With the main
+        // thread itself waiting on that executor — a synchronous
+        // `fetchShares` or `canUpdateRecord` — neither could move: the
+        // deadlock that killed TestFlight build 16 when CloudSyncMonitor
+        // observed this way. `DispatchQueue.main` runs the blocks in the
+        // order they were posted, so a save still reaches the hold before
+        // the export that carried it.
         observers.append(NotificationCenter.default.addObserver(
             forName: .NSManagedObjectContextDidSave,
             object: nil,
-            queue: .main
+            queue: nil
         ) { [weak self] notification in
+            // Posted on the saving context's own queue, the one place its
+            // author may be read.
             guard let context = notification.object as? NSManagedObjectContext,
                   context.persistentStoreCoordinator === coordinator,
                   CloudExportHold.isLocalSave(author: context.transactionAuthor)
             else { return }
-            MainActor.assumeIsolated { self?.saved() }
+            let savedAt = Date.now
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated { self?.saved(at: savedAt) }
+            }
         })
         observers.append(NotificationCenter.default.addObserver(
             forName: NSPersistentCloudKitContainer.eventChangedNotification,
             object: container,
-            queue: .main
+            queue: nil
         ) { [weak self] notification in
             guard let event = notification.userInfo?[NSPersistentCloudKitContainer.eventNotificationUserInfoKey]
                     as? NSPersistentCloudKitContainer.Event,
@@ -93,14 +112,16 @@ public final class CloudExportKeeper {
             else { return }
             let started = event.startDate
             let error = event.succeeded ? nil : (event.error?.localizedDescription ?? "unknown error")
-            MainActor.assumeIsolated { self?.uploadFinished(started: started, error: error) }
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated { self?.uploadFinished(started: started, error: error) }
+            }
         })
     }
 
     // MARK: - Events
 
-    private func saved() {
-        guard hold.saved(at: .now) else { return }
+    private func saved(at date: Date = .now) {
+        guard hold.saved(at: date) else { return }
         generation += 1
         let thisHold = generation
         beginPlatformHold()

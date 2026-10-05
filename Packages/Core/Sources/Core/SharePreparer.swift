@@ -176,6 +176,14 @@ public final class SharePreparer: Identifiable {
     /// than the one Core Data says the object is in.
     private func checkEarlierTries() async -> SharePreparationPlan.Event {
         let began = ContinuousClock.now
+        // A `share()` this process is still running for it (Try Again after
+        // the create step ran out of time) may have made its zone already:
+        // the check would call that an earlier try that didn't finish, and
+        // Share Anyway would only join the same call. Join it straight away.
+        if ShareCreations.shared.isRunning(object.objectID) {
+            log("earlier tries: skipped, share() for this object is still running here")
+            return .earlierTriesChecked(.none)
+        }
         guard let identifier = container.cloudKitContainerIdentifier,
               let store = object.objectID.persistentStore,
               container.databaseScope(of: store) == .private else {
@@ -429,6 +437,11 @@ final class ShareCreations {
     private var ledger = ShareCallLedger<NSManagedObjectID>()
     private var calls: [NSManagedObjectID: Task<Result<CKShare, ShareError>, Never>] = [:]
 
+    /// Whether a `share()` for `id` is still waiting on Core Data.
+    func isRunning(_ id: NSManagedObjectID) -> Bool {
+        ledger.isRunning(id)
+    }
+
     func create(
         _ object: NSManagedObject,
         in container: NSPersistentCloudKitContainer,
@@ -485,6 +498,10 @@ struct ShareCallLedger<Key: Hashable & Sendable>: Sendable, Equatable {
 
     mutating func end(_ key: Key) {
         running.remove(key)
+    }
+
+    func isRunning(_ key: Key) -> Bool {
+        running.contains(key)
     }
 }
 

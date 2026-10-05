@@ -9,7 +9,7 @@ import UIKit
 
 // The real, per-platform CKShare sharing UI. Feature packages never see this
 // file — they call `\.presentShareSheet` (Core's `ShareSheetPresenting.swift`),
-// which `HomeView` wires to `ShareSheetHostView` below via
+// which `HomeView` answers with `PresentsShareSheets` below, through
 // `.presentsShareSheets()` on each module's content. See CLAUDE.md's macOS section for why this split
 // lives here rather than behind a `MacCompat.swift` shim: iOS has
 // `UICloudSharingController`; macOS has nothing, so the two platforms

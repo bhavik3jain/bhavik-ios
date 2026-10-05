@@ -316,10 +316,13 @@ private func actions(
 
 @Test func aSecondShareCallForTheSameObjectJoinsTheFirst() {
     var ledger = ShareCallLedger<String>()
+    #expect(!ledger.isRunning("car"))
     #expect(ledger.begin("car") == .call)
+    #expect(ledger.isRunning("car"))
     #expect(ledger.begin("car") == .join)
     #expect(ledger.begin("other car") == .call)
     ledger.end("car")
+    #expect(!ledger.isRunning("car"))
     #expect(ledger.begin("car") == .call)
 }
 
