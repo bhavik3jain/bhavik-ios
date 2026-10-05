@@ -6,7 +6,8 @@ import SwiftUI
 /// iCloud, and the menu command takes the key first): a contents sidebar that
 /// scrolls the page to a section, the web report, and an inspector with the
 /// review and "Ask about <month>". The toolbar steps months, picks whose
-/// figures, shows or hides the review, shares and prints.
+/// figures, shows or hides the review, shares and prints; its More menu
+/// saves a PDF and writes the review again.
 ///
 /// A scene of its own, opened with `openWindow(id:value:)`. The window's
 /// `FinanceReportWindowValue` is updated as it steps, so it stays on the
@@ -40,18 +41,12 @@ struct MacReportWindow: View {
         let choice = ReportOwnerChoice(ownerName: value?.ownerName)
         let ownerName = choice.ownerName(preferred: nil, available: owners)
         let filter = choice.filter(preferred: nil, owners: snapshot.owners)
-        let report: FinanceReportData? = shown.flatMap { shown in
-            snapshot.household.flatMap { household in
-                FinanceReportData.build(
-                    scope: shown,
-                    household: household,
-                    filter: filter,
-                    live: snapshot.live,
-                    deviceName: ReportNaming.deviceName(for: .sidebar),
-                    asOf: builtAt
-                )
+        let recipe: ReportRecipe? = shown.flatMap { shown in
+            snapshot.household.map { household in
+                ReportRecipe(scope: shown, household: household, filter: filter, deviceName: ReportNaming.deviceName(for: .sidebar), builtAt: builtAt)
             }
         }
+        let report = recipe?.build(live: snapshot.live)
         let scope = shown ?? value?.scope
         let documentName = scope.map { ReportNaming.documentName(for: $0, ownerName: ownerName) } ?? "Report"
 
@@ -122,14 +117,19 @@ struct MacReportWindow: View {
                     Divider()
                     Toggle("Include Review in the Page", isOn: $includeReview)
                     Toggle("Include Table Views", isOn: Binding(get: { options.includeTables }, set: { tablesChoice = $0 }))
+                    // The window has no menu bar commands of its own to put
+                    // this in; the inspector has the same as a button.
+                    if includeReview || showsReview {
+                        WriteReviewAgainSection(model: session.model)
+                    }
                 } label: {
                     Label("More", systemImage: "ellipsis.circle")
                 }
-                .help("Save as PDF, and what the page includes")
+                .help("Save as PDF, what the page includes, and writing the review again")
             }
         }
         .onChange(of: report, initial: true) { _, report in
-            session.show(report)
+            session.show(report, recipe: recipe)
         }
         // The review is written for the page and the inspector alike, once.
         .task(id: ReviewStart(model: session.modelID, isWanted: includeReview || showsReview, enabled: advisorEnabled)) {

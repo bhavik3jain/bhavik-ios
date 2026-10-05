@@ -3,7 +3,8 @@ import SwiftUI
 
 /// The Summary's "<Month> in brief", under the net-worth card: the review's
 /// headline, how many things went well, are worth watching and are worth
-/// trying, and the way into the review and the full report.
+/// trying, and the way into the review and the full report — with a ••• menu
+/// to write the review again, saying when it was written.
 ///
 /// Which card, if any, is `FinanceAdvisorAvailability.reviewCardStyle`'s
 /// call (tested there): Apple Intelligence's card with its sparkle where the
@@ -42,6 +43,22 @@ struct MonthBriefCard: View {
                     Text("Apple Intelligence")
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                    // A menu, not a third button beside Read Review and Open
+                    // Report. Borderless, so in a list row it's its own tap
+                    // target rather than the row's.
+                    Menu {
+                        WriteReviewAgainSection(model: model)
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
+                            .imageScale(.large)
+                            .foregroundStyle(.secondary)
+                            .contentShape(.rect)
+                    }
+                    .menuStyle(.button)
+                    .buttonStyle(.borderless)
+                    .menuIndicator(.hidden)
+                    .fixedSize()
+                    .accessibilityLabel("Review Options")
                 }
             }
 

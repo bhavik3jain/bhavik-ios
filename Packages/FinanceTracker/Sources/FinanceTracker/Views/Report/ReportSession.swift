@@ -160,9 +160,39 @@ enum ReportNaming {
 
 // MARK: - The page
 
+/// What a report is built from, all but the gold and silver prices — so the
+/// same report can be built again at the prices an earlier review of it was
+/// written at, which is how a price tick is told from new figures
+/// (`ReportReviewRenewal`).
+@MainActor
+struct ReportRecipe {
+    let scope: ReportScope
+    let household: SharedFinanceHousehold
+    let filter: OwnerFilter
+    let deviceName: String
+    /// Fixed by a screen for as long as it's open: a report "built" anew at
+    /// every redraw would never compare equal to the last one.
+    let builtAt: Date
+
+    func build(live: MetalPrices?) -> FinanceReportData? {
+        FinanceReportData.build(scope: scope, household: household, filter: filter, live: live, deviceName: deviceName, asOf: builtAt)
+    }
+
+    /// What the model would be shown of this report with its open month
+    /// valued at `prices` — nil: at its own saved ones.
+    func brief(at prices: MetalPrices?) -> ReportBrief? {
+        build(live: prices).map { ReportBrief(data: $0) }
+    }
+
+    /// For `ReportReviewModel.update(_:repricing:)`.
+    var repricing: ReportReviewModel.Repricing {
+        { prices in brief(at: prices) }
+    }
+}
+
 /// One report on screen: its figures, its review, and the page built from
 /// both. Views hand it a freshly built `FinanceReportData` whenever the store
-/// changes (`show(_:)`), start the review from a `.task`, and read `html`.
+/// changes (`show(_:recipe:)`), start the review from a `.task`, and read `html`.
 ///
 /// Observable per property, so the view that builds the figures doesn't read
 /// the review: each streamed word re-renders only the page, never rebuilds
@@ -188,23 +218,35 @@ final class ReportSession {
 
     init() {}
 
-    /// The report to show, or nil when there's none.
+    /// The report to show, or nil when there's none; `recipe` is what it was
+    /// built from.
     ///
     /// The review model is kept when the new figures tell it the same facts
     /// (`ReportBrief.fingerprint`): a partner's synced edit to an unrelated
     /// account rebuilt the report, and with it a model that started writing
-    /// the whole review again.
-    func show(_ data: FinanceReportData?) {
+    /// the whole review again. It's kept through a gold or silver price tick
+    /// too, and given the new report either way — see `ReportReviewRenewal`.
+    /// A new one comes from `ReportReviewModel.shared(for:)`, so a review the
+    /// Summary is already writing is the one the page waits for.
+    func show(_ data: FinanceReportData?, recipe: ReportRecipe? = nil) {
         guard data != self.data else { return }
         self.data = data
         guard let data else {
             model = nil
             return
         }
-        if let model, model.brief.fingerprint == ReportBrief(data: data).fingerprint {
-            return
+        let renewal = ReportReviewRenewal.decide(
+            current: model?.basis,
+            next: ReportReviewBasis(data: data, brief: ReportBrief(data: data)),
+            fingerprintAtPrices: { prices in recipe?.brief(at: prices)?.fingerprint }
+        )
+        if renewal != .replace, let model {
+            model.update(data, repricing: recipe?.repricing)
+        } else {
+            let shared = ReportReviewModel.shared(for: data)
+            shared.update(data, repricing: recipe?.repricing)
+            model = shared
         }
-        model = ReportReviewModel(data: data)
     }
 
     /// Starts (or picks up from the cache) the review. Call from a `.task`

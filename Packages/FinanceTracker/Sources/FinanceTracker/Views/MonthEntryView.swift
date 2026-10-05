@@ -14,9 +14,12 @@ struct MonthEntryView: View {
     @Environment(\.moduleLayout) private var layout
     @Environment(\.managedObjectContext) private var context
     @Environment(\.financePersistentContainer) private var container
+    @Environment(\.financeReportPreferences) private var reportPreferences
     var data = FinanceFetches()
     /// "September is finished", shown once Close has saved the month.
     @State private var showsFinished = false
+    /// The month's report, from the toolbar's Report menu.
+    @State private var reportRequest: FinanceReportWindowValue?
 
     init(month: SharedFinanceMonth) {
         self.month = month
@@ -168,11 +171,21 @@ struct MonthEntryView: View {
         .readableWidthInSidebar()
         .navigationTitle(month.title)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            if let period = month.period {
+                ToolbarItem(placement: .primaryAction) {
+                    MonthReportMenu(scope: .month(period)) { scope in
+                        reportRequest = FinanceReportWindowValue(scope: scope, ownerName: reportPreferences.defaultOwnerName)
+                    }
+                }
+            }
+        }
         .onDisappear(perform: save)
         .task { await MetalPriceFeed.shared.refreshIfStale() }
         .sheet(isPresented: $showsFinished) {
             MonthFinishedView(month: month)
         }
+        .presentsReport($reportRequest)
     }
 
     private func livePriceRow(_ title: String, value: Double) -> some View {

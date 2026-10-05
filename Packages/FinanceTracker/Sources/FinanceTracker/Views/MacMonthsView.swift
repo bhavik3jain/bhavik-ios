@@ -13,6 +13,9 @@ struct MacMonthsView: View {
     let open: (SharedFinanceMonth) -> Void
     /// The month's report, in a window of its own.
     let viewReport: (SharedFinanceMonth) -> Void
+    /// Forgets the month's review and opens its report to write it fresh;
+    /// nil where Apple Intelligence can't.
+    let writeReviewAgain: ((SharedFinanceMonth) -> Void)?
     let delete: (SharedFinanceMonth) -> Void
 
     @State private var selection: FinanceHistory.Point.ID?
@@ -81,6 +84,9 @@ struct MacMonthsView: View {
                 if let month = month(for: ids) {
                     Button("Open", systemImage: "arrow.up.forward.square") { open(month) }
                     Button("View Report", systemImage: "doc.text") { viewReport(month) }
+                    if let writeReviewAgain {
+                        Button("Write Review Again", systemImage: "arrow.clockwise") { writeReviewAgain(month) }
+                    }
                     if isEditable {
                         Divider()
                         Button("Delete Month…", systemImage: "trash", role: .destructive) { delete(month) }
