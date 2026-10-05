@@ -10,6 +10,7 @@ struct ScheduleView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(CloudSyncMonitor.self) private var syncMonitor: CloudSyncMonitor?
     @ObservedObject private var alerts = EpisodeAlertStore.shared
+    @Environment(\.moduleLayout) private var layout
 
     private var ready: [ScheduledEpisode] { Schedule.readyToWatch(episodes: episodes) }
     private var upcoming: [ScheduledEpisode] { Schedule.upcoming(episodes: episodes) }
@@ -60,6 +61,9 @@ struct ScheduleView: View {
             // shows due a look (`TVEpisodeRefresher`), then the alerts.
             .refreshable { await TVEpisodeAlerts.refreshAndReschedule(context: modelContext, syncMonitor: syncMonitor) }
             .navigationTitle("Up Next")
+            // Its alerts card sends people to TV Settings for the time and
+            // the shows, and Settings stopped being a tab when Lists came.
+            .toolbar { TVSettingsToolbarLink(layout: layout) }
         }
     }
 }

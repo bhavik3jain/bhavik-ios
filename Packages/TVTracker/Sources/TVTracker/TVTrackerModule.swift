@@ -17,7 +17,7 @@ public enum TVTrackerModule {
     /// shows. Lists made it six, and iOS put Lists and Settings behind a
     /// "More" tab whose own navigation bar wrapped the Lists screen's, with a
     /// stray back button above its title. So TV's settings aren't a tab: a
-    /// gear on Watching and Movies opens them on the phone
+    /// gear on Watching, Movies and Up Next opens them on the phone
     /// (`TVSettingsToolbarLink`), and the Mac has them in its Settings window
     /// (`settingsView()`), as before.
     public static let sections = [
@@ -36,7 +36,7 @@ public enum TVTrackerModule {
     }
 
     /// TV's settings on their own, for the Mac's Settings window. The phone
-    /// reaches the same screen from a gear on Watching and Movies — see
+    /// reaches the same screen from a gear on Watching, Movies and Up Next — see
     /// `sections`.
     @MainActor
     public static func settingsView() -> some View {

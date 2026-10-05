@@ -165,7 +165,7 @@ store item of the list above (share root `SharedWatchList`, `\.tvList…` env ke
 table). Views in the Lists tab read `\.managedObjectContext`; the other tabs read `\.modelContext`. Someone
 a list was shared with **leaves** it (Core's `leaveShareInBackground`, a purge of the share's zone in the
 *shared* store) — a plain delete of a shared root asks CloudKit to delete the owner's record.
-Lists cost TV its Settings tab on the phone (a gear on Watching and Movies now): an iPhone tab bar
+Lists cost TV its Settings tab on the phone (a gear on Watching, Movies and Up Next now): an iPhone tab bar
 shows five, Home included, and a sixth put Lists and Settings behind "More", nesting Lists' navigation
 bar in More's. **Four sections at most** for any module.
 
