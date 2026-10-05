@@ -41,4 +41,10 @@ public extension EnvironmentValues {
     /// `BhavikApp.init()`'s `financeContainer` and re-scoped by
     /// `FinanceTrackerModule.rootView(context:container:)`.
     @Entry var financePersistentContainer: NSPersistentCloudKitContainer?
+
+    /// TV's watch-list container — same reasoning as
+    /// `pointsPersistentContainer` above; a list's Share button needs it. Set
+    /// from `BhavikApp.init()`'s `tvListContainer` and re-scoped by
+    /// `TVTrackerModule.rootView(context:container:section:)`.
+    @Entry var tvListPersistentContainer: NSPersistentCloudKitContainer?
 }
