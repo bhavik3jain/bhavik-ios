@@ -1,9 +1,13 @@
 import Core
+import CoreData
 import SwiftData
 import SwiftUI
 
 struct TVRootView: View {
     @Environment(\.modelContext) private var modelContext
+    /// The watch-list store's — see `TVTrackerModule.rootView(context:container:section:)`.
+    @Environment(\.managedObjectContext) private var listContext
+    @Environment(\.tvListPersistentContainer) private var listContainer
     @SyncedSecret(TVTrackerModule.apiKeyDefaultsKey) private var apiKey
 
     /// The Mac sidebar's own selection when it picks the section; nil on the
@@ -16,7 +20,7 @@ struct TVRootView: View {
             switch section.id {
             case "movies": MoviesListView()
             case "upnext": ScheduleView()
-            case "settings": NavigationStack { TVSettingsView() }
+            case "lists": WatchListsView()
             default: WatchingListView()
             }
         }
@@ -26,6 +30,13 @@ struct TVRootView: View {
         .task {
             guard DebugSeed.isRequested else { return }
             await DebugSeed.run(context: modelContext, apiKey: apiKey)
+        }
+        .task {
+            guard WatchListDebugSeed.isRequested else { return }
+            // Waits for iCloud like Points' seed, so a seeded second device
+            // doesn't start lists of its own before the first one's arrive.
+            guard await CloudKitImportGate.waitForFirstImport(of: listContainer) else { return }
+            WatchListDebugSeed.run(context: listContext)
         }
         #endif
     }

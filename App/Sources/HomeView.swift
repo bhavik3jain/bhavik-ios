@@ -101,6 +101,10 @@ struct HomeView: View {
         SharedFinanceMonth.fetchRequest(sortDescriptors: [NSSortDescriptor(keyPath: \SharedFinanceMonth.yearMonth, ascending: true)])
     )
     private var financeMonths: [SharedFinanceMonth] { financeMonthFetch.results }
+    // TV's watch lists are Core Data too — see BhavikApp.init()'s
+    // tvListContainer. Only handed on to TV, which reads its own lists.
+    @Environment(\.tvListManagedObjectContext) private var tvListContext
+    @Environment(\.tvListPersistentContainer) private var tvListPersistentContainer
     /// Written by a Fuel peek's "Open My X3" so the module opens on that car.
     @AppStorage(FuelTrackerModule.selectedVehicleDefaultsKey) private var selectedVehicleName = ""
 
@@ -344,6 +348,9 @@ struct HomeView: View {
         case .explore: exploreContext ?? tripContext
         case .points: pointsContext ?? tripContext
         case .finance: financeContext ?? tripContext
+        // A list and its titles are pushed screens: without this they'd
+        // fetch watch lists from Trips' store.
+        case .tv: tvListContext ?? tripContext
         default: tripContext
         }
     }
@@ -457,7 +464,10 @@ struct HomeView: View {
             // before any view (this one included) exists.
             FuelTrackerModule.rootView(context: fuelContext!, container: fuelPersistentContainer!, section: section)
         case .tv:
-            TVTrackerModule.rootView(section: section)
+            // Always set by the time a module can be opened — BhavikApp's
+            // WindowGroup sets `\.tvListManagedObjectContext` and
+            // `\.tvListPersistentContainer` unconditionally in `.init()`.
+            TVTrackerModule.rootView(context: tvListContext!, container: tvListPersistentContainer!, section: section)
         case .parcels:
             ParcelTrackerModule.rootView(section: section)
         case .trips:

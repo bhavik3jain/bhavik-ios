@@ -154,4 +154,51 @@ public extension NSPersistentCloudKitContainer {
             }
         }
     }
+
+    /// Leaves a share someone else owns, for a tracker that lets a participant
+    /// drop a shared thing from their own list (TV's watch lists): deletes the
+    /// share's zone from this person's *shared* database, which takes them off
+    /// the share rather than touching the owner's records, and purges the
+    /// local copies of everything in it.
+    ///
+    /// Refuses anything outside the shared-scope store: purging a zone of the
+    /// private store deletes the owner's own data, for everyone it's shared
+    /// with. A plain `delete` of a shared root, the alternative, asks CloudKit
+    /// to delete the owner's record.
+    func leaveShareInBackground(
+        of objectID: NSManagedObjectID,
+        completion: @escaping @Sendable ((any Error)?) -> Void
+    ) {
+        Self.shareQueue.async {
+            guard let store = objectID.persistentStore,
+                  let sharedURL = self.persistentStoreDescriptions
+                      .first(where: { $0.cloudKitContainerOptions?.databaseScope == .shared })?.url,
+                  store.url == sharedURL else {
+                completion(ShareLeavingError.notSharedWithYou)
+                return
+            }
+            guard let share = (try? self.fetchShares(matching: [objectID]))?[objectID] else {
+                completion(ShareLeavingError.noShare)
+                return
+            }
+            self.purgeObjectsAndRecordsInZone(with: share.recordID.zoneID, in: store) { _, error in
+                completion(error)
+            }
+        }
+    }
+}
+
+/// Why `leaveShareInBackground` did nothing.
+public enum ShareLeavingError: LocalizedError, Equatable {
+    /// It's this person's own, or on a store with no CloudKit (a test).
+    case notSharedWithYou
+    /// This device has no copy of the share yet — it hasn't synced down.
+    case noShare
+
+    public var errorDescription: String? {
+        switch self {
+        case .notSharedWithYou: "This wasn't shared with you, so there's nothing to leave."
+        case .noShare: "iCloud hasn't finished downloading this share yet. Try again in a minute."
+        }
+    }
 }

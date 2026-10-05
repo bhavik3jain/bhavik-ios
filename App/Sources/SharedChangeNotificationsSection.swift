@@ -19,7 +19,7 @@ import SwiftUI
 struct SharedChangeNotificationsSection: View {
     /// The trackers whose data can be shared — the Core Data ones, each
     /// with a `SharedChangeNotifier` started in `BhavikApp`.
-    static let modules: [SelectedModule] = [.trips, .explore, .fuel, .points, .finance]
+    static let modules: [SelectedModule] = [.trips, .explore, .fuel, .points, .finance, .tv]
 
     @AppStorage(SharedChangeNotifications.enabledKey) private var enabled = true
     @State private var authorized = false
@@ -54,7 +54,7 @@ struct SharedChangeNotificationsSection: View {
             if denied {
                 Text("Notifications are turned off for this app. Turn them on in the Settings app to hear when someone changes something you share.")
             } else {
-                Text("A notification when someone you share a trip, car, guide or household with changes it. iCloud sends a short alert even when the app is closed, to every device on your Apple Account; the app adds who changed what once it has downloaded the change, which may not be until you next open it.")
+                Text("A notification when someone you share a trip, car, guide, household or watch list with changes it. iCloud sends a short alert even when the app is closed, to every device on your Apple Account; the app adds who changed what once it has downloaded the change, which may not be until you next open it.")
             }
         }
         .task { await refresh() }

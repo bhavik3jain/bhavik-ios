@@ -116,9 +116,9 @@ models, and that launch opens an in-memory container instead of the real store. 
 any of this. (It replaced a seed-then-purge seeder whose comment claimed SwiftData had no bridge to
 Core Data — it has had one since iOS 17.)
 
-The same launch also initializes the five hand-built Core Data models (`TripModel`, `FuelModel`,
-`GuideModel`, `PointsModel`, `FinanceModel` — Trips, Fuel and Explore moved off SwiftData for CloudKit sharing;
-Points and Finance were born on Core Data). Adding an entity
+The same launch also initializes the six hand-built Core Data models (`TripModel`, `FuelModel`,
+`GuideModel`, `PointsModel`, `FinanceModel`, `TVListModel` — Trips, Fuel and Explore moved off SwiftData for CloudKit sharing;
+Points and Finance were born on Core Data; TV keeps its library in SwiftData but its shared watch lists in `TVListStore`). Adding an entity
 or attribute to one of those needs the same ritual. Production never creates record types on its
 own, only Development does: before the Core Data models were added here, TestFlight builds saved
 those modules' data locally and never exported any of it to iCloud. That includes CloudKit's own
@@ -158,6 +158,16 @@ that keeps this device's own saves out of those notifications. `SharedChangeNoti
 persistent history** once an export has succeeded — anything new that reads history must be added to
 its cutoff, or it loses the transactions it hasn't read yet. `/add-tracker` (`.claude/skills/add-tracker`) scaffolds a
 new module and walks this whole list.
+
+**TV is both.** Its library (`Show`, `Episode`, `Movie`) is SwiftData and in `AppSchema.models`; its shared
+watch lists (the Lists tab) are a Core Data store, `TVListStore` from `TVListModel`, wired through every
+store item of the list above (share root `SharedWatchList`, `\.tvList…` env keys, `.tv` in the notifier
+table). Views in the Lists tab read `\.managedObjectContext`; the other tabs read `\.modelContext`. Someone
+a list was shared with **leaves** it (Core's `leaveShareInBackground`, a purge of the share's zone in the
+*shared* store) — a plain delete of a shared root asks CloudKit to delete the owner's record.
+Lists cost TV its Settings tab on the phone (a gear on Watching and Movies now): an iPhone tab bar
+shows five, Home included, and a sixth put Lists and Settings behind "More", nesting Lists' navigation
+bar in More's. **Four sections at most** for any module.
 
 ## Module chrome — a new root view can ship with no way back
 
@@ -246,7 +256,7 @@ Debug launch arguments, all `#if DEBUG`: `-InitializeCloudKitSchema YES`, `-InMe
 (the whole app on in-memory stores, no CloudKit — see *Working on this Mac* below), plus
 the module seeders that are the only way to get a simulator into a state worth looking at —
 `-TVSeedShows` (no-ops if any `Show` exists; with no TMDB key it makes one offline "Sample Show"), `-FuelSeedCSV`, `-ParcelSeed`,
-`-TripSeed`, `-ExploreSeed`, `-PointsSeed`, `-FinanceSeed` (each no-ops once its store has a record).
+`-TripSeed`, `-ExploreSeed`, `-PointsSeed`, `-FinanceSeed`, `-TVListSeed` (each no-ops once its store has a record).
 (The Points seed, like the others behind `CloudKitImportGate`, waits up to 60 s on a simulator.) Seeders run from the module
 root view's `.task`, so nothing happens until the module is opened. `-WeatherStub YES` injects
 `StubWeatherProvider` at the app root — the only way to see weather on a simulator today. `-CloudSyncRefreshAfter <seconds>` runs one Refresh from iCloud after launch and prints its outcome.
