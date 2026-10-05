@@ -255,6 +255,14 @@ Swift works out every figure and finding; the model only ranks and words them, n
 and never gives investment advice. Off, or without Apple Intelligence, the same findings appear in
 Swift's own words as "September check". The review is cached on the device only.
 
+The review says when it was written ("Written today at 9:14"), and is written again on its own
+whenever a figure it was written from changes — a balance, a charge, a budget, in that month or one
+it's compared with — but not when only the live gold and silver prices move: those notes fall back
+to Swift's words until it's written again. **Write Review Again** is in the review sheet, the
+report's ••• menu (More in the Mac's report window), the "in brief" card's ••• menu, a month's (or
+year's) context menu under Months, and the Report menu on a month's own screen; the last two forget
+the month's review for every person and open its report to write it fresh.
+
 **Settings → Apple Intelligence → Finance** turns the model off (synced across your devices), and
 **Settings → Finance reports** sets whether finishing a month writes its review, whether this device
 is told "September's report is ready" when a month is finished on another one, whether shared

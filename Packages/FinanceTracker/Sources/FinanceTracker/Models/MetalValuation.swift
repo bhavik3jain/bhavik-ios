@@ -1,8 +1,9 @@
 import Foundation
 
 /// Prices for a month, per ounce, as quoted (per troy ounce). `MetalValuation`
-/// applies them per regular ounce, deliberately; see there.
-public struct MetalPrices: Equatable, Sendable {
+/// applies them per regular ounce, deliberately; see there. Codable for
+/// `ReportReviewCache`, which keeps the live prices a review was written at.
+public struct MetalPrices: Equatable, Sendable, Codable {
     public var gold: Double
     public var silver: Double
 

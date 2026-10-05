@@ -10,6 +10,8 @@ struct MonthsView: View {
     @Environment(\.managedObjectContext) private var context
     @Environment(\.financePersistentContainer) private var container
     @Environment(\.financeReportPreferences) private var reportPreferences
+    @Environment(\.financeAdvisor) private var advisor
+    @Environment(\.financeAdvisorEnabled) private var isAdvisorEnabled
     var data = FinanceFetches()
 
     @AppStorage("finance.monthsMetric") private var metricRaw = FinanceMetric.netWorth.rawValue
@@ -67,6 +69,14 @@ struct MonthsView: View {
                                 ForEach(years, id: \.self) { year in
                                     Button("\(String(year)) in Review") { viewReport(.year(year)) }
                                 }
+                                if canWriteReviews {
+                                    Divider()
+                                    Menu("Write Review Again") {
+                                        ForEach(years, id: \.self) { year in
+                                            Button("\(String(year)) in Review") { writeReviewAgain(.year(year)) }
+                                        }
+                                    }
+                                }
                             } label: {
                                 Label("Year in Review", systemImage: "calendar.badge.clock")
                             }
@@ -113,6 +123,7 @@ struct MonthsView: View {
                 isEditable: isEditable,
                 open: { opened = $0 },
                 viewReport: { month in month.period.map { viewReport(.month($0)) } },
+                writeReviewAgain: canWriteReviews ? { month in month.period.map { writeReviewAgain(.month($0)) } } : nil,
                 delete: { pendingDelete = $0 }
             )
             .navigationDestination(item: $opened) { MonthEntryView(month: $0) }
@@ -169,6 +180,9 @@ struct MonthsView: View {
                     }
                     .contextMenu {
                         Button("View Report", systemImage: "doc.text") { viewReport(.month(point.period)) }
+                        if canWriteReviews {
+                            Button("Write Review Again", systemImage: "arrow.clockwise") { writeReviewAgain(.month(point.period)) }
+                        }
                     }
                 }
             }
@@ -190,6 +204,12 @@ struct MonthsView: View {
                             .contentShape(.rect)
                         }
                         .buttonStyle(.plain)
+                        .contextMenu {
+                            Button("View Report", systemImage: "doc.text") { viewReport(.year(year)) }
+                            if canWriteReviews {
+                                Button("Write Review Again", systemImage: "arrow.clockwise") { writeReviewAgain(.year(year)) }
+                            }
+                        }
                     }
                 }
             }
@@ -199,6 +219,23 @@ struct MonthsView: View {
     /// Opens `scope`'s report on Settings' "Whose by default".
     private func viewReport(_ scope: ReportScope) {
         reportRequest = FinanceReportWindowValue(scope: scope, ownerName: reportPreferences.defaultOwnerName)
+    }
+
+    /// Whether "Write Review Again" is offered: only where Apple
+    /// Intelligence can write one. The plain check has nothing to write
+    /// again — it's worked out from the store each time it's shown.
+    private var canWriteReviews: Bool {
+        advisor.availability(isEnabled: isAdvisorEnabled) == .available
+    }
+
+    /// "Write Review Again" on a month or a year: after changing a month,
+    /// a review that still reads as before can be thrown away. Forgets the
+    /// cached review for every person — it's the month that changed, not
+    /// whose figures were last looked at — rewrites any on screen, and opens
+    /// the report, which writes its own fresh.
+    private func writeReviewAgain(_ scope: ReportScope) {
+        ReportReviewModel.writeReviewsAgain(of: scope, advisor: advisor, enabled: isAdvisorEnabled)
+        viewReport(scope)
     }
 
     private func nextMonthLabel(_ snapshot: FinanceSnapshot) -> String {

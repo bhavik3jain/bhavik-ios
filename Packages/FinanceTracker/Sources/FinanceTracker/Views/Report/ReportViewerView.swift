@@ -5,8 +5,8 @@ import SwiftUI
 /// The phone's report viewer: the generated web page full screen, Done on
 /// the left, the month's name in the middle, Share and a ••• menu on the
 /// right (Share Web Page, Save as PDF, Print, Whose, Month or Year, Include
-/// Review, Include Table Views, Jump to Section), and a ‹ month › stepper
-/// floating at the bottom.
+/// Review, Include Table Views, Jump to Section, Write Review Again), and a
+/// ‹ month › stepper floating at the bottom.
 ///
 /// The page is built here from the store — never held back for Apple
 /// Intelligence: it shows with the month check's own wording and is redrawn
@@ -45,18 +45,12 @@ struct ReportViewerView: View {
         let shown = navigator.resolved(scope)
         let ownerName = ownerChoice.ownerName(preferred: preferences.defaultOwnerName, available: snapshot.owners.map(\.name))
         let filter = ownerChoice.filter(preferred: preferences.defaultOwnerName, owners: snapshot.owners)
-        let report: FinanceReportData? = shown.flatMap { shown in
-            snapshot.household.flatMap { household in
-                FinanceReportData.build(
-                    scope: shown,
-                    household: household,
-                    filter: filter,
-                    live: snapshot.live,
-                    deviceName: ReportNaming.deviceName(for: layout),
-                    asOf: builtAt
-                )
+        let recipe: ReportRecipe? = shown.flatMap { shown in
+            snapshot.household.map { household in
+                ReportRecipe(scope: shown, household: household, filter: filter, deviceName: ReportNaming.deviceName(for: layout), builtAt: builtAt)
             }
         }
+        let report = recipe?.build(live: snapshot.live)
         NavigationStack {
             ReportViewerPage(
                 session: session,
@@ -68,7 +62,7 @@ struct ReportViewerView: View {
             )
         }
         .onChange(of: report, initial: true) { _, report in
-            session.show(report)
+            session.show(report, recipe: recipe)
         }
     }
 }
@@ -118,9 +112,15 @@ private struct ReportViewerPage: View {
                     VStack(spacing: 0) {
                         Text(scope.title)
                             .font(.headline)
-                        Text(ownerName.map { "Report · \($0)" } ?? "Report")
+                        // The page keeps the check's words until the review
+                        // is done, so this is the one sign a review is being
+                        // written — on opening, or after Write Review Again.
+                        Text(includeReview && session.model?.isWriting == true
+                            ? "Writing the review…"
+                            : ownerName.map { "Report · \($0)" } ?? "Report")
                             .font(.caption)
                             .foregroundStyle(.secondary)
+                            .contentTransition(.opacity)
                     }
                     .accessibilityElement(children: .combine)
                 }
@@ -225,6 +225,12 @@ private struct ReportViewerPage: View {
                 } label: {
                     Label("Jump to Section", systemImage: "list.bullet")
                 }
+            }
+
+            // Only while the page carries the review: written with it left
+            // out, the new one would show nowhere.
+            if includeReview {
+                WriteReviewAgainSection(model: session.model)
             }
         } label: {
             Image(systemName: "ellipsis.circle")

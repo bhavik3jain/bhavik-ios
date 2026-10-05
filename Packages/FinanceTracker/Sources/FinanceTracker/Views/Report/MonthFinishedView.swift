@@ -32,18 +32,12 @@ struct MonthFinishedView: View {
 
     var body: some View {
         let snapshot = data.snapshot
-        let report: FinanceReportData? = month.period.flatMap { period in
-            snapshot.household.flatMap { household in
-                FinanceReportData.build(
-                    scope: .month(period),
-                    household: household,
-                    filter: .all,
-                    live: snapshot.live,
-                    deviceName: ReportNaming.deviceName(for: layout),
-                    asOf: builtAt
-                )
+        let recipe: ReportRecipe? = month.period.flatMap { period in
+            snapshot.household.map { household in
+                ReportRecipe(scope: .month(period), household: household, filter: .all, deviceName: ReportNaming.deviceName(for: layout), builtAt: builtAt)
             }
         }
+        let report = recipe?.build(live: snapshot.live)
         SheetStack {
             MonthFinishedContent(
                 month: month,
@@ -64,7 +58,7 @@ struct MonthFinishedView: View {
             }
         }
         .onChange(of: report, initial: true) { _, report in
-            session.show(report)
+            session.show(report, recipe: recipe)
         }
         .task(id: ReviewStart(model: session.modelID, isWanted: writesReview, enabled: advisorEnabled)) {
             guard writesReview else { return }
