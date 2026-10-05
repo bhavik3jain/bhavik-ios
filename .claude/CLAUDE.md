@@ -496,6 +496,16 @@ answer becomes "I can only answer from this report's figures." plus the nearest 
   be a CloudKit schema change and a write synced to every device twice a day. The merge matches by (season, number),
   never deletes, never touches watched state, and re-derives status only for a completed show that gained episodes
   — re-deriving every show turned one set to Watching by hand, nothing ticked off, into "Haven't started".
+- **Two devices can each add the same new episode** (the iPhone's background refresh and the Mac's, before either
+  synced): two rows in Up Next, and a show that never completed. Three things keep it in hand. A refresh first waits
+  (bounded) for this launch's iCloud import of the SwiftData store (`CloudSyncMonitor.waitForSwiftDataImport` —
+  SwiftData's store is the one the monitor hears from but doesn't track). Ticking an episode ticks every copy
+  (`Show.setWatched(_:_:at:)`, `Episode.toggleWatched`). And `EpisodeFolder` folds copies off the main thread at TV
+  open, after each SwiftData import while TV is open, and in the background refresh, by `EpisodeDuplicates`' rule,
+  which has to be safe with every device folding at once and **nothing synced to tell identical copies apart**
+  (SwiftData never shows CloudKit's record names): a worse copy always goes; identical unwatched ones keep one and
+  mark the show due (two devices may delete both; the refresh adds it back); identical watched ones all stay. Don't
+  "simplify" it to "keep the oldest": `Episode` has no creation date, and a local order differs per device.
 - iOS's `BGAppRefreshTask` (`com.bhavikjain.trackers.tv-refresh`) is registered in `App/Sources/TVEpisodeAlertsLaunch.swift`
   from `BhavikApp.init()` — registration after launch finishes is an exception, and so is an identifier missing from
   `BGTaskSchedulerPermittedIdentifiers` in project.yml (with `fetch` in `UIBackgroundModes`). Its callbacks are

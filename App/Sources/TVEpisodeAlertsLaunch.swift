@@ -1,3 +1,4 @@
+import Core
 import Foundation
 import SwiftData
 import TVTracker
@@ -14,11 +15,14 @@ enum TVEpisodeAlertsLaunch {
     /// From `BhavikApp.init()`, on both the real and the in-memory stores.
     /// Early enough for BGTaskScheduler, which takes registrations only
     /// before the app finishes launching.
+    /// `syncMonitor`: what the background refresh waits on for this
+    /// launch's iCloud import (see `TVEpisodeAlerts.refreshAndReschedule`);
+    /// nil on the in-memory stores, which have none.
     @MainActor
-    static func start(container: ModelContainer, inMemory: Bool) {
+    static func start(container: ModelContainer, inMemory: Bool, syncMonitor: CloudSyncMonitor?) {
         TVEpisodeAlerts.configure(container: container)
         #if os(iOS)
-        TVBackgroundRefresh.register(container: container)
+        TVBackgroundRefresh.register(container: container, syncMonitor: syncMonitor)
         #endif
         if !inMemory {
             // From what's stored, no TMDB: the Mac has no background refresh,
@@ -63,11 +67,11 @@ enum TVBackgroundRefresh {
     @MainActor private static var isRegistered = false
 
     @MainActor
-    static func register(container: ModelContainer) {
+    static func register(container: ModelContainer, syncMonitor: CloudSyncMonitor?) {
         // A second registration of the same identifier is an exception too.
         guard !isRegistered else { return }
         isRegistered = BGTaskScheduler.shared.register(forTaskWithIdentifier: identifier, using: .main) { task in
-            MainActor.assumeIsolated { run(task, container: container) }
+            MainActor.assumeIsolated { run(task, container: container, syncMonitor: syncMonitor) }
         }
         guard isRegistered else { return }
         TVEpisodeAlerts.requestBackgroundRefresh = { submitIfNeeded() }
@@ -96,12 +100,12 @@ enum TVBackgroundRefresh {
     }
 
     @MainActor
-    private static func run(_ task: BGTask, container: ModelContainer) {
+    private static func run(_ task: BGTask, container: ModelContainer, syncMonitor: CloudSyncMonitor?) {
         nonisolated(unsafe) let task = task
         // The next one first, so a run cut short still leaves one queued.
         submitIfNeeded()
         let work = Task { @MainActor in
-            let finished = await TVEpisodeAlerts.backgroundRefresh(container: container)
+            let finished = await TVEpisodeAlerts.backgroundRefresh(container: container, syncMonitor: syncMonitor)
             task.setTaskCompleted(success: finished)
         }
         // iOS ending it early: the refresh stops between requests, keeps what

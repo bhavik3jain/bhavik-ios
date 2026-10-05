@@ -58,7 +58,7 @@ struct ShowDetailView: View {
             if let next = show.nextUnwatched, next.hasAired() {
                 Section {
                     Button {
-                        next.setWatched(true)
+                        show.setWatched(next, true)
                         show.refreshStatus()
                     } label: {
                         Label("Mark \(next.code) watched", systemImage: "checkmark.circle")
@@ -171,7 +171,7 @@ private struct EpisodeRow: View {
     var body: some View {
         HStack(spacing: 10) {
             Button {
-                episode.setWatched(!episode.isWatched)
+                episode.toggleWatched()
                 // Ticking the first episode should stop the show claiming you
                 // haven't started it, and unticking the last should stop it
                 // claiming you finished.

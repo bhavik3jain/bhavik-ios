@@ -47,10 +47,29 @@ public enum TVEpisodeAlerts {
 
     private static var refreshInFlight: Task<TVEpisodeRefresher.Summary, Never>?
 
-    /// Refreshes the shows that are due, then reschedules. With no TMDB key
+    /// How long TV waits for this launch's iCloud import before refreshing
+    /// anyway — when it opens, and in the background, where iOS gives the
+    /// whole task about half a minute.
+    static let importWait: Duration = .seconds(20)
+    static let backgroundImportWait: Duration = .seconds(8)
+
+    /// Waits for this launch's iCloud import, folds duplicate episodes,
+    /// refreshes the shows that are due, then reschedules. With no TMDB key
     /// there's nothing to refresh from, and the reminders come from what's
     /// already stored.
-    public static func refreshAndReschedule(context: ModelContext, asOf now: Date = .now) async {
+    ///
+    /// The wait is what keeps duplicates rare: a refresh run before the
+    /// import added an episode another device had already added and iCloud
+    /// was about to bring. Nothing to wait for without a monitor (tests, and
+    /// screens with none in their environment).
+    public static func refreshAndReschedule(
+        context: ModelContext,
+        syncMonitor: CloudSyncMonitor? = nil,
+        asOf now: Date = .now
+    ) async {
+        if let syncMonitor { _ = await syncMonitor.waitForSwiftDataImport(timeout: importWait) }
+        guard !Task.isCancelled else { return }
+        await foldDuplicates()
         if let apiKey = storedAPIKey {
             _ = await refresh(context: context, apiKey: apiKey, asOf: now)
         }
@@ -58,12 +77,34 @@ public enum TVEpisodeAlerts {
         await reschedule(context: context, asOf: now)
     }
 
+    private static var foldInFlight: Task<Void, Never>?
+
+    /// Folds every show's duplicate episodes (`EpisodeFolder`), off the main
+    /// thread. Never at once with a refresh: one could read a copy the other
+    /// is deleting. A second caller waits for the run under way.
+    public static func foldDuplicates() async {
+        if let running = foldInFlight { return await running.value }
+        guard let container else { return }
+        let task = Task { @MainActor in
+            _ = await refreshInFlight?.value
+            let outcome = await EpisodeFolder(modelContainer: container).fold()
+            let ledger = TVRefreshLedger()
+            for tmdbID in outcome.dueAgain { ledger.markDue(tmdbID) }
+        }
+        foldInFlight = task
+        await task.value
+        foldInFlight = nil
+    }
+
     /// iOS's background app refresh: the due shows on a fresh context of the
     /// app's container, then a reschedule. Nothing when alerts are off — the
     /// refresh runs in the background only for them. Returns whether it got
     /// through everything, for `BGTask.setTaskCompleted(success:)`.
-    public static func backgroundRefresh(container: ModelContainer) async -> Bool {
+    public static func backgroundRefresh(container: ModelContainer, syncMonitor: CloudSyncMonitor? = nil) async -> Bool {
         guard wantsBackgroundRefresh else { return true }
+        if let syncMonitor { _ = await syncMonitor.waitForSwiftDataImport(timeout: backgroundImportWait) }
+        guard !Task.isCancelled else { return false }
+        await foldDuplicates()
         let context = ModelContext(container)
         var finished = true
         if let apiKey = storedAPIKey {
@@ -89,6 +130,9 @@ public enum TVEpisodeAlerts {
         force: Bool = false,
         asOf now: Date
     ) async -> TVEpisodeRefresher.Summary {
+        if let running = refreshInFlight { return await running.value }
+        // Never at once with a fold; see `foldDuplicates`.
+        await foldInFlight?.value
         if let running = refreshInFlight { return await running.value }
         let refresher = TVEpisodeRefresher(source: TMDBClient(apiKey: apiKey))
         let task = Task { @MainActor in

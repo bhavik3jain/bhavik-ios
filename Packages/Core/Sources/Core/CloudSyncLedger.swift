@@ -150,6 +150,13 @@ public struct CloudSyncLedger: Sendable, Equatable {
         inFlight.values.filter { scope.contains($0.storeIdentifier) }.map(\.startDate).min()
     }
 
+    /// Whether an import in `scope` finished, well or not, after `date`.
+    public func importEnded(after date: Date, in scope: Set<String>) -> Bool {
+        scope.contains { identifier in
+            stores[identifier]?.lastImportEndedAt.map { $0 > date } ?? false
+        }
+    }
+
     /// Whether an export in `scope` finished, well or not, after `date`.
     public func exportEnded(after date: Date, in scope: Set<String>) -> Bool {
         scope.contains { identifier in

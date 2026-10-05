@@ -8,6 +8,7 @@ struct ScheduleView: View {
     // `Schedule`.
     @Query(filter: Schedule.unwatched) private var episodes: [Episode]
     @Environment(\.modelContext) private var modelContext
+    @Environment(CloudSyncMonitor.self) private var syncMonitor: CloudSyncMonitor?
     @ObservedObject private var alerts = EpisodeAlertStore.shared
 
     private var ready: [ScheduledEpisode] { Schedule.readyToWatch(episodes: episodes) }
@@ -57,7 +58,7 @@ struct ScheduleView: View {
             }
             // Newly announced episodes and moved air dates from TMDB, for the
             // shows due a look (`TVEpisodeRefresher`), then the alerts.
-            .refreshable { await TVEpisodeAlerts.refreshAndReschedule(context: modelContext) }
+            .refreshable { await TVEpisodeAlerts.refreshAndReschedule(context: modelContext, syncMonitor: syncMonitor) }
             .navigationTitle("Up Next")
         }
     }

@@ -13,11 +13,17 @@ struct EpisodeAlertsRoot: ViewModifier {
     /// The tab bar's selection on the phone, the sidebar's on the Mac.
     @Binding var section: String
     @Environment(\.modelContext) private var modelContext
+    @Environment(CloudSyncMonitor.self) private var syncMonitor: CloudSyncMonitor?
     @ObservedObject private var router = SharedChangeNotificationRouter.shared
 
     func body(content: Content) -> some View {
         content
-            .task { await TVEpisodeAlerts.refreshAndReschedule(context: modelContext) }
+            .task { await TVEpisodeAlerts.refreshAndReschedule(context: modelContext, syncMonitor: syncMonitor) }
+            // Another device's copy of an episode this one added arrives with
+            // an import; folded as it lands, not at the next launch.
+            .onChange(of: syncMonitor?.lastSwiftDataImportAt) { _, _ in
+                Task { await TVEpisodeAlerts.foldDuplicates() }
+            }
             // Every place an episode is ticked off or a status picked saves
             // through SwiftData, so one listener covers them all — the show
             // screen, an episode's own screen, a season's button, a show

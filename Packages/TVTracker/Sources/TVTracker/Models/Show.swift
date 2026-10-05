@@ -90,6 +90,18 @@ public final class Show {
         refreshStatus()
     }
 
+    /// Ticks `episode` off, or back on — and every copy of it, the same
+    /// (season, number), that two devices' refreshes each added before they
+    /// synced. Ticking one copy left the other unwatched, so the show never
+    /// completed and Up Next kept offering it.
+    public func setWatched(_ episode: Episode, _ watched: Bool, at date: Date = .now) {
+        let season = episode.seasonNumber, number = episode.episodeNumber
+        let copies = (episodes ?? []).filter { $0.seasonNumber == season && $0.episodeNumber == number }
+        for copy in copies.isEmpty ? [episode] : copies where copy.isWatched != watched {
+            copy.setWatched(watched, at: date)
+        }
+    }
+
     /// Whether every aired episode of `season` is watched — what decides
     /// between offering "Mark Season Watched" and "Mark Season Unwatched".
     /// False for a season with nothing aired yet.

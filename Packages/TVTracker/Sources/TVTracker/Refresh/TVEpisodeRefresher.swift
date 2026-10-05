@@ -35,6 +35,14 @@ struct TVRefreshLedger {
         return now.timeIntervalSince(last) >= Self.interval || last > now
     }
 
+    /// Due at the next refresh, whenever it last was: the fold may have left
+    /// a show missing an episode that's in TMDB (see `EpisodeDuplicates`).
+    func markDue(_ tmdbID: Int) {
+        var stamps = stamps
+        guard stamps.removeValue(forKey: String(tmdbID)) != nil else { return }
+        defaults.set(stamps, forKey: Self.defaultsKey)
+    }
+
     func markRefreshed(_ tmdbID: Int, at date: Date) {
         var stamps = stamps
         stamps[String(tmdbID)] = date.timeIntervalSince1970
@@ -69,9 +77,10 @@ struct TVRefreshLedger {
 ///
 /// Two devices refreshing the same show before either's additions have
 /// synced each add the same new episode. The merge keeps such copies in step
-/// and never adds another, but can't fold them: no synced property tells two
-/// copies apart, so two devices tidying at once could each delete the copy
-/// the other kept. The twelve-hour ledger keeps that window small.
+/// and never adds another; `TVEpisodeAlerts` waits for this launch's iCloud
+/// import before refreshing, so there are fewer of them, and `EpisodeFolder`
+/// folds the ones there are, by a rule that's safe with no synced property to
+/// tell two identical copies apart (`EpisodeDuplicates`).
 @MainActor
 struct TVEpisodeRefresher {
     struct Summary: Equatable {
