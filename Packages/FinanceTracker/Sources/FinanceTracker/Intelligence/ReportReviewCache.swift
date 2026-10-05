@@ -56,6 +56,12 @@ public struct ReportReviewCache: Sendable, Equatable {
         /// with these the review is told apart from one about other figures
         /// (`ReportReviewModel`, `ReportReviewRenewal`).
         public var livePrices: MetalPrices?
+        /// When the run that wrote it began; nil for one kept before this
+        /// was (`save`'s guard then goes by `savedAt`). Which of two runs is
+        /// about the newer figures is the one that *started* later — judged by
+        /// when the other was saved, the run for edited figures was dropped
+        /// whenever the run for the old ones finished first.
+        public var startedAt: Date?
 
         /// The model's words as it wrote them, against `brief` — the brief
         /// whose fingerprint this entry holds.
@@ -129,12 +135,14 @@ public struct ReportReviewCache: Sendable, Equatable {
     /// - Parameters:
     ///   - livePrices: the live prices the report was valued at, if it was
     ///     (`Entry.livePrices`).
-    ///   - startedAt: when the run that wrote it began. A review saved for
-    ///     the same scope and owner since then is newer and stays: a run that
-    ///     went on writing about figures already replaced (its "Write Again"
-    ///     isn't cancelled when its sheet closes) finished after the run for
-    ///     the new figures, and filed the old figures' review over theirs —
-    ///     the next open then missed and wrote it all again.
+    ///   - startedAt: when the run that wrote it began. A review kept for the
+    ///     same scope and owner by a run that started after this one is newer
+    ///     and stays: a run that went on writing about figures already
+    ///     replaced (its "Write Again" isn't cancelled when its sheet closes)
+    ///     finished after the run for the new figures, and filed the old
+    ///     figures' review over theirs — the next open then missed and wrote
+    ///     it all again. Compared by start, not by when the other was saved:
+    ///     the old run usually finishes *first*, and the new one was dropped.
     public func save(
         _ review: ReportReview,
         for brief: ReportBrief,
@@ -148,7 +156,7 @@ public struct ReportReviewCache: Sendable, Equatable {
         if let startedAt,
            let data = try? Data(contentsOf: url),
            let existing = try? JSONDecoder().decode(Entry.self, from: data),
-           existing.savedAt > startedAt {
+           (existing.startedAt ?? existing.savedAt) > startedAt {
             return
         }
         let entry = Entry(
@@ -159,7 +167,8 @@ public struct ReportReviewCache: Sendable, Equatable {
                 brief.fact(findingID: item.findingID).map { Entry.Note(fact: $0.number, message: item.text) }
             },
             savedAt: now,
-            livePrices: livePrices
+            livePrices: livePrices,
+            startedAt: startedAt
         )
         do {
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)

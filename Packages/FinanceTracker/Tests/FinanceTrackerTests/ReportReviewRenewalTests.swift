@@ -228,6 +228,37 @@ private func basis(_ fingerprint: String, _ scope: ReportScope = september, owne
     #expect(cache.entry(for: brief)?.savedAt == nine.addingTimeInterval(90))
 }
 
+// The other order: a Write Again run (not cancelled with its sheet) about
+// figures since edited finishes first, and the run for the edited figures,
+// started after it, finishes later. Judged by when the old one was saved,
+// the new one was dropped and the old figures' review kept in its place.
+@Test func aLaterRunReplacesAnEarlierOneThatFinishedFirst() throws {
+    let cache = scratchCache()
+    defer { try? FileManager.default.removeItem(at: cache.directory) }
+    let old = writtenReview(september)
+    let edited = writtenReview(september, owner: "Everyone")
+    let editedBrief = ReportBrief(
+        scope: september,
+        ownerLabel: "Everyone",
+        header: edited.brief.header + " Edited.",
+        figures: [],
+        facts: edited.brief.facts,
+        nextName: "October"
+    )
+    #expect(editedBrief.fingerprint != old.brief.fingerprint)
+    let nine = Date(timeIntervalSince1970: 1_790_000_000)
+
+    // Old run: 9:00 to 9:02. New run: 9:01 to 9:03.
+    cache.save(old.review, for: old.brief, startedAt: nine, asOf: nine.addingTimeInterval(120))
+    cache.save(edited.review, for: editedBrief, startedAt: nine.addingTimeInterval(60), asOf: nine.addingTimeInterval(180))
+    #expect(cache.entry(for: editedBrief) != nil, "The review of the figures as they are now is kept")
+    #expect(cache.entry(for: old.brief) == nil)
+
+    // And the guard still holds the other way round.
+    cache.save(old.review, for: old.brief, startedAt: nine, asOf: nine.addingTimeInterval(240))
+    #expect(cache.entry(for: editedBrief) != nil, "An earlier run finishing last doesn't file over it")
+}
+
 @Test func aReviewKeepsThePricesItWasWrittenAt() throws {
     let cache = scratchCache()
     defer { try? FileManager.default.removeItem(at: cache.directory) }
