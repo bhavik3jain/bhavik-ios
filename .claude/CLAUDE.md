@@ -433,6 +433,16 @@ answer becomes "I can only answer from this report's figures." plus the nearest 
   alert them. Notes are keyed by **fact number, not finding id**, because some finding ids carry a Core
   Data object URI that changes when a temporary id becomes permanent; keyed by id, a cached review lost
   its notes the moment the month entry saved.
+- **Whether a rebuilt report keeps its review is `ReportReviewRenewal.decide`'s call**, for both
+  `ReportSession.show` and the Summary's `keepsReportReview`: same fingerprint keeps the model, only the
+  live gold/silver prices moved (the report rebuilt at the old prices — `ReportRecipe` — tells the same
+  facts) carries the words over, anything else is a new model. A kept model is always handed the new
+  report (`update(_:repricing:)`) — the keeper once kept a model whose figures were stale. Don't key a
+  review on the fingerprint alone: an open month is valued at every fetch's prices, and each one wrote
+  the review again. The cache entry records the live prices it was written at for the same reason
+  across launches. Screens get models from `ReportReviewModel.shared(for:)` (weakly held, one per scope,
+  owner and fingerprint), so the Summary card, the report and Months' **Write Review Again**
+  (`writeReviewsAgain(of:)`, which also forgets the scope's cache files for every owner) see one review.
 - **The in-app browser is Core's `HTMLDocumentView`, a `WKWebView` wrapper — not iOS 26's SwiftUI
   `WebView`**, because the app targets iOS 18 / macOS 15. It loads the string with no base URL into a
   non-persistent store and cancels every navigation but the first load and `#anchors`; http(s)/mailto
