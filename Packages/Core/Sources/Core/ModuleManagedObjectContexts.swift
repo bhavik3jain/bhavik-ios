@@ -46,4 +46,11 @@ public extension EnvironmentValues {
     /// Finance's own views read `\.managedObjectContext`, re-scoped by
     /// `FinanceTrackerModule.rootView(context:container:)`.
     @Entry var financeManagedObjectContext: NSManagedObjectContext?
+
+    /// TV's watch-list store — the one Core Data store in an otherwise
+    /// SwiftData module, since a list is the one thing in TV two people keep
+    /// together. For the app shell's own use; TV's list views read
+    /// `\.managedObjectContext`, re-scoped by
+    /// `TVTrackerModule.rootView(context:container:section:)`.
+    @Entry var tvListManagedObjectContext: NSManagedObjectContext?
 }

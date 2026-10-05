@@ -61,6 +61,12 @@ struct BhavikApp: App {
     /// `\.financeManagedObjectContext` key, the same reason `pointsContainer`
     /// needed one.
     let financeContainer: NSPersistentCloudKitContainer
+    /// TV's watch lists — a Core Data store beside TV's SwiftData library,
+    /// since SwiftData can't share and a list is something two people keep
+    /// together (see `TVListModel`). Threaded to `HomeView` via its own
+    /// `\.tvListManagedObjectContext` key, the same reason `pointsContainer`
+    /// needed one.
+    let tvListContainer: NSPersistentCloudKitContainer
     /// Every store's CloudKit mirroring, and the "refresh from iCloud" that
     /// pull-to-refresh, Settings and the Mac's ⌘R all go through. Built before
     /// any container so it hears each store's launch import. See
@@ -127,6 +133,12 @@ struct BhavikApp: App {
                 financeContainer = CloudSharedStore.makeContainer(
                     name: "FinanceStore",
                     model: FinanceModel.make(),
+                    containerID: Self.cloudContainerID,
+                    inMemory: true
+                )
+                tvListContainer = CloudSharedStore.makeContainer(
+                    name: "TVListStore",
+                    model: TVListModel.make(),
                     containerID: Self.cloudContainerID,
                     inMemory: true
                 )
@@ -244,7 +256,17 @@ struct BhavikApp: App {
             // FinanceModel.swift).
             ShareAcceptRouter.shared.register(recordTypePrefix: "CD_SharedFinanceHousehold", container: financeContainer)
 
-            for container in [tripContainer, fuelContainer, exploreContainer, pointsContainer, financeContainer] {
+            tvListContainer = CloudSharedStore.makeContainer(
+                name: "TVListStore",
+                model: TVListModel.make(),
+                containerID: Self.cloudContainerID
+            )
+            // "CD_SharedWatchList" — same "CD_" + entity name convention, for
+            // TV's CKShare root (one list, so every title on it shares with it
+            // — see TVListModel.swift).
+            ShareAcceptRouter.shared.register(recordTypePrefix: "CD_SharedWatchList", container: tvListContainer)
+
+            for container in [tripContainer, fuelContainer, exploreContainer, pointsContainer, financeContainer, tvListContainer] {
                 syncMonitor.track(container)
             }
             #if DEBUG
@@ -258,7 +280,8 @@ struct BhavikApp: App {
                 fuel: fuelContainer,
                 explore: exploreContainer,
                 points: pointsContainer,
-                finance: financeContainer
+                finance: financeContainer,
+                tvLists: tvListContainer
             )
             // TV's new-episode alerts, and on iOS their background refresh,
             // which must be registered before launch finishes.
@@ -283,7 +306,8 @@ struct BhavikApp: App {
         fuel: NSPersistentCloudKitContainer,
         explore: NSPersistentCloudKitContainer,
         points: NSPersistentCloudKitContainer,
-        finance: NSPersistentCloudKitContainer
+        finance: NSPersistentCloudKitContainer,
+        tvLists: NSPersistentCloudKitContainer
     ) {
         SharedChangeNotifications.install()
         let notifiers: [(NSPersistentCloudKitContainer, SelectedModule, String, SharedChangeDescriber)] = [
@@ -292,6 +316,7 @@ struct BhavikApp: App {
             (explore, .explore, "SharedGuide", ExploreTrackerModule.describeSharedChange),
             (points, .points, "SharedPointsHousehold", PointsTrackerModule.describeSharedChange),
             (finance, .finance, "SharedFinanceHousehold", FinanceTrackerModule.describeSharedChange),
+            (tvLists, .tv, "SharedWatchList", TVTrackerModule.describeSharedChange),
         ]
         for (container, module, _, describe) in notifiers {
             SharedChangeNotifier.start(
@@ -486,6 +511,9 @@ private extension Scene {
             // The container itself (not just its context) — Finance's Share
             // button and its sharing-status badges need it, same as Points' above.
             .environment(\.financePersistentContainer, app.financeContainer)
+            // TV's watch lists — same reasoning as Points' two keys above.
+            .environment(\.tvListManagedObjectContext, app.tvListContainer.viewContext)
+            .environment(\.tvListPersistentContainer, app.tvListContainer)
             .environment(app.syncMonitor)
     }
 }

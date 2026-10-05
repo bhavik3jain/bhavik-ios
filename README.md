@@ -8,7 +8,7 @@ through TestFlight; also builds for the Mac.
 | Trips | Plan a trip day by day — itinerary, flights, bookings and door codes — with a map, the forecast, and a PDF itinerary to share; undecided ideas wait off the calendar, ranked by how far they are from you or a day's plan; Review Plan flags overlaps, tight walks, busy days and rain on outdoor plans with one-tap fixes, and on Apple Intelligence devices writes a short review and suggests real nearby places, on the device |
 | Explore | Keep guides of places to eat, see and do in an area, mark them tried and rated, and see how far away they are |
 | Gym | Log workouts as weight × reps, save routines, track per-exercise progress |
-| TV | Track shows, episodes and films, with a catch-up backlog and an upcoming-episode schedule |
+| TV | Track shows, episodes and films, with a catch-up backlog and an upcoming-episode schedule, and keep watch lists with someone — share a list and either of you can add to it, tick things off as watched together, or copy a title into your own library |
 | Fuel | Log fill-ups per vehicle, track MPG and cost, import a Fuelly CSV export |
 | Orders | Track FedEx, UPS and USPS deliveries, with an in-app browser for the ones that can't be read automatically |
 | Points | Track credit card, hotel and airline points for everyone in the household, with balance history, expiry warnings, and sharing with a partner |
@@ -53,7 +53,7 @@ Packages/
   TripTracker/    Trips, itinerary, flights, bookings, day plan, forecast, PDF itinerary
   ExploreTracker/ Guides, places, category guessing, map with walking distance
   GymTracker/     Workouts, routines, exercise library
-  TVTracker/      Shows, episodes, films, schedule, TMDB lookup, library import
+  TVTracker/      Shows, episodes, films, schedule, TMDB lookup, library import, shared watch lists
   FuelTracker/    Vehicles, fill-ups, MPG, Fuelly import
   ParcelTracker/  Parcels, carriers, tracking-number detection
   PointsTracker/  Household, people, loyalty accounts, balance history, expiry warnings
@@ -113,6 +113,10 @@ root is the household, so sharing it shares everyone in it — people, accounts 
 Once you accept a partner's share, new people and accounts you add go into that shared household.
 Finance works the same way: its household (`SharedFinanceHousehold`) is the share root, and sharing it
 shares every owner, account, month, metal item and transaction in it.
+TV is half and half: its library (shows, episodes, films) stays in SwiftData and is never shared, but
+its watch lists live in a Core Data store of their own (`TVListModel`, `TVListStore`) whose share root
+is one list (`SharedWatchList`), so sharing a list shares every title on it and lets the other person
+add theirs. Someone a list was shared with *leaves* it rather than deleting it — the owner's list stays.
 The schema ritual below covers these models too.
 
 **Sharing.** Share first finds or makes the share in the app's own sheet — what it's doing, a Cancel
@@ -134,8 +138,8 @@ negative `dayIndex` to Day 1 whenever they save a trip (any edit to its title, n
 CloudKit then syncs that to everyone on the trip. They also show ideas as ordinary stops. Before
 anyone adds ideas to a shared trip, make sure every device on it has updated its TestFlight build.
 
-**Notifications about shared changes.** When someone you share a trip, vehicle, guide or household
-with changes it, the app posts a local notification ("Saloni added Gelato at Giolitti to Day 3"),
+**Notifications about shared changes.** When someone you share a trip, vehicle, guide, household or
+watch list with changes it, the app posts a local notification ("Saloni added Gelato at Giolitti to Day 3"),
 one per shared item per burst of edits; tapping it opens that tracker. Core's `SharedChangeNotifier`
 reads each Core Data container's persistent history after every remote change, keeps only what the
 CloudKit mirroring delegate imported (this device's own saves carry the `app` transaction author),
@@ -319,6 +323,7 @@ All debug-only, and inert unless passed (Product → Scheme → Edit Scheme → 
 | `-TripSeed YES` | Adds four trips, one under way today with six ideas for Nearby (does nothing if any trip exists) |
 | `-ExploreSeed YES` | Adds three guides with real places (does nothing if any guide exists) |
 | `-PointsSeed YES` | Adds a sample household with people and points accounts (does nothing if any account exists) |
+| `-TVListSeed YES` | Adds two watch lists, one holding the same show twice so opening it shows the fold (does nothing if any list exists) |
 | `-FinanceSeed YES` | Adds a sample household with accounts, cards, metals, budgets and twelve months — eleven finished with spending, the current one open — set up to trip most of the report's findings (does nothing if any household has data) |
 | `-FinanceAdvisorStub YES` | A made-up month reviewer in place of Apple Intelligence, for Finance's review and Ask on a simulator |
 | `-FinanceAdvisorProbe YES` | Seeds an in-memory household and prints Finance's month check, the brief the model sees, a streamed review from the real on-device model, Ask answers and the year in review, and writes both HTML reports to Caches; add `-FinanceAdvisorProbeQuit YES` to quit after |
