@@ -282,7 +282,8 @@ private func addShow(
     #expect(!second.stoppedEarly, "One show failing doesn't stop the others")
     #expect(second.failures == ["Show 1"])
     #expect(second.refreshedShows == 3)
-    #expect(ledger.isDue(1, asOf: now), "A failed show is tried again next run")
+    #expect(!ledger.isDue(1, asOf: now.addingTimeInterval(30 * 60)))
+    #expect(ledger.isDue(1, asOf: now.addingTimeInterval(TVRefreshLedger.retryDelay)), "A failed show is tried again an hour on, not twelve")
 
     let offline = FakeSource()
     for id in 1...4 { offline.failing[id] = .network("offline") }
@@ -290,4 +291,25 @@ private func addShow(
         .refresh(context: context, asOf: now)
     #expect(third.stoppedEarly)
     #expect(offline.requests.count == TVEpisodeRefresher.failureLimit)
+}
+
+/// Two shows TMDB always fails on — ids it has since removed — used to lead
+/// every run as never refreshed, and end it before anything else was tried.
+@MainActor
+@Test func showsThatAlwaysFailDontHoldUpTheRest() async throws {
+    let context = try makeContext()
+    for id in 1...4 { _ = addShow(context, "Show \(id)", tmdbID: id, status: .watching) }
+    try context.save()
+
+    let source = FakeSource()
+    source.failing[1] = .network("TMDB returned status 404.")
+    source.failing[2] = .network("TMDB returned status 404.")
+    let refresher = TVEpisodeRefresher(source: source, ledger: TVRefreshLedger(defaults: scratchDefaults()))
+    let first = await refresher.refresh(context: context, asOf: now)
+    #expect(first.stoppedEarly, "Two failures in a row")
+    #expect(first.refreshedShows == 0)
+
+    let later = await refresher.refresh(context: context, asOf: now.addingTimeInterval(2 * 3_600))
+    #expect(source.requests.suffix(4) == ["3", "4", "1", "2"], "The two that failed go to the back")
+    #expect(later.refreshedShows == 2)
 }

@@ -83,6 +83,23 @@ private func plan(_ shows: [EpisodeAlertPlanner.ShowInput], _ preferences: Episo
     #expect(alerts.last?.body == "S03E04 is out today.")
 }
 
+/// Two devices that each added the same new episode (see
+/// `TVEpisodeRefresher`): announced once, and not at all once either copy
+/// is ticked off.
+@Test func twoCopiesOfAnEpisodeAlertOnce() throws {
+    let alerts = plan([show("The Bear", tmdbID: 136315, [
+        episode(3, 1, airs: "2026-10-07"),
+        episode(3, 1, airs: "2026-10-07"),
+        episode(3, 2, airs: "2026-10-07"),
+        episode(3, 3, airs: "2026-10-14", watched: true),
+        episode(3, 3, airs: "2026-10-14"),
+    ])])
+    #expect(alerts.count == 1)
+    let alert = try #require(alerts.first)
+    #expect(alert.body == "2 new episodes of The Bear are out today: S03E01–E02.")
+    #expect(alert.episodeCodes == ["S03E01", "S03E02"])
+}
+
 @Test func episodesOutOfSequenceAreEachNamed() {
     let codes = EpisodeAlertPlanner.codes([episode(1, 9, airs: nil), episode(2, 1, airs: nil)])
     #expect(codes == "S01E09, S02E01")

@@ -85,10 +85,19 @@ public enum EpisodeAlertPlanner {
             guard !preferences.mutedShows.contains(key) else { continue }
 
             var byDay: [DayKey: (day: DateComponents, fire: DateComponents, date: Date, episodes: [EpisodeInput])] = [:]
+            // Two devices that each refreshed the show before the other's
+            // additions synced both add the same new episode
+            // (`TVEpisodeRefresher`). Counted once, its alert read "2 new
+            // episodes … are out today: S03E01, S03E01"; and once either
+            // copy is ticked off, the other mustn't still announce it.
+            let watched = Set(show.episodes.filter(\.isWatched).map(EpisodeNumber.init))
+            var planned: Set<EpisodeNumber> = []
             // Specials are left out, as they are from a show's progress:
             // TMDB files trailers and recaps under season 0.
             for episode in show.episodes where !episode.isWatched && episode.season > 0 {
                 guard let airDate = episode.airDate else { continue }
+                let number = EpisodeNumber(episode)
+                guard !watched.contains(number), !planned.contains(number) else { continue }
                 let day = airDay(of: airDate, calendar: calendar)
                 guard let dayStart = calendar.date(from: day), dayStart < horizon else { continue }
                 var fire = day
@@ -97,6 +106,7 @@ public enum EpisodeAlertPlanner {
                 // Past times are skipped: an episode out today is only
                 // announced if the chosen time hasn't gone by yet.
                 guard let fireDate = calendar.date(from: fire), fireDate > now else { continue }
+                planned.insert(number)
                 let dayKey = DayKey(day)
                 byDay[dayKey, default: (day, fire, fireDate, [])].episodes.append(episode)
             }
@@ -161,6 +171,17 @@ public enum EpisodeAlertPlanner {
         return DateComponents(year: parts.year, month: parts.month, day: parts.day)
     }
 
+    /// An episode's place in its show, which every copy of it shares.
+    private struct EpisodeNumber: Hashable {
+        let season: Int
+        let number: Int
+
+        init(_ episode: EpisodeInput) {
+            season = episode.season
+            number = episode.number
+        }
+    }
+
     private struct DayKey: Hashable {
         let year: Int
         let month: Int
@@ -180,20 +201,22 @@ public enum EpisodeAlertPlanner {
 }
 
 extension EpisodeAlertPlanner.ShowInput {
-    /// What the planner needs of a show: its unwatched, numbered episodes
-    /// with an air date between `start` and `end` — the rest can't alert,
-    /// and every property read is a lookup in SwiftData's backing store.
+    /// What the planner needs of a show: its numbered episodes with an air
+    /// date between `start` and `end` — the rest can't alert, and every
+    /// property read is a lookup in SwiftData's backing store. Watched ones
+    /// too, so the planner can tell a copy of one that was ticked off.
     @MainActor
     init(_ show: Show, airingFrom start: Date, to end: Date) {
         var episodes: [EpisodeAlertPlanner.EpisodeInput] = []
         for episode in show.episodes ?? [] {
             guard let airDate = episode.airDate, airDate >= start, airDate <= end,
-                  !episode.isWatched, episode.seasonNumber > 0 else { continue }
+                  episode.seasonNumber > 0 else { continue }
             episodes.append(.init(
                 season: episode.seasonNumber,
                 number: episode.episodeNumber,
                 name: episode.name,
-                airDate: airDate
+                airDate: airDate,
+                isWatched: episode.isWatched
             ))
         }
         self.init(tmdbID: show.tmdbID, name: show.name, status: show.status, episodes: episodes)

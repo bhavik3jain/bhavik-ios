@@ -20,6 +20,8 @@ struct TVRefreshLedger {
     static let defaultsKey = "tv.episodeRefresh.lastRefreshed"
     /// At most one refresh per show in this long.
     static let interval: TimeInterval = 12 * 60 * 60
+    /// A show whose lookup failed is tried again after this.
+    static let retryDelay: TimeInterval = 60 * 60
 
     var defaults: UserDefaults = .standard
 
@@ -37,6 +39,16 @@ struct TVRefreshLedger {
         var stamps = stamps
         stamps[String(tmdbID)] = date.timeIntervalSince1970
         defaults.set(stamps, forKey: Self.defaultsKey)
+    }
+
+    /// A failed lookup: due again after `retryDelay`, and behind the shows
+    /// that have waited longer. Left unrecorded, a show TMDB always fails on
+    /// (an id it has since removed) still counted as never refreshed, so it
+    /// led every run; two of them were the two failures in a row that end a
+    /// run (`TVEpisodeRefresher.failureLimit`), and no other show was ever
+    /// refreshed again.
+    func markFailed(_ tmdbID: Int, at date: Date) {
+        markRefreshed(tmdbID, at: date.addingTimeInterval(Self.retryDelay - Self.interval))
     }
 
     private var stamps: [String: Double] {
@@ -68,7 +80,8 @@ struct TVEpisodeRefresher {
         var refreshedShows = 0
         var insertedEpisodes = 0
         var updatedEpisodes = 0
-        /// Shows that failed; retried on the next run, not twelve hours on.
+        /// Shows that failed; retried an hour on (`TVRefreshLedger.retryDelay`),
+        /// not twelve.
         var failures: [String] = []
         /// Cancelled, or TMDB refused the key or the rate: the rest wait.
         var stoppedEarly = false
@@ -122,7 +135,9 @@ struct TVEpisodeRefresher {
             } catch {
                 summary.failures.append(show.name)
                 failuresInARow += 1
-                // A cancelled request arrives as a network error too.
+                // A cancelled request arrives as a network error too, and
+                // says nothing about the show.
+                if !Task.isCancelled { ledger.markFailed(show.tmdbID, at: now) }
                 if Task.isCancelled || failuresInARow >= Self.failureLimit {
                     summary.stoppedEarly = true
                     break
