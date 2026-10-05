@@ -33,6 +33,10 @@ struct ReportInputs: Hashable {
             for balance in month.balances ?? [] {
                 hasher.combine(balance.account?.objectID)
                 hasher.combine(balance.amount)
+                // A balance confirmed at last month's figure changes no
+                // amount, but it's no longer stale or "not filled in yet" —
+                // and the card kept saying it was.
+                hasher.combine(balance.edited)
             }
             for budget in month.budgets ?? [] {
                 hasher.combine(budget.category)
@@ -43,6 +47,8 @@ struct ReportInputs: Hashable {
             hasher.combine(transaction.date)
             hasher.combine(transaction.actualCost)
             hasher.combine(transaction.category)
+            // Read with the category to tell a subscription.
+            hasher.combine(transaction.expense)
             hasher.combine(transaction.merchant)
             hasher.combine(transaction.card?.objectID)
         }
@@ -51,14 +57,19 @@ struct ReportInputs: Hashable {
             hasher.combine(account.institution)
             hasher.combine(account.categoryRaw)
             hasher.combine(account.limit)
+            hasher.combine(account.annualFee)
+            hasher.combine(account.isArchived)
             hasher.combine(account.owner?.objectID)
         }
         for metal in snapshot.metals {
             hasher.combine(metal.name)
+            hasher.combine(metal.metalRaw)
             hasher.combine(metal.grams)
             hasher.combine(metal.location)
             hasher.combine(metal.manualValue)
             hasher.combine(metal.hasManualValue)
+            // What it cost: "no cost recorded" is a finding of its own.
+            hasher.combine(metal.pricePaidPerOz)
             hasher.combine(metal.purchaseValue)
             hasher.combine(metal.owner?.objectID)
         }
@@ -74,10 +85,11 @@ struct ReportInputs: Hashable {
 
 extension View {
     /// Keeps `model` on the report for `scope` and `filter`, and its review
-    /// started: rebuilt when the figures, whose they are, or the advisor's
-    /// availability change; kept — so a finished review isn't written again —
-    /// when the check found the same things. Cancelling (the view going away)
-    /// stops the model mid-review.
+    /// started: a model for the new figures when the facts the review was
+    /// written from, or whose they are, change; the same one — so a finished
+    /// review isn't written again — when they don't, or only today's gold and
+    /// silver prices moved (`ReportReviewRenewal`), handed the new report
+    /// either way. Cancelling (the view going away) stops the model mid-review.
     func keepsReportReview(
         _ model: Binding<ReportReviewModel?>,
         scope: ReportScope?,
@@ -100,23 +112,33 @@ private struct ReportReviewKeeper: ViewModifier {
     func body(content: Content) -> some View {
         let availability = advisor.availability(isEnabled: isEnabled)
         content.task(id: ReportInputs(scope: scope, filter: filter, snapshot: snapshot, availability: availability)) {
-            guard let scope, let household = snapshot.household,
-                  let data = FinanceReportData.build(scope: scope, household: household, filter: filter, live: snapshot.live, deviceName: "")
-            else {
+            guard let scope, let household = snapshot.household else {
                 model = nil
                 return
             }
-            // `data` itself never compares equal twice — its header carries
-            // when it was built — so the findings decide whether anything the
-            // review says has changed.
+            let recipe = ReportRecipe(scope: scope, household: household, filter: filter, deviceName: "", builtAt: .now)
+            guard let data = recipe.build(live: snapshot.live) else {
+                model = nil
+                return
+            }
+            // The brief's fingerprint decides, not `data` — never equal twice,
+            // its header carries when it was built — nor the findings, which
+            // kept the model, and the figures it held, through any change that
+            // left them alone: Ask then answered from figures already changed.
+            // A switch moved since the model started is `start`'s to see.
+            let renewal = ReportReviewRenewal.decide(
+                current: model?.basis,
+                next: ReportReviewBasis(data: data, brief: ReportBrief(data: data)),
+                fingerprintAtPrices: { prices in recipe.brief(at: prices)?.fingerprint }
+            )
             let current: ReportReviewModel
-            if let model, model.scope == data.scope, model.data.findings == data.findings,
-               model.state == .idle || model.availability == availability {
+            if renewal != .replace, let model {
                 current = model
             } else {
-                current = ReportReviewModel(data: data)
+                current = ReportReviewModel.shared(for: data)
                 model = current
             }
+            current.update(data, repricing: recipe.repricing)
             await current.start(advisor: advisor, enabled: isEnabled)
         }
     }
@@ -378,6 +400,8 @@ private struct ReviewSheetContent: View {
                     }
                     if display.isWriting {
                         ReviewWritingLabel(factCount: model.factCount)
+                    } else {
+                        ReviewWrittenLabel(model: model)
                     }
                 }
                 .listRowBackground(Color.clear)
@@ -609,6 +633,8 @@ private struct ReviewPanelContent: View {
                 }
                 if display.isWriting {
                     ReviewWritingLabel(factCount: model.factCount)
+                } else {
+                    ReviewWrittenLabel(model: model)
                 }
 
                 ForEach(display.groups, id: \.self) { group in

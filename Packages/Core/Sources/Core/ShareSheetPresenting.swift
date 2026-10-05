@@ -48,10 +48,10 @@ public extension EnvironmentValues {
 /// equal to any other, so re-setting it never invalidates its readers.
 ///
 /// Always-equal is safe because a host never changes what its action means
-/// over its lifetime. On iOS it calls a static presenter; on macOS it writes
-/// the host's own `@State`, whose storage belongs to the host's identity, not
-/// to the closure value. A reader sits under exactly one host, and a new host
-/// brings new readers with it.
+/// over its lifetime. On both platforms it writes the host's own `@State` —
+/// the `SharePreparer` on iOS, the sheet's request on macOS — whose storage
+/// belongs to the host's identity, not to the closure value. A reader sits
+/// under exactly one host, and a new host brings new readers with it.
 public struct PresentShareSheetAction: Equatable {
     private let action: (ShareSheetRequest) -> Void
 

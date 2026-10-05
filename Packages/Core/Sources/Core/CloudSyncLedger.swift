@@ -80,6 +80,9 @@ public struct CloudSyncLedger: Sendable, Equatable {
         /// End of the latest import to finish, whether or not it succeeded —
         /// what a refresh waits on.
         public var lastImportEndedAt: Date?
+        /// End of the latest export to finish, whether or not it succeeded —
+        /// what Share waits on after `share()` didn't come back with one.
+        public var lastExportEndedAt: Date?
         /// The latest finished event's error; cleared by the next success.
         public var lastError: String?
     }
@@ -93,6 +96,17 @@ public struct CloudSyncLedger: Sendable, Equatable {
         var store = stores[event.storeIdentifier] ?? Store()
         defer { stores[event.storeIdentifier] = store }
 
+        // A store's mirroring delegate runs one request at a time, so an
+        // event in this store that started before this one is over, whether
+        // or not its end was ever posted. Without this, one end that never
+        // came (after a reset the Mac's setup logged "Waiting on save zone"
+        // and then nothing) left the store "syncing" until relaunch: Settings
+        // said so, and every Share waited out its whole sync limit first.
+        inFlight = inFlight.filter { _, earlier in
+            earlier.storeIdentifier != event.storeIdentifier || earlier.id == event.id
+                || earlier.startDate >= event.startDate
+        }
+
         guard let end = event.endDate else {
             inFlight[event.id] = event
             return
@@ -101,6 +115,9 @@ public struct CloudSyncLedger: Sendable, Equatable {
 
         if event.kind == .import {
             store.lastImportEndedAt = Self.later(store.lastImportEndedAt, end)
+        }
+        if event.kind == .export {
+            store.lastExportEndedAt = Self.later(store.lastExportEndedAt, end)
         }
         guard event.succeeded else {
             store.lastError = event.errorDescription ?? "iCloud sync failed."
@@ -116,6 +133,29 @@ public struct CloudSyncLedger: Sendable, Equatable {
 
     /// Whether any import, export or setup is under way.
     public var isSyncing: Bool { !inFlight.isEmpty }
+
+    /// Whether an import, export or setup is under way in one of `scope`'s
+    /// stores — one container's, for Share: its `share()` waits on the same
+    /// request executor, and on the Mac a share queued behind a sync that
+    /// never finished timed out ("Share-Export") every time.
+    public func isSyncing(in scope: Set<String>) -> Bool {
+        inFlight.values.contains { scope.contains($0.storeIdentifier) }
+    }
+
+    /// When the oldest unfinished event in `scope` started. One that started
+    /// minutes ago and never ended is a stuck sync, not a slow one: after a
+    /// reset the Mac's setup logged "Waiting on save zone" and then nothing
+    /// for eleven hours.
+    public func oldestInFlightStart(in scope: Set<String>) -> Date? {
+        inFlight.values.filter { scope.contains($0.storeIdentifier) }.map(\.startDate).min()
+    }
+
+    /// Whether an export in `scope` finished, well or not, after `date`.
+    public func exportEnded(after date: Date, in scope: Set<String>) -> Bool {
+        scope.contains { identifier in
+            stores[identifier]?.lastExportEndedAt.map { $0 > date } ?? false
+        }
+    }
 
     /// The latest moment this device and iCloud were known to agree: the end
     /// of the latest successful import or export in any store.

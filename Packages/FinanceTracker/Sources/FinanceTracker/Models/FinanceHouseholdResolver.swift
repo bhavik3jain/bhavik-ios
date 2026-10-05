@@ -30,7 +30,8 @@ public enum FinanceHouseholdResolver {
         let households = fetchAll(in: context)
         if let container, let privateStore = container.privatePersistentStore {
             let sharedWithMe = households.first {
-                $0.objectID.persistentStore != privateStore && SharingStatusResolver.canEdit($0, in: container)
+                // Where new data goes: the exact answer, not a view's cached one.
+                $0.objectID.persistentStore != privateStore && SharingStatusResolver.canEditNow($0, in: container)
             }
             if let sharedWithMe { return sharedWithMe }
         }
@@ -111,7 +112,7 @@ public enum FinanceHouseholdResolver {
               let offer = mergeOffer(
                 among: households,
                 privateStore: container.privatePersistentStore,
-                canEdit: { SharingStatusResolver.canEdit($0, in: container) }
+                canEdit: { SharingStatusResolver.canEditNow($0, in: container) }
               )
         else { return nil }
         if case .owned = SharingStatusResolver.status(for: offer.own, in: container) { return nil }

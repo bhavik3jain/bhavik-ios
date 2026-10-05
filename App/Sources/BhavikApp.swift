@@ -91,8 +91,10 @@ struct BhavikApp: App {
             // `-InMemoryStores YES` (see `InMemoryStoresLaunch`), and
             // `-FinanceAdvisorProbe YES`, whose seeded household lives in the
             // in-memory Finance store for the same reason as the Trips probe's.
+            // `-ShareProbe YES` shares cars of its own in a store of its own
+            // against iCloud Development, and must never open the real ones.
             if CloudKitSchemaInitializer.isRequested || TripAdvisorProbe.isRequested
-                || FinanceAdvisorProbe.isRequested || InMemoryStoresLaunch.isRequested {
+                || FinanceAdvisorProbe.isRequested || InMemoryStoresLaunch.isRequested || ShareProbe.isRequested {
                 let scratch = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true, cloudKitDatabase: .none)
                 container = try ModelContainer(for: schema, configurations: [scratch])
                 // Same reasoning, for Trips' and Fuel's Core Data stores: a
@@ -135,6 +137,9 @@ struct BhavikApp: App {
                 // `TripAdvisorProbeRunner`): a window's `.task` may never run.
                 if FinanceAdvisorProbe.isRequested {
                     FinanceAdvisorProbe.start(context: financeContainer.viewContext, container: financeContainer)
+                }
+                if ShareProbe.isRequested {
+                    ShareProbe.start(containerID: Self.cloudContainerID, monitor: syncMonitor)
                 }
                 #if os(macOS)
                 // It touches no store, so it runs here too: started only from
@@ -336,6 +341,9 @@ struct BhavikApp: App {
                 } else if FinanceAdvisorProbe.isRequested {
                     Text("Finance advisor probe running: the report goes to the console.")
                         .padding()
+                } else if ShareProbe.isRequested {
+                    Text("Share probe running: the report goes to the console.")
+                        .padding()
                 } else {
                     HomeView()
                         .preferredColorScheme(Appearance.stored(appearanceRaw).colorScheme)
@@ -369,7 +377,8 @@ struct BhavikApp: App {
             #if DEBUG
             // The probe runs on made-up data and must leave the account's
             // real subscriptions alone.
-            if TripAdvisorProbe.isRequested || FinanceAdvisorProbe.isRequested || InMemoryStoresLaunch.isRequested { return }
+            if TripAdvisorProbe.isRequested || FinanceAdvisorProbe.isRequested || InMemoryStoresLaunch.isRequested
+                || ShareProbe.isRequested { return }
             #endif
             SharedChangeServerAlerts.shared.sync()
         }

@@ -277,6 +277,9 @@ designed. It is built to set off most `MonthCheck` findings; keep it that way wh
 navigation only: the one way to reach a tracker's Mac layout from a script without Accessibility access.
 `trips/next[/<face>]` opens the nearest trip not yet over; `-MacOpenFirstItem YES` then opens the first
 month, guide, order or Points account (screens only a double-click reaches), two seconds in.
+`-ShareProbe YES` (Mac; `scripts/cloudkit/init-schema.sh --share-probe` signs and runs it) shares two cars of its
+own — 150 fill-ups and 3 — from a throwaway on-disk Fuel store in Caches against iCloud **Development**, through
+`SharePreparer`, printing each step's time, then removes only its own zones and files. In-memory launch otherwise.
 **Debug is its own app: `com.bhavikjain.trackers.dev`, "Multitrack Dev"** (`project.yml`, per-config). With
 the release bundle id, a Mac Debug build shared the TestFlight app's sandbox container, so the same
 Core Data stores, while syncing with iCloud **Development**; the first TestFlight build to open those
@@ -305,6 +308,7 @@ release one, or Debug shows no weather.
   exit — `NSUnbufferedIO=YES`. **Deploy Schema Changes to Production is Console-only** (no API;
   `cktool` only imports into Development), and GitHub runners can't sign in to iCloud, so neither
   half can be a workflow. Never run TestFlight for a schema change before that deploy.
+  `--share-probe` builds and signs the same way and runs `-ShareProbe YES` instead (see Tests).
 - **Looking at the Mac UI without signing:** build `bhavik-macOS` with `CODE_SIGNING_ALLOWED=NO`,
   `codesign --force --deep -s -` it, and run the binary directly with
   `-InMemoryStores YES -FinanceSeed YES -MacOpenTracker finance/months -MacOpenFirstItem YES`.
@@ -436,6 +440,16 @@ answer becomes "I can only answer from this report's figures." plus the nearest 
   alert them. Notes are keyed by **fact number, not finding id**, because some finding ids carry a Core
   Data object URI that changes when a temporary id becomes permanent; keyed by id, a cached review lost
   its notes the moment the month entry saved.
+- **Whether a rebuilt report keeps its review is `ReportReviewRenewal.decide`'s call**, for both
+  `ReportSession.show` and the Summary's `keepsReportReview`: same fingerprint keeps the model, only the
+  live gold/silver prices moved (the report rebuilt at the old prices — `ReportRecipe` — tells the same
+  facts) carries the words over, anything else is a new model. A kept model is always handed the new
+  report (`update(_:repricing:)`) — the keeper once kept a model whose figures were stale. Don't key a
+  review on the fingerprint alone: an open month is valued at every fetch's prices, and each one wrote
+  the review again. The cache entry records the live prices it was written at for the same reason
+  across launches. Screens get models from `ReportReviewModel.shared(for:)` (weakly held, one per scope,
+  owner and fingerprint), so the Summary card, the report and Months' **Write Review Again**
+  (`writeReviewsAgain(of:)`, which also forgets the scope's cache files for every owner) see one review.
 - **The in-app browser is Core's `HTMLDocumentView`, a `WKWebView` wrapper — not iOS 26's SwiftUI
   `WebView`**, because the app targets iOS 18 / macOS 15. It loads the string with no base URL into a
   non-persistent store and cancels every navigation but the first load and `#anchors`; http(s)/mailto
@@ -528,8 +542,35 @@ Don't trust these comments, and don't "fix" the code they describe.
   (`CloudShareCalls.swift`), and `SharingStatusResolver.badgeStatus(for:in:)` for any "Shared"
   badge — it answers from `SharingStatusCache` and looks up off the main thread. The synchronous
   `status(for:in:)` is only for Finance's rare owned-share checks, which must not act on a stale
-  answer. Notification delegate methods use the completion-handler forms, answered on the main
-  thread: the `async` forms ran on Swift's cooperative pool and crashed every notification tap.
+  answer. `canUpdateRecord` waits the same way for anything in the shared store, so a view's
+  `SharingStatusResolver.canEdit` no longer calls it: own-store objects are always editable, and a
+  partner's answer comes from that same cache (else the store's last answer, kept across launches,
+  else no until it lands). The exact `canEditNow` is only for where new data is written and for
+  folding households. Notification delegate methods use the completion-handler forms, answered on
+  the main thread: the `async` forms ran on Swift's cooperative pool and crashed every notification
+  tap. `SharedChangeNotifier` reads history only once that store's import is over
+  (`SharedChangeImportWatch`) and looks records up a batch at a time: read mid-import, each
+  `record(for:)` waited ten minutes behind it ("Wait timed out during call to
+  recordForManagedObjectID", every ten minutes for three and a half hours on the Mac).
+- **Share goes through Core's `SharePreparer`; nothing else calls `share()`** except the schema run's
+  throwaway test share. Fuel's Share hung on
+  "generating a link" (October 2026): `UICloudSharingController`'s preparation handler and the Mac
+  sheet waited on `share(_:to:)` for as long as Core Data took, and a `share()` Core Data gave up on
+  ("timed out waiting for request: Share-Export") still filled a new share zone in iCloud without
+  this device recording the move, so `fetchShares` kept answering "not shared" and every retry made
+  another zone — four, for two cars. Each stuck share queued behind a full re-import after a mirroring
+  reset (CKError 2 › 21), which every switch between TestFlight and a release-id Debug build caused.
+  `SharePreparationPlan` (a tested value type) decides each step:
+  only a lookup that *answers* "not shared" leads to `share()` (a failed one used to read as nil);
+  a sync under way on that container gets a bounded wait first (not one already running five
+  minutes, which is stuck; and `CloudSyncLedger` ends a sync whose end was never posted as soon as
+  the next event in its store starts, since a store syncs one request at a time); iCloud is asked whether a share zone
+  already holds the object's record (`LeftoverShareZones`), and if one does it stops at Share
+  Anyway; one `share()` per object per process (`ShareCreations` joins a running one); after a
+  failed or timed-out one it waits for the next export and looks again, never makes another. Every
+  wait has a limit, and it ends in a share with a link or iCloud's own error with Try Again. Only
+  then does iOS get `UICloudSharingController(share:container:)`. Each step logs to the `Sharing`
+  category: `log show --last 1h --predicate 'subsystem == "com.bhavikjain.trackers" AND category == "Sharing"'`.
 - `CSVParser.swift`'s `case "\n", "\r\n", "\r":` only *looks* redundant. Swift folds CRLF into a
   single `Character`, so `"\r\n"` matches neither neighbour. Delete it and a Windows-exported CSV
   arrives as one enormous field and parses to zero rows — breaking both importers.

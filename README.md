@@ -115,6 +115,19 @@ Finance works the same way: its household (`SharedFinanceHousehold`) is the shar
 shares every owner, account, month, metal item and transaction in it.
 The schema ritual below covers these models too.
 
+**Sharing.** Share first finds or makes the share in the app's own sheet — what it's doing, a Cancel
+button, and every wait bounded — and only hands a saved share with a link to the system's sharing UI
+(`UICloudSharingController` on the iPhone, the app's own sheet on the Mac). Core's `SharePreparer`
+does it, deciding each step with `SharePreparationPlan`: if iCloud is mid-sync on that tracker it
+waits for it ("Waiting for iCloud to finish syncing…"); it never makes a second share for something
+already shared, nor for something it couldn't check; it asks iCloud whether an earlier try left a
+copy in a share zone of its own and, if so, says so and waits for **Share Anyway** rather than add
+another; if making the share fails or times out it waits for the upload already under way and looks
+again. The worst case is iCloud's own error with **Try Again**, never an endless spinner. Each step is
+logged: `log show --last 1h --predicate 'subsystem == "com.bhavikjain.trackers" AND category == "Sharing"'`.
+On the Mac, `scripts/cloudkit/init-schema.sh --share-probe` times a real share end to end against the
+Development environment on throwaway data, and cleans up after itself.
+
 **Trip ideas need every sharer on a current build.** An idea is an itinerary item whose `dayIndex`
 is `-1` — no new attribute, so no schema change — but builds from before ideas existed clamp any
 negative `dayIndex` to Day 1 whenever they save a trip (any edit to its title, notes or dates), and
@@ -275,6 +288,14 @@ and silver), plus **Ask about September** for questions answered only from the r
 Swift works out every figure and finding; the model only ranks and words them, never adds a number
 and never gives investment advice. Off, or without Apple Intelligence, the same findings appear in
 Swift's own words as "September check". The review is cached on the device only.
+
+The review says when it was written ("Written today at 9:14"), and is written again on its own
+whenever a figure it was written from changes — a balance, a charge, a budget, in that month or one
+it's compared with — but not when only the live gold and silver prices move: those notes fall back
+to Swift's words until it's written again. **Write Review Again** is in the review sheet, the
+report's ••• menu (More in the Mac's report window), the "in brief" card's ••• menu, a month's (or
+year's) context menu under Months, and the Report menu on a month's own screen; the last two forget
+the month's review for every person and open its report to write it fresh.
 
 **Settings → Apple Intelligence → Finance** turns the model off (synced across your devices), and
 **Settings → Finance reports** sets whether finishing a month writes its review, whether this device

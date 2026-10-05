@@ -23,15 +23,25 @@
 # on exit, whatever happens.
 #
 # Overrides: SIGN_IDENTITY="Apple Development: …", PROFILE=/path/to/x.provisionprofile,
-# TIMEOUT=seconds (default 300).
+# TIMEOUT=seconds (default 300, or 1500 with --share-probe).
+#
+#   scripts/cloudkit/init-schema.sh --share-probe
+#
+# Builds and signs the same way, but runs -ShareProbe YES instead (App/Sources/
+# ShareProbe.swift): Share timed end to end on a throwaway Fuel store of its own,
+# against Development, which it cleans up after. Nothing is sent to the schema.
 
 set -euo pipefail
 
+MODE=schema
+[[ "${1:-}" == "--share-probe" ]] && MODE=share-probe
+
 TEAM=Y4M3S6H4NK
 CONTAINER=iCloud.com.bhavikjain.trackers
-TIMEOUT=${TIMEOUT:-300}
+if [[ "$MODE" == share-probe ]]; then TIMEOUT=${TIMEOUT:-1500}; else TIMEOUT=${TIMEOUT:-300}; fi
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 WORK="$HOME/Library/Developer/Xcode/DerivedData/Multitrack-schema-init"
+[[ "$MODE" == share-probe ]] && WORK="$HOME/Library/Developer/Xcode/DerivedData/Multitrack-share-probe"
 LOG="$WORK/run.log"
 APP_PID=""
 
@@ -131,6 +141,28 @@ codesign --force --sign "$SIGN_IDENTITY" --entitlements "$ENTITLEMENTS" --timest
 codesign --verify --strict "$APP" || die "the signature doesn't verify"
 
 # MARK: - Run
+
+if [[ "$MODE" == share-probe ]]; then
+    echo "Running the share probe against $CONTAINER (Development)…"
+    NSUnbufferedIO=YES "$APP/Contents/MacOS/Multitrack" \
+        -ShareProbe YES -ApplePersistenceIgnoreState YES > "$LOG" 2>&1 &
+    APP_PID=$!
+    disown "$APP_PID"
+    shown=0
+    for ((elapsed = 0; elapsed < TIMEOUT; elapsed += 2)); do
+        # The probe's own lines as they come; Core Data's stay in the log.
+        lines=$(grep -c '^\[ShareProbe\]' "$LOG" || true)
+        if (( lines > shown )); then
+            grep '^\[ShareProbe\]' "$LOG" | tail -n $((lines - shown))
+            shown=$lines
+        fi
+        if grep -q '^\[ShareProbe\] done' "$LOG"; then exit 0; fi
+        kill -0 "$APP_PID" 2>/dev/null || { tail -40 "$LOG" >&2; die "the app quit before the probe finished"; }
+        sleep 2
+    done
+    tail -40 "$LOG" >&2
+    die "no result after ${TIMEOUT}s"
+fi
 
 echo "Sending the schema to $CONTAINER (Development)…"
 # -ApplePersistenceIgnoreState: with the release app ID, the run inherits the

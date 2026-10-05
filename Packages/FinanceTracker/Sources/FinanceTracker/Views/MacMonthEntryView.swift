@@ -14,12 +14,15 @@ struct MacMonthEntryView: View {
 
     @Environment(\.managedObjectContext) private var context
     @Environment(\.financePersistentContainer) private var container
+    @Environment(\.financeReportPreferences) private var reportPreferences
     var data = FinanceFetches()
 
     @FocusState private var focus: NSManagedObjectID?
     @State private var focusedOnOpen = false
     /// "September is finished", shown once Close Month has saved the month.
     @State private var showsFinished = false
+    /// The month's report window, from the toolbar's Report menu.
+    @State private var reportRequest: FinanceReportWindowValue?
 
     private var accent: Color { FinanceTrackerModule.accent.color }
 
@@ -72,7 +75,15 @@ struct MacMonthEntryView: View {
                     }
                 }
             }
+            if let period = month.period {
+                ToolbarItem(placement: .primaryAction) {
+                    MonthReportMenu(scope: .month(period)) { scope in
+                        reportRequest = FinanceReportWindowValue(scope: scope, ownerName: reportPreferences.defaultOwnerName)
+                    }
+                }
+            }
         }
+        .presentsReport($reportRequest)
         .onDisappear(perform: save)
         .task { await MetalPriceFeed.shared.refreshIfStale() }
         .sheet(isPresented: $showsFinished) {
