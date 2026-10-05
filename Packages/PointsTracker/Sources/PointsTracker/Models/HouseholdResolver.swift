@@ -26,7 +26,8 @@ public enum HouseholdResolver {
 
         if let container, let privateStore {
             let sharedWithMe = households.first {
-                $0.objectID.persistentStore != privateStore && SharingStatusResolver.canEdit($0, in: container)
+                // Where new data goes: the exact answer, not a view's cached one.
+                $0.objectID.persistentStore != privateStore && SharingStatusResolver.canEditNow($0, in: container)
             }
             if let sharedWithMe { return sharedWithMe }
         }

@@ -512,8 +512,16 @@ Don't trust these comments, and don't "fix" the code they describe.
   (`CloudShareCalls.swift`), and `SharingStatusResolver.badgeStatus(for:in:)` for any "Shared"
   badge — it answers from `SharingStatusCache` and looks up off the main thread. The synchronous
   `status(for:in:)` is only for Finance's rare owned-share checks, which must not act on a stale
-  answer. Notification delegate methods use the completion-handler forms, answered on the main
-  thread: the `async` forms ran on Swift's cooperative pool and crashed every notification tap.
+  answer. `canUpdateRecord` waits the same way for anything in the shared store, so a view's
+  `SharingStatusResolver.canEdit` no longer calls it: own-store objects are always editable, and a
+  partner's answer comes from that same cache (else the store's last answer, kept across launches,
+  else no until it lands). The exact `canEditNow` is only for where new data is written and for
+  folding households. Notification delegate methods use the completion-handler forms, answered on
+  the main thread: the `async` forms ran on Swift's cooperative pool and crashed every notification
+  tap. `SharedChangeNotifier` reads history only once that store's import is over
+  (`SharedChangeImportWatch`) and looks records up a batch at a time: read mid-import, each
+  `record(for:)` waited ten minutes behind it ("Wait timed out during call to
+  recordForManagedObjectID", every ten minutes for three and a half hours on the Mac).
 - **Share goes through Core's `SharePreparer`; nothing else calls `share()`** except the schema run's
   throwaway test share. Fuel's Share hung on
   "generating a link" (October 2026): `UICloudSharingController`'s preparation handler and the Mac
@@ -524,7 +532,9 @@ Don't trust these comments, and don't "fix" the code they describe.
   reset (CKError 2 › 21), which every switch between TestFlight and a release-id Debug build caused.
   `SharePreparationPlan` (a tested value type) decides each step:
   only a lookup that *answers* "not shared" leads to `share()` (a failed one used to read as nil);
-  a sync under way on that container gets a bounded wait first; iCloud is asked whether a share zone
+  a sync under way on that container gets a bounded wait first (not one already running five
+  minutes, which is stuck; and `CloudSyncLedger` ends a sync whose end was never posted as soon as
+  the next event in its store starts, since a store syncs one request at a time); iCloud is asked whether a share zone
   already holds the object's record (`LeftoverShareZones`), and if one does it stops at Share
   Anyway; one `share()` per object per process (`ShareCreations` joins a running one); after a
   failed or timed-out one it waits for the next export and looks again, never makes another. Every

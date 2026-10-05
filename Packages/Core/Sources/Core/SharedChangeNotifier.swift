@@ -58,6 +58,11 @@ public final class SharedChangeNotifier: @unchecked Sendable {
     private var processedThrough: [String: Date] = [:]
     private var purged: Set<String> = []
     private var flushScheduled = false
+    /// When the CloudKit import under way in each store started; see
+    /// `SharedChangeImportWatch`.
+    private var importing: [String: Date] = [:]
+    /// Stores whose history `process` held back until their import is over.
+    private var deferred: Set<String> = []
     /// Signalled when the pending notifications have posted, releasing the
     /// expiring activity that is keeping the process awake. A fresh one per
     /// activity: a signal that lands after its wait timed out would otherwise
@@ -131,13 +136,15 @@ public final class SharedChangeNotifier: @unchecked Sendable {
         ) { [weak self] notification in
             guard let self,
                   let event = notification.userInfo?[NSPersistentCloudKitContainer.eventNotificationUserInfoKey]
-                    as? NSPersistentCloudKitContainer.Event,
-                  event.endDate != nil,
-                  event.succeeded else { return }
+                    as? NSPersistentCloudKitContainer.Event else { return }
             let storeID = event.storeIdentifier
             let type = event.type
             let started = event.startDate
-            self.context.perform { self.cloudKitEventFinished(type: type, storeID: storeID, started: started) }
+            let ended = event.endDate != nil
+            let succeeded = event.succeeded
+            self.context.perform {
+                self.cloudKitEvent(type: type, storeID: storeID, started: started, ended: ended, succeeded: succeeded)
+            }
         })
 
         context.perform {
@@ -154,6 +161,30 @@ public final class SharedChangeNotifier: @unchecked Sendable {
                     self.bootstrapping.insert(storeID)
                 }
             }
+        }
+    }
+
+    /// Every CloudKit event, started or finished: keeps `importing` up to
+    /// date, reads history held back by an import once it's over, and passes
+    /// successful ends on.
+    private func cloudKitEvent(
+        type: NSPersistentCloudKitContainer.EventType,
+        storeID: String,
+        started: Date,
+        ended: Bool,
+        succeeded: Bool
+    ) {
+        importing[storeID] = SharedChangeImportWatch.importStart(
+            current: importing[storeID],
+            eventIsImport: type == .import,
+            eventStarted: started,
+            eventEnded: ended
+        )
+        if ended, succeeded {
+            cloudKitEventFinished(type: type, storeID: storeID, started: started)
+        }
+        if importing[storeID] == nil, deferred.remove(storeID) != nil {
+            process(storeID: storeID)
         }
     }
 
@@ -181,6 +212,16 @@ public final class SharedChangeNotifier: @unchecked Sendable {
         guard !bootstrapping.contains(storeID),
               let store = container.persistentStoreCoordinator.persistentStores.first(where: { $0.identifier == storeID })
         else { return }
+        // Remote-change notifications arrive while the import that caused
+        // them is still running and holding the container's executor, and
+        // reading who changed what (`fetchShares`, `records(for:)`) waits on
+        // that executor: after a sync reset the Mac logged "Wait timed out
+        // during call to recordForManagedObjectID" every ten minutes for three
+        // and a half hours, one wait per changed object. Read once it's over.
+        if SharedChangeImportWatch.defers(importStartedAt: importing[storeID]) {
+            deferred.insert(storeID)
+            return
+        }
 
         let readStarted = Date.now
         let request = NSPersistentHistoryChangeRequest.fetchHistory(after: tokens[storeID])
@@ -260,31 +301,38 @@ public final class SharedChangeNotifier: @unchecked Sendable {
             )
         }
 
-        var shares: [NSManagedObjectID: CKShare] = [:]
-        var unshared: Set<NSManagedObjectID> = []
-        var serverAlertIDs: [NSManagedObjectID: String?] = [:]
-        var events: [SharedChangeEvent] = []
-        var unsharedTitles: Set<String> = []
+        var described: [(change: HistoryChangeRecord, objectID: NSManagedObjectID, description: SharedChangeDescription)] = []
         for change in SharedChangeFilter.relevantChanges(in: records, entityNames: entityNames) {
             guard let objectID = objectIDs[change.objectKey],
                   let object = try? context.existingObject(with: objectID),
                   let description = describe(object, SharedObjectChange(kind: change.kind, updatedProperties: change.updatedProperties))
             else { continue }
+            described.append((change, objectID, description))
+        }
 
+        // One lookup of each kind for the whole batch, never one per object:
+        // each call waits its turn on the container's executor, and behind a
+        // sync that held it, each waited ten minutes before giving up.
+        let roots = Array(Set(described.map(\.description.rootID)))
+        let shares = roots.isEmpty ? [:] : (try? container.fetchShares(matching: roots)) ?? [:]
+        var events: [SharedChangeEvent] = []
+        var unsharedTitles: Set<String> = []
+        // Everything in the shared store is someone else's share; in the
+        // private store only a zone with a CKShare is shared at all.
+        let kept = described.filter { entry in
+            guard shares[entry.description.rootID] != nil || isSharedStore else {
+                unsharedTitles.insert(entry.description.rootTitle)
+                return false
+            }
+            return true
+        }
+        let changedRecords = kept.isEmpty ? [:] : container.records(for: kept.map(\.objectID))
+        let alertIDs = serverAlertIDs(for: Array(Set(kept.map(\.description.rootID))), isSharedStore: isSharedStore)
+
+        for (change, objectID, description) in kept {
             let root = description.rootID
-            var share = shares[root]
-            if share == nil, !unshared.contains(root) {
-                share = (try? container.fetchShares(matching: [root]))?[root]
-                if let share { shares[root] = share } else { unshared.insert(root) }
-            }
-            // Everything in the shared store is someone else's share; in the
-            // private store only a zone with a CKShare is shared at all.
-            guard share != nil || isSharedStore else {
-                unsharedTitles.insert(description.rootTitle)
-                continue
-            }
-
-            let modifiedBy = container.record(for: objectID)?.lastModifiedUserRecordID?.recordName
+            let share = shares[root]
+            let modifiedBy = changedRecords[objectID]?.lastModifiedUserRecordID?.recordName
             let participants = share.map(SharedChangeAuthorResolver.participants(of:)) ?? []
             let author = SharedChangeAuthorResolver.author(lastModifiedBy: modifiedBy, participants: participants)
             if let reason = SharedChangeAuthorResolver.unnamedReason(
@@ -298,9 +346,6 @@ public final class SharedChangeNotifier: @unchecked Sendable {
                     detail: "\(description.rootTitle) — \(reason)"
                 ))
             }
-            if serverAlertIDs[root] == nil {
-                serverAlertIDs[root] = serverAlertID(for: root, isSharedStore: isSharedStore)
-            }
             events.append(SharedChangeEvent(
                 moduleID: moduleID,
                 rootKey: root.uriRepresentation().absoluteString,
@@ -309,7 +354,7 @@ public final class SharedChangeNotifier: @unchecked Sendable {
                 kind: change.kind,
                 action: description.action,
                 author: author,
-                serverAlertID: serverAlertIDs[root] ?? nil
+                serverAlertID: alertIDs[root]
             ))
         }
         // Don't keep every object from every batch registered and snapshotted
@@ -318,13 +363,18 @@ public final class SharedChangeNotifier: @unchecked Sendable {
         return (events, unsharedTitles)
     }
 
-    /// The iCloud alert subscription that would cover `root`: the one on its
-    /// zone when this user owns it, the shared database's one when someone
-    /// else does. Read from the mirroring delegate's local metadata.
-    private func serverAlertID(for root: NSManagedObjectID, isSharedStore: Bool) -> String? {
-        if isSharedStore { return SharedChangeServerAlertID.shared }
-        guard let zoneName = container.recordID(for: root)?.zoneID.zoneName else { return nil }
-        return SharedChangeServerAlertID.zone(moduleID: moduleID, zoneName: zoneName)
+    /// The iCloud alert subscription that would cover each root: the one on
+    /// its zone when this user owns it, the shared database's one when
+    /// someone else does. Read from the mirroring delegate's local metadata,
+    /// every root in one `recordIDs(for:)` — see `events(from:in:)`.
+    private func serverAlertIDs(for roots: [NSManagedObjectID], isSharedStore: Bool) -> [NSManagedObjectID: String] {
+        if isSharedStore {
+            return Dictionary(uniqueKeysWithValues: roots.map { ($0, SharedChangeServerAlertID.shared) })
+        }
+        guard !roots.isEmpty else { return [:] }
+        return container.recordIDs(for: roots).mapValues {
+            SharedChangeServerAlertID.zone(moduleID: moduleID, zoneName: $0.zoneID.zoneName)
+        }
     }
 
     private static func kind(of type: NSPersistentHistoryChangeType) -> SharedChangeKind {

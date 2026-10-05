@@ -119,7 +119,9 @@ struct FinanceRootView: View {
             let changed = FinanceFold.tidy(
                 in: context,
                 privateStore: container?.privatePersistentStore,
-                canEdit: { canEdit($0, in: container) },
+                // Folding moves and deletes data, so the exact answer; it
+                // runs only when a duplicate turns up.
+                canEdit: { household in container.map { SharingStatusResolver.canEditNow(household, in: $0) } ?? true },
                 isShared: isOwnedShare,
                 tiebreak: .cloudKit(container)
             )

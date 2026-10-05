@@ -96,6 +96,17 @@ public struct CloudSyncLedger: Sendable, Equatable {
         var store = stores[event.storeIdentifier] ?? Store()
         defer { stores[event.storeIdentifier] = store }
 
+        // A store's mirroring delegate runs one request at a time, so an
+        // event in this store that started before this one is over, whether
+        // or not its end was ever posted. Without this, one end that never
+        // came (after a reset the Mac's setup logged "Waiting on save zone"
+        // and then nothing) left the store "syncing" until relaunch: Settings
+        // said so, and every Share waited out its whole sync limit first.
+        inFlight = inFlight.filter { _, earlier in
+            earlier.storeIdentifier != event.storeIdentifier || earlier.id == event.id
+                || earlier.startDate >= event.startDate
+        }
+
         guard let end = event.endDate else {
             inFlight[event.id] = event
             return
