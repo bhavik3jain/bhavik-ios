@@ -47,6 +47,17 @@ public final class Episode {
         (0..<10).contains(number) ? "0\(number)" : String(number)
     }
 
+    /// Ticks it off, or back on, with any copy of it — see
+    /// `Show.setWatched(_:_:at:)`.
+    public func toggleWatched(at date: Date = .now) {
+        let watched = !isWatched
+        if let show {
+            show.setWatched(self, watched, at: date)
+        } else {
+            setWatched(watched, at: date)
+        }
+    }
+
     public func setWatched(_ watched: Bool, at date: Date = .now) {
         isWatched = watched
         watchedAt = watched ? date : nil

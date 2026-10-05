@@ -254,6 +254,9 @@ root view's `.task`, so nothing happens until the module is opened. `-WeatherStu
 notification 8 s after launch (leave Finance first: a notification about the tracker on screen is held back); add
 `-SharedChangeProbeTap YES` to also tap it — injected simulator touches never reach a notification banner — which
 opens Finance with the list of changes (`SharedChangeDigest`) over it.
+`-InMemoryStores YES -TVSeedShows YES -TVEpisodeAlertProbe YES` [`-TVEpisodeAlertProbeQuit YES`] prints TV's
+new-episode alert plan at launch, after one TMDB refresh that ignores the 12-hour ledger (none without a key — the
+offline "Sample Show" then has a third season airing over the next weeks to plan from); it refuses the real store.
 `-TripAdvisorStub YES` swaps Trips' Apple Intelligence advisor and Apple Maps place search for
 `StubTripAdvisor`/`StubPlaceSearcher` at the app root, the same way: same answers every run,
 offline, on hardware with no Apple Intelligence. `-TripAdvisorProbe YES` (add `-TripAdvisorProbeQuit YES`
@@ -475,6 +478,42 @@ answer becomes "I can only answer from this report's figures." plus the nearest 
   is unchanged; iCloud's server alerts still get the plain describer. It fires for the person's own
   other device too, and alongside the ordinary "closed September" shared-change notice — on purpose.
 
+## TV's new-episode alerts
+
+`Packages/TVTracker/Sources/TVTracker/Alerts/` (`EpisodeAlertPlanner` decides, `TVEpisodeAlerts` schedules,
+`EpisodeAlertStore` holds the synced switch, time and muted TMDB ids) and `Refresh/` (`EpisodeMerge`,
+`TVEpisodeRefresher`). Before it, episode lists were fetched only when a show was added, so nothing new ever arrived.
+
+- **Local notifications share iOS's 64 pending per app**, and it drops the furthest silently: Finance's month
+  reminder holds 12, TV at most 40 (`maximumAlerts`). Anything new that schedules ahead has to fit beside them, and a
+  reschedule removes only its own prefix (`tv.newEpisode.`, `finance.monthStart.`).
+- A reminder carries `SharedChangeNotifications.reminderUserInfoKey`: Core's delegate still routes its tap (module
+  `tv`, destination `tv.upnext`, which `EpisodeAlertsRoot` turns into the Up Next tab) and holds it back while TV is on
+  screen, but never logs it in `SharedChangeActivityLog`, which Notification Status reads as the shared-change pipeline.
+- **TMDB's air dates are midnight UTC** (`TMDBDate`): read in local time they're the evening before anywhere west of
+  Greenwich, and every alert came a day early. `EpisodeAlertPlanner.airDay` reads a midnight-UTC date in UTC.
+- The refresh ledger (once per show per 12 h) is UserDefaults, deliberately **not** a property on `Show`: that would
+  be a CloudKit schema change and a write synced to every device twice a day. The merge matches by (season, number),
+  never deletes, never touches watched state, and re-derives status only for a completed show that gained episodes
+  — re-deriving every show turned one set to Watching by hand, nothing ticked off, into "Haven't started".
+- **Two devices can each add the same new episode** (the iPhone's background refresh and the Mac's, before either
+  synced): two rows in Up Next, and a show that never completed. Three things keep it in hand. A refresh first waits
+  (bounded) for this launch's iCloud import of the SwiftData store (`CloudSyncMonitor.waitForSwiftDataImport` —
+  SwiftData's store is the one the monitor hears from but doesn't track). Ticking an episode ticks every copy
+  (`Show.setWatched(_:_:at:)`, `Episode.toggleWatched`). And `EpisodeFolder` folds copies off the main thread at TV
+  open, after each SwiftData import while TV is open, and in the background refresh, by `EpisodeDuplicates`' rule,
+  which has to be safe with every device folding at once and **nothing synced to tell identical copies apart**
+  (SwiftData never shows CloudKit's record names): a worse copy always goes; identical unwatched ones keep one and
+  mark the show due (two devices may delete both; the refresh adds it back); identical watched ones all stay. Don't
+  "simplify" it to "keep the oldest": `Episode` has no creation date, and a local order differs per device.
+- iOS's `BGAppRefreshTask` (`com.bhavikjain.trackers.tv-refresh`) is registered in `App/Sources/TVEpisodeAlertsLaunch.swift`
+  from `BhavikApp.init()` — registration after launch finishes is an exception, and so is an identifier missing from
+  `BGTaskSchedulerPermittedIdentifiers` in project.yml (with `fetch` in `UIBackgroundModes`). Its callbacks are
+  `@Sendable`: the scheduler calls them off the main thread, and Swift 6 traps a main-actor closure there. iOS runs it
+  at its own discretion (never after a force-quit or in Low Power Mode), and refuses the request on a simulator; on a
+  device, pausing in the debugger and running `e -l objc -- (void)[[BGTaskScheduler sharedScheduler]
+  _simulateLaunchForTaskWithIdentifier:@"com.bhavikjain.trackers.tv-refresh"]` launches it.
+
 ## Known-stale things in the tree
 
 Don't trust these comments, and don't "fix" the code they describe.
@@ -489,8 +528,8 @@ Don't trust these comments, and don't "fix" the code they describe.
   launch or foreground, minutes later. Uploads have no "now" either: Core's `CloudExportKeeper` holds
   the app open (a background task, at most 25 s) after each save until an upload that started after it
   finishes — left at once, the change used to wait for the next launch. Silent-push delivery is still at the system's discretion and
-  there is no `BGTaskScheduler` anywhere, so don't promise instant sync or background parcel
-  tracking. What *does* reach a force-quit or rebooted device is iCloud's own alert
+  the one `BGTaskScheduler` task is TV's episode refresh (see *TV's new-episode alerts*), which iOS also runs only when
+  it sees fit, so don't promise instant sync or background parcel tracking. What *does* reach a force-quit or rebooted device is iCloud's own alert
   (`SharedChangeServerAlerts`: CloudKit subscriptions with a visible `notificationInfo`, IDs prefixed
   `multitrack.alert.`) — fixed text only, and CloudKit sends it to the account's other devices for the
   user's own edits too. **Never set `collapseIDKey` on them**: CloudKit refuses the whole subscription
@@ -499,7 +538,8 @@ Don't trust these comments, and don't "fix" the code they describe.
   signed like `scripts/cloudkit/init-schema.sh` signs one saves the real subscriptions to
   Development, prints CloudKit's answer, and deletes them. Never touch a subscription without that prefix: Core Data's silent ones live
   beside them. (`SyncedSecret.swift` cites "a background parcel refresh" for
-  `kSecAttrAccessibleAfterFirstUnlock` — fiction, but the choice is right: ThisDeviceOnly won't sync.)
+  `kSecAttrAccessibleAfterFirstUnlock` — fiction, but the choice is right: ThisDeviceOnly won't sync.
+  And it's load-bearing now: TV's background episode refresh reads the TMDB key while the phone is locked.)
 - There is no "sync now" in `NSPersistentCloudKitContainer`. Core's `CloudSyncMonitor` (injected at
   the app root) re-posts the app's did-become-active notification — at most once a minute, or
   `dasd` rate-limits all syncing for hours — then waits, bounded, for a real import event. A list

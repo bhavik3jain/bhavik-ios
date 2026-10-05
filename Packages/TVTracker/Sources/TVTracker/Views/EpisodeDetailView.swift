@@ -56,7 +56,7 @@ struct EpisodeDetailView: View {
 
                 if episode.hasAired() || episode.isWatched {
                     Button {
-                        episode.setWatched(!episode.isWatched)
+                        episode.toggleWatched()
                         episode.show?.refreshStatus()
                     } label: {
                         Label(

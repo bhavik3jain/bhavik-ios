@@ -62,6 +62,23 @@ public struct TMDBEpisode: Sendable, Equatable {
     public let airDate: Date?
 }
 
+/// What `TMDBClient.seasons(showID:)` reads off a show's own page: enough
+/// for the episode refresh (`EpisodeRefreshPlan`) to tell which seasons can
+/// have changed without asking for any of them.
+public struct TMDBShowSeasons: Sendable, Equatable {
+    public struct Season: Sendable, Equatable {
+        public let number: Int
+        /// How many episodes TMDB lists for it; nil when it doesn't say.
+        public let episodeCount: Int?
+    }
+
+    /// Specials (season 0) included — the caller decides.
+    public let seasons: [Season]
+    /// TMDB's status is "Ended" or "Canceled": no new season is coming, and
+    /// its last season won't grow.
+    public let hasEnded: Bool
+}
+
 public enum TMDBError: LocalizedError {
     case missingAPIKey
     case unauthorized
@@ -183,6 +200,33 @@ public struct TMDBClient: Sendable {
             episodes.append(contentsOf: seasonDetail.episodes.map(\.episode))
         }
         return (detail.summary(id: id), episodes)
+    }
+
+    /// A show's seasons, how many episodes each has, and whether TMDB says
+    /// the show has ended — one request, without walking every season: the
+    /// episode refresh (`TVEpisodeRefresher`) fetches only the seasons that
+    /// can still change, where `show(id:)` for a show seventeen seasons long
+    /// would be eighteen requests every twelve hours.
+    public func seasons(showID: Int) async throws -> TMDBShowSeasons {
+        guard !apiKey.isEmpty else { throw TMDBError.missingAPIKey }
+        var components = URLComponents(string: "https://api.themoviedb.org/3/tv/\(showID)")!
+        components.queryItems = [URLQueryItem(name: "api_key", value: apiKey)]
+        let detail: ShowDetailResponse = try await get(components)
+        return detail.showSeasons
+    }
+
+    /// The show payload's season list on its own, for tests.
+    static func decodeShowSeasons(_ data: Data) throws -> TMDBShowSeasons {
+        try JSONDecoder().decode(ShowDetailResponse.self, from: data).showSeasons
+    }
+
+    /// Every episode TMDB lists for one season.
+    public func episodes(showID: Int, season: Int) async throws -> [TMDBEpisode] {
+        guard !apiKey.isEmpty else { throw TMDBError.missingAPIKey }
+        var components = URLComponents(string: "https://api.themoviedb.org/3/tv/\(showID)/season/\(season)")!
+        components.queryItems = [URLQueryItem(name: "api_key", value: apiKey)]
+        let payload: SeasonDetailResponse = try await get(components)
+        return payload.episodes.map(\.episode)
     }
 
     /// One episode's synopsis, still, runtime, rating, director, writers and
@@ -313,10 +357,20 @@ private struct ShowDetailResponse: Decodable {
     let overview: String?
     let poster_path: String?
     let first_air_date: String?
+    /// "Returning Series", "Ended", "Canceled", "In Production"…
+    let status: String?
     let seasons: [Season]
 
     struct Season: Decodable {
         let season_number: Int
+        let episode_count: Int?
+    }
+
+    var showSeasons: TMDBShowSeasons {
+        TMDBShowSeasons(
+            seasons: seasons.map { TMDBShowSeasons.Season(number: $0.season_number, episodeCount: $0.episode_count) },
+            hasEnded: ["Ended", "Canceled"].contains(status ?? "")
+        )
     }
 
     func summary(id: Int) -> TMDBShowSummary {

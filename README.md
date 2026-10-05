@@ -227,6 +227,27 @@ harmless.
 
 Both accept files dropped into the app's folder from Finder or the Files app.
 
+## New episode alerts in TV
+
+**TV → Settings → New Episode Alerts** sends a notification on the day a new episode of a show you're
+watching comes out — "S02E05 “Trojan's Horse” is out today", or "3 new episodes of The Bear are out
+today" when several drop at once — at a time you pick (9:00 by default). It's off until you turn it
+on, there or from a card on Up Next, and that's when the app asks to send notifications. The bell on
+a show's screen mutes that show; Settings → Shows lists them all. The settings sync across your
+devices, but each device schedules its own notifications and needs its own permission. Tapping one
+opens TV on Up Next. Only the next three weeks are scheduled, at most 40 at a time: iOS keeps an app's
+64 soonest and drops the rest, and Finance's monthly reminder takes 12.
+
+The alerts can only be as current as TV's episode lists, so those are now refreshed from TMDB: when TV
+opens, when you pull down on Up Next, and on the iPhone in the background. Each show is looked up at
+most every 12 hours — those being watched or not started, and finished ones in case a new season
+appears (a finished show that gets one goes back to Watching). A refresh adds newly announced
+episodes and takes new titles and moved air dates; it never removes an episode or changes what
+you've watched. Without a TMDB key nothing is refreshed and the alerts come from what's already
+there. The background refresh is iOS's background app refresh, which iOS runs when it sees fit — not
+on a timetable, never in Low Power Mode or with Background App Refresh off, and not after the app is
+force-quit. The Mac has none; it catches up whenever it's opened.
+
 ## Weather
 
 Trips and Explore show a forecast through **WeatherKit** (`Packages/Core/Sources/Core/Weather.swift`).
@@ -292,6 +313,7 @@ All debug-only, and inert unless passed (Product → Scheme → Edit Scheme → 
 | `-AlertSubscriptionProbe YES` | With `-InMemoryStores YES` on an iCloud-signed build: saves the iCloud alert subscriptions to Development, prints what CloudKit says to each, deletes them, and quits |
 | `-InMemoryStores YES` | The whole app on empty in-memory stores with no iCloud — for looking at an unsigned Mac build; add a seeder to fill it |
 | `-TVSeedShows YES` | Adds sample shows, looked up on TMDB (needs a key; does nothing if any show exists) |
+| `-TVEpisodeAlertProbe YES` | With `-InMemoryStores YES` (add `-TVSeedShows YES` to fill it): one refresh from TMDB that ignores the 12-hour wait (none without a key), then prints TV's new-episode alert plan and what's pending with the system; add `-TVEpisodeAlertProbeQuit YES` to quit after |
 | `-FuelSeedCSV YES` | Imports a sample Fuelly export |
 | `-ParcelSeed YES` | Adds sample orders |
 | `-TripSeed YES` | Adds four trips, one under way today with six ideas for Nearby (does nothing if any trip exists) |

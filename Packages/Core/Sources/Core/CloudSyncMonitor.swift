@@ -73,6 +73,33 @@ public final class CloudSyncMonitor {
     public var lastSyncedAt: Date? { ledger.lastSyncedAt }
     public var isSyncing: Bool { ledger.isSyncing }
 
+    /// When this monitor started — at launch, before any container loads.
+    public let startedAt = Date.now
+
+    /// The stores heard from that no tracked container owns: SwiftData's
+    /// (Gym, TV, Orders), whose container SwiftData never exposes. Empty
+    /// until its first event arrives.
+    public var swiftDataStores: Set<String> {
+        ledger.knownStores.subtracting(containers.flatMap(\.cloudKitStoreIdentifiers))
+    }
+
+    /// End of the latest successful import into SwiftData's store — read in
+    /// a view, it changes when one lands.
+    public var lastSwiftDataImportAt: Date? {
+        swiftDataStores.compactMap { ledger.stores[$0]?.lastImportAt }.max()
+    }
+
+    /// Waits, at most `timeout`, until SwiftData's store has finished an
+    /// import since launch. True when it has. TV waits on this before
+    /// fetching new episodes from TMDB: refreshed before this launch's import,
+    /// a device added an episode another device had already added and iCloud
+    /// was about to bring, and the library showed it twice.
+    public func waitForSwiftDataImport(timeout: Duration) async -> Bool {
+        await poll(timeout: timeout) { [startedAt] ledger in
+            ledger.importEnded(after: startedAt, in: self.swiftDataStores)
+        }
+    }
+
     /// How long a refresh waits for imports before admitting none came.
     /// Imports normally finish in a second or two; this only bounds the wait,
     /// not the sync — a late import still lands and updates the screen.

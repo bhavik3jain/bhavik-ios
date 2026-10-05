@@ -120,3 +120,17 @@ private func event(
     #expect(SharedChangeImportWatch.defers(importStartedAt: t0, asOf: t0 + 30))
     #expect(!SharedChangeImportWatch.defers(importStartedAt: t0, asOf: t0 + SharedChangeImportWatch.maximumDeferral))
 }
+
+// MARK: - TV waits for this launch's import
+
+@Test func anImportEndingAfterADateIsScopedToItsStores() {
+    var ledger = CloudSyncLedger()
+    #expect(!ledger.importEnded(after: t0, in: ["swiftdata"]))
+    ledger.record(event(.init(), "swiftdata", .import, at: t0 - 10, endingAt: t0 - 5))
+    #expect(!ledger.importEnded(after: t0, in: ["swiftdata"]), "Before launch doesn't count")
+    ledger.record(event(.init(), "trips", .import, at: t0 + 1, endingAt: t0 + 2))
+    #expect(!ledger.importEnded(after: t0, in: ["swiftdata"]), "Another store's doesn't count")
+    ledger.record(event(.init(), "swiftdata", .import, at: t0 + 3, endingAt: t0 + 4))
+    #expect(ledger.importEnded(after: t0, in: ["swiftdata"]))
+    #expect(!ledger.importEnded(after: t0, in: []))
+}

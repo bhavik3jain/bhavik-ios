@@ -21,6 +21,7 @@ struct TVRootView: View {
             }
         }
         .tint(TVTrackerModule.accent.color)
+        .modifier(EpisodeAlertsRoot(section: section ?? $ownSection))
         #if DEBUG
         .task {
             guard DebugSeed.isRequested else { return }
