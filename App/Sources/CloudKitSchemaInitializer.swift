@@ -47,9 +47,20 @@ enum CloudKitSchemaInitializer {
         UserDefaults.standard.bool(forKey: "InitializeCloudKitSchema")
     }
 
+    /// `-SchemaPass <name>` runs that one pass and no other; `-SchemaPass list`
+    /// only prints the passes. `scripts/cloudkit/init-schema.sh` runs every
+    /// pass in a process of its own this way — see `keptOpen` for why.
+    static var requestedPass: String? {
+        UserDefaults.standard.string(forKey: "SchemaPass")
+    }
+
+    /// The pass that makes and removes a test share (`createShareRecordType`).
+    static let sharePassName = "ShareProbe"
+
     enum Failure: LocalizedError {
         case modelConversion
         case storeLoad(String)
+        case unknownPass(String)
 
         var errorDescription: String? {
             switch self {
@@ -57,6 +68,8 @@ enum CloudKitSchemaInitializer {
                 "SwiftData couldn't convert the models to a Core Data model."
             case .storeLoad(let detail):
                 "The throwaway store wouldn't load: \(detail)"
+            case .unknownPass(let name):
+                "There's no schema pass called \(name)."
             }
         }
     }
@@ -101,24 +114,64 @@ enum CloudKitSchemaInitializer {
         ]
     }
 
+    /// Every throwaway container, held open until the process ends.
+    ///
+    /// Each pass used to detach its store as soon as its schema was sent, but
+    /// mirroring had already queued an import for it, which then ran against a
+    /// coordinator with no store and threw — "This NSPersistentStoreCoordinator
+    /// has no persistent stores (unknown). It cannot perform a save
+    /// operation." from `-[NSCloudKitMirroringDelegate _performImportWithRequest:]`
+    /// — killing the run after its first pass (October 2026, sending TV's
+    /// watch lists). Earlier runs had only been lucky with the timing. A
+    /// schema launch does nothing else and quits once it's done, so the stores
+    /// can simply stay open; each mirrors into its own file.
+    ///
+    /// Open, though, every store goes on downloading all of Development's
+    /// records, and the next pass's own CloudKit operations queued behind
+    /// those downloads: the fifth pass's schema save started and never
+    /// finished, so `initializeCloudKitSchema` gave up after its 30 s wait,
+    /// three runs in a row. That's why the script runs each pass in a process
+    /// of its own (`-SchemaPass`): quitting ends its store and its mirroring
+    /// together, with nothing left to race and nothing for the next pass to
+    /// wait behind. A launch running every pass (on a device) still keeps them
+    /// all open, and retries a pass once if it times out.
+    ///
+    /// `run` is called once, from one task, so a plain static is enough.
+    private nonisolated(unsafe) static var keptOpen: [NSPersistentCloudKitContainer] = []
+
+    private static func keepOpen(_ container: NSPersistentCloudKitContainer) {
+        keptOpen.append(container)
+    }
+
     /// Blocks while CloudKit is contacted, so call it off the main thread.
     /// Returns every record type sent, sorted.
     static func run(containerID: String, coreDataModels: [CoreDataModel]) throws -> [String] {
         guard let swiftDataModel = NSManagedObjectModel.makeManagedObjectModel(for: AppSchema.models) else {
             throw Failure.modelConversion
         }
+        let names = ["CloudKitSchema"] + coreDataModels.map(\.name) + (coreDataModels.isEmpty ? [] : [sharePassName])
+        print("[CloudKitSchemaInitializer] Passes: \(names.joined(separator: " "))")
+        let only = requestedPass
+        if only == "list" { return [] }
+        if let only, !names.contains(only) { throw Failure.unknownPass(only) }
 
-        let folder = FileManager.default.temporaryDirectory
-            .appendingPathComponent("cloudkit-schema-\(UUID().uuidString)", isDirectory: true)
+        // The folder outlives this run: its stores stay open until the process
+        // ends (see `keptOpen`), so it can't be deleted under them. An earlier
+        // run's goes instead, now that nothing has it open.
+        let temporary = FileManager.default.temporaryDirectory
+        for leftover in (try? FileManager.default.contentsOfDirectory(at: temporary, includingPropertiesForKeys: nil)) ?? []
+        where leftover.lastPathComponent.hasPrefix("cloudkit-schema-") {
+            try? FileManager.default.removeItem(at: leftover)
+        }
+        let folder = temporary.appendingPathComponent("cloudkit-schema-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: folder) }
 
         let passes = [CoreDataModel(name: "CloudKitSchema", model: swiftDataModel)] + coreDataModels
         var recordTypes: [String] = []
-        for pass in passes {
+        for pass in passes where only == nil || pass.name == only {
             recordTypes += try initialize(pass, in: folder, containerID: containerID)
         }
-        if let sharable = coreDataModels.first {
+        if let sharable = coreDataModels.first, only == nil || only == sharePassName {
             recordTypes.append(try createShareRecordType(using: sharable, in: folder, containerID: containerID))
         }
         return recordTypes.sorted()
@@ -165,12 +218,7 @@ enum CloudKitSchemaInitializer {
         if setUp.wait(timeout: .now() + 60) == .timedOut {
             throw Failure.storeLoad("ShareProbe: CloudKit setup didn't finish within a minute")
         }
-        defer {
-            let coordinator = container.persistentStoreCoordinator
-            for store in coordinator.persistentStores {
-                try? coordinator.remove(store)
-            }
-        }
+        keepOpen(container)
 
         guard let entity = pass.model.entities.sorted(by: { ($0.name ?? "") < ($1.name ?? "") }).first,
               let store = container.persistentStoreCoordinator.persistentStores.first else {
@@ -254,6 +302,8 @@ enum CloudKitSchemaInitializer {
 
         let container = NSPersistentCloudKitContainer(name: pass.name, managedObjectModel: pass.model)
         container.persistentStoreDescriptions = [description]
+        // Before loading, so the setup and first import aren't missed.
+        let mirroring = MirroringWatch(container)
 
         var loadError: Error?
         container.loadPersistentStores { _, error in loadError = error }
@@ -265,18 +315,73 @@ enum CloudKitSchemaInitializer {
         let recordTypes = pass.model.entities.compactMap(\.name).map { "CD_\($0)" }.sorted()
         print("[CloudKitSchemaInitializer] \(pass.name): \(recordTypes.count) record types: \(recordTypes.joined(separator: ", "))")
 
-        // Detach the throwaway store so mirroring stops before the folder
-        // goes — on failure too, or the next pass shares the process with a
-        // store still mirroring into a deleted file.
-        defer {
-            let coordinator = container.persistentStoreCoordinator
-            for store in coordinator.persistentStores {
-                try? coordinator.remove(store)
-            }
+        keepOpen(container)
+        // A store that's just opened sets up its mirroring and imports
+        // straight away, and those hold the container's executor: on the
+        // Points pass, with four passes' stores still importing beside it,
+        // `initializeCloudKitSchema` queued behind them and gave up with "the
+        // requests timed out (a 30s wait failed)". Waiting for every pass's
+        // import first was no better: each throwaway store downloads all of
+        // Development's records (Debug builds once synced real data there), and
+        // seven of those overran the script's limit. So it goes at once, as it
+        // always did, and only waits for its own import before trying again.
+        do {
+            try container.initializeCloudKitSchema(options: [])
+        } catch {
+            print("[CloudKitSchemaInitializer] \(pass.name): trying again once its sync settles (\(error.localizedDescription))")
+            mirroring.waitUntilSettled(timeout: 240)
+            try container.initializeCloudKitSchema(options: [])
         }
-        try container.initializeCloudKitSchema(options: [])
 
         return recordTypes
+    }
+}
+
+/// One throwaway container's mirroring: whether its setup and first import
+/// have finished and nothing else is running. Fed from CloudKit's own queues,
+/// read from the schema run's; the lock is what makes it `Sendable`.
+private final class MirroringWatch: @unchecked Sendable {
+    private let lock = NSLock()
+    private var inFlight: Set<UUID> = []
+    private var setUp = false
+    private var imported = false
+    private var observer: NSObjectProtocol?
+
+    init(_ container: NSPersistentCloudKitContainer) {
+        observer = NotificationCenter.default.addObserver(
+            forName: NSPersistentCloudKitContainer.eventChangedNotification,
+            object: container,
+            queue: nil
+        ) { [weak self] note in
+            guard let self,
+                  let event = note.userInfo?[NSPersistentCloudKitContainer.eventNotificationUserInfoKey]
+                    as? NSPersistentCloudKitContainer.Event else { return }
+            let id = event.identifier, type = event.type, ended = event.endDate != nil
+            self.lock.withLock {
+                guard ended else {
+                    self.inFlight.insert(id)
+                    return
+                }
+                self.inFlight.remove(id)
+                if type == .setup { self.setUp = true }
+                if type == .import { self.imported = true }
+            }
+        }
+    }
+
+    deinit {
+        if let observer { NotificationCenter.default.removeObserver(observer) }
+    }
+
+    /// Blocks until setup and an import have finished with nothing else
+    /// running, or `timeout` seconds pass — whichever is first. Going on
+    /// after the limit is fine: the schema call then reports its own error.
+    func waitUntilSettled(timeout: TimeInterval) {
+        let deadline = Date.now.addingTimeInterval(timeout)
+        while Date.now < deadline {
+            if lock.withLock({ setUp && imported && inFlight.isEmpty }) { return }
+            Thread.sleep(forTimeInterval: 0.25)
+        }
     }
 }
 
