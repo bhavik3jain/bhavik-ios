@@ -396,17 +396,21 @@ private let t0 = Date(timeIntervalSinceReferenceDate: 800_000_000)
     #expect(!ledger.exportEnded(after: t0, in: ["trips"]))
 }
 
+// The end arrives while the wait is under way, not after a delay of its own: a
+// delayed end raced the wait's deadline whenever another main-actor test held
+// the main thread (the PDF pagination test, ~55 s under load), and the wait
+// woke past its deadline before the end had run. The poll looks at the ledger
+// before the clock, so an end ingested before it wakes always counts.
 @MainActor
 @Test func waitingForIdleEndsWhenTheSyncEnds() async {
     let monitor = CloudSyncMonitor(containerID: nil, nudge: {}, center: NotificationCenter())
     let id = UUID()
     monitor.ingest(CloudSyncEvent(id: id, storeIdentifier: "fuel", kind: .import, startDate: .now))
     #expect(monitor.isSyncing(["fuel"]))
-    Task {
-        try? await Task.sleep(for: .milliseconds(300))
-        monitor.ingest(CloudSyncEvent(id: id, storeIdentifier: "fuel", kind: .import, startDate: .now, endDate: .now, succeeded: true))
-    }
-    #expect(await monitor.waitUntilIdle(["fuel"], timeout: .seconds(10)))
+    let waiter = Task { await monitor.waitUntilIdle(["fuel"], timeout: .seconds(30)) }
+    await Task.yield()
+    monitor.ingest(CloudSyncEvent(id: id, storeIdentifier: "fuel", kind: .import, startDate: .now, endDate: .now, succeeded: true))
+    #expect(await waiter.value)
     #expect(!monitor.isSyncing(["fuel"]))
 }
 
@@ -424,9 +428,9 @@ private let t0 = Date(timeIntervalSinceReferenceDate: 800_000_000)
     let began = Date.now
     monitor.ingest(CloudSyncEvent(storeIdentifier: "fuel", kind: .export, startDate: t0, endDate: t0 + 1, succeeded: true))
     #expect(await !monitor.waitForExport(["fuel"], endingAfter: began, timeout: .milliseconds(300)))
-    Task {
-        try? await Task.sleep(for: .milliseconds(200))
-        monitor.ingest(CloudSyncEvent(storeIdentifier: "fuel", kind: .export, startDate: .now, endDate: .now, succeeded: true))
-    }
-    #expect(await monitor.waitForExport(["fuel"], endingAfter: began, timeout: .seconds(10)))
+    // As in the idle test above: the end lands during the wait, never on a timer.
+    let waiter = Task { await monitor.waitForExport(["fuel"], endingAfter: began, timeout: .seconds(30)) }
+    await Task.yield()
+    monitor.ingest(CloudSyncEvent(storeIdentifier: "fuel", kind: .export, startDate: .now, endDate: .now, succeeded: true))
+    #expect(await waiter.value)
 }
