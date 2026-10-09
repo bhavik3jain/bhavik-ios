@@ -26,6 +26,15 @@ struct TransactionEditorView: View {
     @State private var addingCategory = false
     @State private var newCategory = ""
     @State private var loaded = false
+    /// The account a new transaction started on, so picking a merchant can
+    /// move it to the one paid with there last time — until someone picks
+    /// one by hand.
+    @State private var startingCard: SharedFinanceAccount?
+    /// The merchant last picked from the suggestions, or the one an edited
+    /// transaction already had, by `MerchantSuggestions.key`: suggestions
+    /// stay hidden until the name is changed from it.
+    @State private var settledMerchant: String?
+    @FocusState private var isMerchantFocused: Bool
 
     private var isNew: Bool { transaction == nil }
 
@@ -60,6 +69,19 @@ struct TransactionEditorView: View {
                     Toggle("Refund", isOn: $isRefund)
                     TextField("Merchant", text: $merchant)
                         .textInputAutocapitalization(.words)
+                        .focused($isMerchantFocused)
+                    let suggestions = merchantSuggestions(snapshot)
+                    if !suggestions.isEmpty {
+                        ChipRow {
+                            ForEach(suggestions) { suggestion in
+                                FinanceChip(title: suggestion.name, detail: suggestion.category, isSelected: false) {
+                                    choose(suggestion)
+                                }
+                                .accessibilityHint("Fills in what was used there last time")
+                            }
+                        }
+                        .listRowInsets(EdgeInsets(top: 8, leading: 12, bottom: 8, trailing: 12))
+                    }
                     TextField("Expense", text: $expense, prompt: Text("What it was for"))
                     DatePicker("Date", selection: $date, displayedComponents: .date)
                 }
@@ -150,6 +172,28 @@ struct TransactionEditorView: View {
         return [trimmed] + known
     }
 
+    /// The merchants paid before that what's typed could be, while the
+    /// Merchant field is being typed in — the most used ones before anything
+    /// is. None once one has been picked, until the name changes again.
+    private func merchantSuggestions(_ snapshot: FinanceSnapshot) -> [MerchantSuggestion] {
+        guard isMerchantFocused, MerchantSuggestions.key(merchant) != settledMerchant else { return [] }
+        return MerchantSuggestions.matching(merchant, in: MerchantSuggestions.merchants(snapshot.transactions))
+    }
+
+    /// Fills in the merchant and what was used there last time, wherever
+    /// nothing is typed yet, then puts the keyboard away so the form shows
+    /// what changed.
+    private func choose(_ suggestion: MerchantSuggestion) {
+        var fill = MerchantFill(merchant: merchant, category: category, expense: expense, account: card)
+        fill.apply(suggestion, mayChangeAccount: isNew && card == startingCard)
+        merchant = fill.merchant
+        category = fill.category
+        expense = fill.expense
+        card = fill.account
+        settledMerchant = MerchantSuggestions.key(fill.merchant)
+        isMerchantFocused = false
+    }
+
     /// Once only: `onAppear` fires again when the alert closes, and reloading
     /// then would throw away whatever had been typed.
     private func load(cards: [SharedFinanceAccount]) {
@@ -158,11 +202,14 @@ struct TransactionEditorView: View {
         guard let transaction else {
             date = defaultDate
             card = cards.first
+            startingCard = card
             return
         }
         isRefund = transaction.cost < 0
         costText = FinanceFormat.editable(abs(transaction.cost))
         merchant = transaction.merchant
+        let loadedKey = MerchantSuggestions.key(transaction.merchant)
+        settledMerchant = loadedKey.isEmpty ? nil : loadedKey
         expense = transaction.expense
         date = transaction.date
         card = transaction.card

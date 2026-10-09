@@ -107,6 +107,9 @@ struct HomeView: View {
     @Environment(\.tvListPersistentContainer) private var tvListPersistentContainer
     /// Written by a Fuel peek's "Open My X3" so the module opens on that car.
     @AppStorage(FuelTrackerModule.selectedVehicleDefaultsKey) private var selectedVehicleName = ""
+    /// The Finance peek's Add Transaction: the editor over the hub, without
+    /// opening the module.
+    @State private var isAddingFinanceTransaction = false
 
     #if os(macOS)
     /// The section each tracker was last left on in the Mac sidebar, so coming
@@ -150,6 +153,11 @@ struct HomeView: View {
             financeMonthFetch.start(context: financeContext)
         }
         .showsShareAcceptOutcome()
+        .sheet(isPresented: $isAddingFinanceTransaction) {
+            if let financeContext, let financePersistentContainer {
+                FinanceTrackerModule.addTransactionView(context: financeContext, container: financePersistentContainer)
+            }
+        }
         // A tapped shared-change notification opens its tracker: the same
         // selection the hub row, the Mac sidebar and ⌘1… set. `initial`, so
         // a tap that launched the app is picked up once the hub exists.
@@ -544,6 +552,15 @@ struct HomeView: View {
                 } label: {
                     Label("Open \(summary.name)", systemImage: "car.fill")
                 }
+            }
+        }
+        // A transaction typed in from the hub, the moment it's paid, without
+        // going through Summary and Spending to the + first.
+        if module == .finance, FinanceTrackerModule.canAddTransaction(context: financeContext, container: financePersistentContainer) {
+            Button {
+                isAddingFinanceTransaction = true
+            } label: {
+                Label("Add Transaction", systemImage: "plus")
             }
         }
     }
