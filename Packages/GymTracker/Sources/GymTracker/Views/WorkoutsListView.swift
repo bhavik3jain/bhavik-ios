@@ -25,7 +25,8 @@ struct WorkoutsListView: View {
                     sessions: pastSessions,
                     start: startSession(from:),
                     open: { openedSession = $0 },
-                    deleteRoutine: { modelContext.delete($0) }
+                    deleteRoutine: { modelContext.delete($0) },
+                    deleteSession: { modelContext.delete($0) }
                 )
             } else {
             VStack(spacing: 12) {
@@ -80,6 +81,7 @@ struct WorkoutsListView: View {
                                 }
                             }
                         }
+                        .onDelete(perform: deleteSessions)
                     }
                 }
                 }
@@ -140,6 +142,15 @@ struct WorkoutsListView: View {
     private func deleteRoutines(at offsets: IndexSet) {
         for index in offsets {
             modelContext.delete(routines[index])
+        }
+    }
+
+    /// History lists the newest 20, a prefix, so its offsets index `pastSessions`
+    /// directly. The cascade takes the workout's sets with it, so Progress and an
+    /// exercise's best set stop counting them; its routine stays.
+    private func deleteSessions(at offsets: IndexSet) {
+        for index in offsets {
+            modelContext.delete(pastSessions[index])
         }
     }
 }

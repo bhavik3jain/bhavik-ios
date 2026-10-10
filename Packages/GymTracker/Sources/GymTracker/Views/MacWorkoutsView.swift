@@ -12,6 +12,7 @@ struct MacWorkoutsView: View {
     let start: (Routine) -> Void
     let open: (WorkoutSession) -> Void
     let deleteRoutine: (Routine) -> Void
+    let deleteSession: (WorkoutSession) -> Void
 
     @State private var sortOrder = [KeyPathComparator(\WorkoutSession.startedAt, order: .reverse)]
     @State private var selection: PersistentIdentifier?
@@ -87,7 +88,14 @@ struct MacWorkoutsView: View {
                 }
                 // No blank striped rows filling the space under the last one.
             .tableRowBackgroundsPlain()
-            .contextMenu(forSelectionType: PersistentIdentifier.self) { _ in
+            .contextMenu(forSelectionType: PersistentIdentifier.self) { ids in
+                    let chosen = sessions.filter { ids.contains($0.id) }
+                    if !chosen.isEmpty {
+                        Button("Delete Workout", systemImage: "trash", role: .destructive) {
+                            chosen.forEach(deleteSession)
+                            selection = nil
+                        }
+                    }
                 } primaryAction: { ids in
                     if let id = ids.first, let session = sessions.first(where: { $0.id == id }) { open(session) }
                 }

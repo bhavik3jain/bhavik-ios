@@ -95,6 +95,35 @@ private func makeContext() throws -> ModelContext {
     #expect(session.routine == nil)
 }
 
+@MainActor
+@Test func deletingWorkoutTakesItsSetsButKeepsRoutineAndExercise() throws {
+    let context = try makeContext()
+    let routine = Routine(name: "Legs")
+    let exercise = Exercise(name: "Squat", muscleGroup: .legs, equipment: "Barbell")
+    let session = WorkoutSession(name: "Legs", routine: routine)
+    context.insert(routine)
+    context.insert(exercise)
+    context.insert(session)
+    for index in 0..<3 {
+        let set = WorkoutSet(weight: 275, reps: 5, order: index, isCompleted: true)
+        set.exercise = exercise
+        set.session = session
+        context.insert(set)
+    }
+    session.finishedAt = .now
+    try context.save()
+
+    context.delete(session)
+    try context.save()
+
+    #expect(try context.fetchCount(FetchDescriptor<WorkoutSession>()) == 0)
+    #expect(try context.fetchCount(FetchDescriptor<WorkoutSet>()) == 0, "A deleted workout's sets must not linger in Progress")
+    #expect(exercise.sets?.isEmpty == true)
+    #expect(try context.fetchCount(FetchDescriptor<Routine>()) == 1)
+    #expect(try context.fetchCount(FetchDescriptor<Exercise>()) == 1)
+    #expect(routine.sessions?.isEmpty == true)
+}
+
 // MARK: - Home-screen peek
 
 @MainActor
