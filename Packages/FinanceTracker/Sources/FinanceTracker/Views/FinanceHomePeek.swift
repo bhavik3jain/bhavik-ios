@@ -18,6 +18,32 @@ public extension FinanceTrackerModule {
     static func homeDetail(months: [SharedFinanceMonth], container: NSPersistentCloudKitContainer?) -> String {
         FinanceHome.homeDetail(for: months, container: container)
     }
+
+    /// Whether the peek's menu offers Add Transaction: the household the
+    /// module shows (`FinanceHouseholdResolver.forDisplay`) has a card or cash
+    /// account to pay with, and this person may add to it. Never before a
+    /// household exists — the editor adds to one, it doesn't make one, and
+    /// making one waits for iCloud (`financeCanCreateHousehold`).
+    @MainActor
+    static func canAddTransaction(context: NSManagedObjectContext?, container: NSPersistentCloudKitContainer?) -> Bool {
+        guard let context else { return false }
+        let households = (try? context.fetch(SharedFinanceHousehold.fetchRequest())) ?? []
+        guard let household = FinanceHouseholdResolver.forDisplay(among: households, container: container) else { return false }
+        let canPay = (household.accounts ?? []).contains { $0.category.takesTransactions && !$0.isArchived }
+        return canPay && canEdit(household, in: container)
+    }
+
+    /// The transaction editor on its own, for the peek's Add Transaction:
+    /// over the home screen, without opening the module. It gets Finance's
+    /// store here as `rootView` does — the hub's own `managedObjectContext`
+    /// is Trips'.
+    @MainActor
+    static func addTransactionView(context: NSManagedObjectContext, container: NSPersistentCloudKitContainer) -> some View {
+        TransactionEditorView(transaction: nil, defaultDate: .now)
+            .environment(\.managedObjectContext, context)
+            .environment(\.financePersistentContainer, container)
+            .tint(accent.color)
+    }
 }
 
 struct FinanceHomePeek: View {

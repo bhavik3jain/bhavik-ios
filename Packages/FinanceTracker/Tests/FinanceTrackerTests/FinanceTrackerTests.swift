@@ -726,6 +726,104 @@ private func detail(_ tile: BalanceTile, _ month: SharedFinanceMonth, filter: Ow
     #expect(known.filter { SpendingSummary.key($0) == "health" }.count == 1, "A suggestion isn't offered twice")
 }
 
+// MARK: - Merchant suggestions
+
+@MainActor
+@Test func merchantsAreOnePerNameAndRememberWhatWasFiledUnderThem() throws {
+    let household = makeHousehold()
+    let sapphire = SharedFinanceAccount(institution: "Chase", name: "Sapphire", category: .card, household: household)
+    let amex = SharedFinanceAccount(institution: "Amex", name: "Gold", category: .card, household: household)
+    let closed = SharedFinanceAccount(institution: "Old", name: "Card", category: .card, household: household)
+    closed.isArchived = true
+    let rows: [(Int, String, String, String, SharedFinanceAccount)] = [
+        // The latest is typed bare and paid with a card since closed, so
+        // what's filled in comes from the one before.
+        (10, "Costco", "", "", closed),
+        (5, "costco ", "Groceries", "Weekly", amex),
+        (2, "COSTCO", "Home", "Bulk", sapphire),
+        (4, "Cafe Luna", "Food", "", sapphire),
+        (3, "Café Luna", "Food", "Coffee", sapphire),
+        (6, "  ", "Food", "", sapphire),
+    ]
+    for (dayOfMonth, merchant, category, expense, account) in rows {
+        let transaction = SharedFinanceTransaction(date: day(2026, 9, dayOfMonth), cost: 20, merchant: merchant, household: household, card: account)
+        transaction.category = category
+        transaction.expense = expense
+    }
+
+    let merchants = MerchantSuggestions.merchants(Array(household.transactions ?? []))
+    #expect(merchants.map(\.name) == ["Costco", "Cafe Luna"], "One per name, latest first, named as typed the latest time; a blank merchant is none")
+    let costco = try #require(merchants.first)
+    #expect(costco.uses == 3)
+    #expect(costco.lastUsed == day(2026, 9, 10))
+    #expect(costco.category == "Groceries" && costco.expense == "Weekly", "The latest one with something filed under it")
+    #expect(costco.account == amex, "Never a closed account, which the editor can't pick")
+    let cafe = try #require(merchants.last)
+    #expect(cafe.uses == 2, "Accents aside, it's the same café")
+    #expect(cafe.category == "Food" && cafe.expense == "", "Category and expense come from one transaction, not mixed from two")
+}
+
+@Test func merchantSuggestionsMatchTheStartFirstThenAWordThenAnywhere() {
+    func merchant(_ name: String, uses: Int, day dayOfMonth: Int = 1) -> MerchantSuggestion {
+        MerchantSuggestion(name: name, category: "", expense: "", account: nil, uses: uses, lastUsed: day(2026, 9, dayOfMonth))
+    }
+    let merchants = [
+        merchant("Trader Joe's", uses: 5),
+        merchant("Joe's Pizza", uses: 1),
+        merchant("Shell", uses: 3),
+        merchant("Target", uses: 8),
+        merchant("Starbucks", uses: 2),
+        merchant("Jamba", uses: 1, day: 20),
+    ]
+    func names(_ typed: String, limit: Int = MerchantSuggestions.limit) -> [String] {
+        MerchantSuggestions.matching(typed, in: merchants, limit: limit).map(\.name)
+    }
+
+    #expect(names("joe") == ["Joe's Pizza", "Trader Joe's"], "Starting the name beats starting a word, however often used")
+    #expect(names("t") == ["Target", "Trader Joe's", "Starbucks"], "Then anywhere in it")
+    #expect(names("j") == ["Jamba", "Joe's Pizza", "Trader Joe's"], "Used as often: the latest first")
+    #expect(names("  TARGET ") == ["Target"], "Case and outer spaces aside")
+    #expect(names("") == ["Target", "Trader Joe's", "Shell", "Starbucks", "Jamba", "Joe's Pizza"], "Nothing typed: the most used")
+    #expect(names("", limit: 2) == ["Target", "Trader Joe's"])
+    #expect(names("xyz").isEmpty)
+}
+
+@MainActor
+@Test func pickingAMerchantFillsOnlyWhatIsntTypedYet() {
+    let household = makeHousehold()
+    let sapphire = SharedFinanceAccount(institution: "Chase", name: "Sapphire", category: .card, household: household)
+    let amex = SharedFinanceAccount(institution: "Amex", name: "Gold", category: .card, household: household)
+    let costco = MerchantSuggestion(name: "Costco", category: "Groceries", expense: "Weekly", account: amex, uses: 3, lastUsed: .now)
+
+    var blank = MerchantFill(merchant: "cos", category: "", expense: "", account: sapphire)
+    blank.apply(costco, mayChangeAccount: true)
+    #expect(blank == MerchantFill(merchant: "Costco", category: "Groceries", expense: "Weekly", account: amex))
+
+    var picked = MerchantFill(merchant: "cos", category: "", expense: "", account: sapphire)
+    picked.apply(costco, mayChangeAccount: false)
+    #expect(picked.account == sapphire, "An account picked by hand, or an edited transaction's, stays")
+
+    var otherCategory = MerchantFill(merchant: "cos", category: "Home", expense: "", account: sapphire)
+    otherCategory.apply(costco, mayChangeAccount: true)
+    #expect(otherCategory.category == "Home")
+    #expect(otherCategory.expense == "", "Weekly was typed under Groceries, not Home")
+
+    var sameCategory = MerchantFill(merchant: "cos", category: "groceries", expense: "", account: sapphire)
+    sameCategory.apply(costco, mayChangeAccount: true)
+    #expect(sameCategory.category == "groceries")
+    #expect(sameCategory.expense == "Weekly", "Categories compare as budgets do")
+
+    var typedExpense = MerchantFill(merchant: "cos", category: "", expense: "Party", account: sapphire)
+    typedExpense.apply(costco, mayChangeAccount: true)
+    #expect(typedExpense.category == "Groceries")
+    #expect(typedExpense.expense == "Party")
+
+    let noAccount = MerchantSuggestion(name: "Costco", category: "", expense: "", account: nil, uses: 1, lastUsed: .now)
+    var kept = MerchantFill(merchant: "cos", category: "", expense: "", account: sapphire)
+    kept.apply(noAccount, mayChangeAccount: true)
+    #expect(kept.account == sapphire)
+}
+
 // MARK: - Home
 
 @MainActor
@@ -744,6 +842,23 @@ private func detail(_ tile: BalanceTile, _ month: SharedFinanceMonth, filter: Ow
     _ = SharedFinanceTransaction(date: day(2026, 10, 2), cost: 40, merchant: "Market", household: household, card: checking)
     #expect(FinanceHome.homeDetail(for: [october, september], container: nil) == "October · \(FinanceFormat.money(40)) spent")
     #expect(!FinanceHome.homeDetail(for: [october, september], container: nil).contains("Net worth"))
+}
+
+@MainActor
+@Test func thePeekOffersAddTransactionOnlyWithSomethingToPayWith() {
+    #expect(!FinanceTrackerModule.canAddTransaction(context: nil, container: nil))
+    let empty = makeContainer()
+    #expect(!FinanceTrackerModule.canAddTransaction(context: empty.viewContext, container: nil), "No household yet: the editor doesn't make one")
+
+    let household = makeHousehold()
+    let context = household.managedObjectContext
+    _ = SharedFinanceAccount(institution: "Broker", name: "Taxable", category: .investments, household: household)
+    let closed = SharedFinanceAccount(institution: "Old", name: "Card", category: .card, household: household)
+    closed.isArchived = true
+    #expect(!FinanceTrackerModule.canAddTransaction(context: context, container: nil), "Nothing open to pay with")
+
+    _ = SharedFinanceAccount(institution: "Chase", name: "Checking", category: .cash, household: household)
+    #expect(FinanceTrackerModule.canAddTransaction(context: context, container: nil))
 }
 
 @MainActor
