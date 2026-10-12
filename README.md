@@ -58,6 +58,8 @@ Packages/
   ParcelTracker/  Parcels, carriers, tracking-number detection
   PointsTracker/  Household, people, loyalty accounts, balance history, expiry warnings
   FinanceTracker/ Household, accounts, monthly balances, metals, card transactions, budgets, month JSON
+docs/
+  app-store/      Privacy policy (also bundled into the app) and App Review notes
 scripts/
   finance/        Mac-only Python (uv, Numbers): month JSON <-> the Numbers sheet, "Export Finance to Numbers"; see its README
 .github/workflows/
@@ -145,7 +147,9 @@ reads each Core Data container's persistent history after every remote change, k
 CloudKit mirroring delegate imported (this device's own saves carry the `app` transaction author),
 keeps only objects that are actually shared, and asks each module's `describeSharedChange` for the
 wording. Settings → Notifications has the switch and one per tracker; permission is asked when you
-share or accept a share, or from that switch — never at launch. The honest limits:
+share or accept a share, or from that switch — never at launch (nor does any other notification:
+Finance's monthly reminder asks from a card on its Summary or its switch in Settings, TV's alerts
+from theirs). The honest limits:
 
 - That rich notification exists only once *this* device has imported the change: while the app is
   running, when a CloudKit silent push wakes it (the `aps-environment` entitlement is on — see *How
@@ -376,6 +380,20 @@ come from the workflow's run number plus an offset, so they only ever go up.
 Signing is **cloud-managed**: Apple holds the distribution private key, so there is no `.p12` to
 export and `security find-identity` shows only an Apple Development identity locally. CI reaches the
 distribution certificate through the App Store Connect API key.
+
+## App Store readiness
+
+The app ships through TestFlight, but is kept ready for App Review:
+
+- **Privacy manifest:** `App/Resources/PrivacyInfo.xcprivacy`, in both targets, declares the
+  required-reason APIs the app uses (UserDefaults, file timestamps) and no tracking or collected
+  data. App Store Connect checks it on every upload, TestFlight included.
+- **Privacy policy:** `docs/app-store/privacy-policy.md`. The app bundles it and shows it under
+  Settings → Privacy Policy; the same text, published at a public URL, is what App Store Connect
+  links to.
+- **Review notes:** `docs/app-store/review-notes.md` has the notes for App Review (with a TMDB key
+  made for the review, never your own), the Mac's App Sandbox justification for Export to Numbers,
+  the App Privacy answers and a checklist.
 
 ## macOS
 

@@ -163,6 +163,16 @@ struct AppSettingsView: View {
                      ? "Counts are what this device holds. Each tracker syncs through the same iCloud account."
                      : "Counts are what this device holds. They aren't syncing while iCloud is \(syncState.summary.lowercased()).")
             }
+
+            Section {
+                NavigationLink {
+                    PrivacyPolicyView()
+                } label: {
+                    Label("Privacy Policy", systemImage: "hand.raised")
+                }
+            } footer: {
+                Text("Nothing you put in Multitrack is sent to its developer.")
+            }
         }
         .navigationTitle("Settings")
         .navigationBarTitleDisplayMode(.inline)

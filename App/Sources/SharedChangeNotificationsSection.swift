@@ -106,15 +106,47 @@ private struct ModuleNotificationToggle: View {
 /// `FinanceMonthReminder`.
 struct FinanceReminderSection: View {
     @AppStorage(FinanceMonthReminder.enabledKey) private var enabled = true
+    /// Whether this device was never asked for notification permission, or
+    /// refused it — the switch can be on with neither allowed, since it's on
+    /// by default and opening Finance no longer asks.
+    @State private var notAsked = false
+    @State private var denied = false
 
     var body: some View {
         Section {
             Toggle(isOn: $enabled) {
                 Label("Monthly Finance reminder", systemImage: "calendar.badge.clock")
             }
-            .onChange(of: enabled) { Task { await FinanceMonthReminder.reschedule() } }
+            .onChange(of: enabled) {
+                Task {
+                    // Switching it on is a moment that says what the
+                    // permission is for, so it may ask; off just clears them.
+                    if enabled {
+                        await FinanceMonthReminder.askPermissionAndReschedule()
+                    } else {
+                        await FinanceMonthReminder.reschedule()
+                    }
+                    await readPermission()
+                }
+            }
+            if enabled, notAsked {
+                Button("Allow Notifications on This Device") {
+                    Task {
+                        await FinanceMonthReminder.askPermissionAndReschedule()
+                        await readPermission()
+                    }
+                }
+            }
         } footer: {
-            Text("On the 1st of each month at 9 AM, a reminder to fill in that month's balances.")
+            Text(enabled && denied
+                 ? "Notifications for Multitrack are turned off on this device. Allow them in the system's notification settings to get the reminder here."
+                 : "On the 1st of each month at 9 AM, a reminder to fill in that month's balances.")
         }
+        .task { await readPermission() }
+    }
+
+    private func readPermission() async {
+        notAsked = await SharedChangeNotifications.isUndetermined()
+        denied = await SharedChangeNotifications.isDenied()
     }
 }

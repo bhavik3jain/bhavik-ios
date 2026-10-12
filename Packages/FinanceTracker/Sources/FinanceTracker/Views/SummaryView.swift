@@ -33,6 +33,8 @@ struct SummaryView: View {
     /// The report to show: a cover on the phone, a window on the Mac
     /// (`presentsReport`).
     @State private var report: FinanceReportWindowValue?
+    /// Whether to offer the monthly reminder (`MonthReminderOfferCard`).
+    @State private var offersReminder = false
 
     var body: some View {
         let snapshot = data.snapshot
@@ -142,6 +144,7 @@ struct SummaryView: View {
                 }
             }
             .onChange(of: filter) { filterWasChosen = true }
+            .task { offersReminder = await FinanceMonthReminder.showsOffer() }
         }
         // On the stack, not its root: the root's tasks end when a tile's
         // detail is pushed, which stopped the review mid-sentence.
@@ -160,7 +163,13 @@ struct SummaryView: View {
     @ViewBuilder
     private func content(_ snapshot: FinanceSnapshot, latest: SharedFinanceMonth) -> some View {
         if layout == .sidebar {
-            MacFinanceDashboard(snapshot: snapshot, latest: latest, filter: filter, brief: briefCard) { openTile = $0 }
+            MacFinanceDashboard(
+                snapshot: snapshot,
+                latest: latest,
+                filter: filter,
+                brief: briefCard,
+                reminderOffer: reminderOfferCard
+            ) { openTile = $0 }
         } else {
             phoneList(snapshot, latest: latest)
         }
@@ -213,6 +222,13 @@ struct SummaryView: View {
                 }
             }
 
+            if let offer = reminderOfferCard {
+                Section {
+                    offer
+                        .listRowInsets(EdgeInsets(top: 14, leading: 16, bottom: 14, trailing: 16))
+                }
+            }
+
             Section {
                 LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
                     ForEach(BalanceTile.allCases) { tile in
@@ -255,6 +271,12 @@ struct SummaryView: View {
             readReview: { showingReview = true },
             openReport: { report = FinanceReportWindowValue(scope: brief.scope, ownerName: reportOwnerName(data.snapshot)) }
         )
+    }
+
+    /// Below the month's progress: the reminder is about filling it in.
+    private var reminderOfferCard: MonthReminderOfferCard? {
+        guard offersReminder else { return nil }
+        return MonthReminderOfferCard { offersReminder = false }
     }
 
     private func startFirstMonth() {
@@ -356,6 +378,8 @@ private struct MacFinanceDashboard: View {
     let filter: OwnerFilter
     /// "<Month> in brief", between the net worth and the month's progress.
     let brief: MonthBriefCard?
+    /// The monthly reminder's offer, after the month's progress.
+    let reminderOffer: MonthReminderOfferCard?
     let open: (BalanceTile) -> Void
 
     private var accent: Color { FinanceTrackerModule.accent.color }
@@ -383,6 +407,12 @@ private struct MacFinanceDashboard: View {
 
                 if !latest.isClosed {
                     progressCard(snapshot.progress(of: latest))
+                }
+
+                if let reminderOffer {
+                    reminderOffer
+                        .padding(20)
+                        .background(.background.secondary, in: .rect(cornerRadius: 18))
                 }
 
                 VStack(alignment: .leading, spacing: 10) {

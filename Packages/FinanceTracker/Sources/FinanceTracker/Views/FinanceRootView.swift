@@ -94,9 +94,10 @@ struct FinanceRootView: View {
         .sheet(item: $debugReview) { scope in
             ReviewSheet(scope: scope, filter: .all)
         }
-        // Tops up the year of 1st-of-the-month reminders; opening Finance is
-        // also the one moment asking for notification permission makes sense
-        // for them.
+        // Tops up the year of 1st-of-the-month reminders. It no longer asks
+        // for notification permission: an unexplained prompt on opening
+        // Finance was the one launch-time ask in the app. The Summary's
+        // offer card and Settings' switch ask (`FinanceMonthReminder`).
         .task { await FinanceMonthReminder.reschedule() }
         .task {
             // Holds back creating a household until iCloud has caught up,

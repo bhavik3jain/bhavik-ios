@@ -58,7 +58,10 @@ struct ParcelSettingsView: View {
                 } header: {
                     Text("Other carriers")
                 } footer: {
-                    Text("These are kept here by hand: tap an order to open the carrier's own tracking page without leaving the app, then set its status. USPS stopped answering third parties in April 2026; UPS support just isn't built yet.")
+                    // Was "…UPS support just isn't built yet": copy that reads
+                    // as an unfinished feature invites an App Review
+                    // rejection under 2.1, and tells the reader nothing to do.
+                    Text("UPS and USPS orders are tracked by hand: tap one to open the carrier's tracking page without leaving the app, then set its status.")
                 }
             }
             .navigationTitle("Settings")

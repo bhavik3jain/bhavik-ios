@@ -34,9 +34,9 @@ public enum Carrier: String, CaseIterable, Codable, Sendable {
         case .fedex, .other:
             nil
         case .ups:
-            "UPS tracking isn't wired up yet, so update this one yourself after checking UPS."
+            "UPS orders are tracked by hand: check UPS's tracking page, then set this order's status."
         case .usps:
-            "USPS only tells whoever shipped an order where it is, so update this one yourself after checking USPS."
+            "USPS shares tracking only with whoever shipped an order, so check USPS's tracking page, then set this order's status."
         }
     }
 

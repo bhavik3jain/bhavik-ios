@@ -1,3 +1,4 @@
+import Core
 import Foundation
 import UserNotifications
 
@@ -8,9 +9,17 @@ import UserNotifications
 /// can name its month. A year of them is scheduled whenever Finance opens,
 /// which keeps the run going for anyone who opens it at least once a year.
 /// They're local, so each partner gets their own and nothing syncs.
+///
+/// Permission is asked only from a tap that says what it's for: the
+/// Summary's offer (`MonthReminderOfferCard`) or Settings' switch. Opening
+/// Finance used to ask outright, a system prompt with nothing on screen to
+/// explain it, the kind App Review and the HIG both object to.
 public enum FinanceMonthReminder {
     /// Settings' "Monthly reminder" switch. On by default.
     public static let enabledKey = "finance.monthlyReminder"
+    /// Set when the Summary's offer is turned down, so it isn't made again.
+    /// Per device, like the permission it's about.
+    public static let offerDismissedKey = "finance.monthlyReminder.offerDismissed"
     /// Every scheduled request's identifier starts with this, so a
     /// reschedule clears exactly these and nothing else.
     static let identifierPrefix = "finance.monthStart."
@@ -49,9 +58,39 @@ public enum FinanceMonthReminder {
         return reminders
     }
 
+    /// Whether the Summary offers to turn the reminder on: it's on (the
+    /// default) but this device has never been asked for permission, so
+    /// nothing would show, and the offer hasn't been turned down.
+    static func offersReminder(isEnabled: Bool, permission: UNAuthorizationStatus, hasDismissedOffer: Bool) -> Bool {
+        isEnabled && permission == .notDetermined && !hasDismissedOffer
+    }
+
+    /// `offersReminder` for this device as it is now.
+    public static func showsOffer() async -> Bool {
+        let permission = await UNUserNotificationCenter.current().notificationSettings().authorizationStatus
+        return offersReminder(
+            isEnabled: isEnabled(),
+            permission: permission,
+            hasDismissedOffer: UserDefaults.standard.bool(forKey: offerDismissedKey)
+        )
+    }
+
+    public static func dismissOffer() {
+        UserDefaults.standard.set(true, forKey: offerDismissedKey)
+    }
+
+    /// From a tap on the offer or the switch: asks for permission if this
+    /// device never has, then schedules. Returns whether they can show.
+    @discardableResult
+    public static func askPermissionAndReschedule() async -> Bool {
+        let allowed = await SharedChangeNotifications.requestAuthorization()
+        await reschedule()
+        return allowed
+    }
+
     /// Replaces whatever reminders are pending with a fresh year of them,
-    /// or just removes them when the switch is off. Asks for permission the
-    /// first time; without it the center drops them silently.
+    /// or just removes them when the switch is off. Never asks for
+    /// permission (see the type's comment): until it's given, none show.
     public static func reschedule(asOf now: Date = .now) async {
         let center = UNUserNotificationCenter.current()
         let pending = await center.pendingNotificationRequests()
@@ -59,9 +98,6 @@ public enum FinanceMonthReminder {
             .filter { $0.hasPrefix(identifierPrefix) }
         center.removePendingNotificationRequests(withIdentifiers: pending)
         guard isEnabled() else { return }
-        if await center.notificationSettings().authorizationStatus == .notDetermined {
-            _ = try? await center.requestAuthorization(options: [.alert, .sound])
-        }
         for reminder in upcoming(asOf: now) {
             let content = UNMutableNotificationContent()
             content.title = reminder.title

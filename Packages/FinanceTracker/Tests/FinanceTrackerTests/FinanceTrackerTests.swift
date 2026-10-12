@@ -3,6 +3,7 @@ import CoreData
 import Foundation
 import ObjectiveC
 import Testing
+import UserNotifications
 @testable import FinanceTracker
 
 /// Ties a returned context's lifetime to its container — see Fuel's tests.
@@ -558,6 +559,18 @@ private func detail(_ tile: BalanceTile, _ month: SharedFinanceMonth, filter: Ow
     #expect(FinanceMonthReminder.upcoming(asOf: earlyOnTheFirst).first?.period == YearMonth(year: 2026, month: 11), "Before 9 today's still to come")
     let lateOnTheFirst = day(2026, 11, 1, hour: 10)
     #expect(FinanceMonthReminder.upcoming(asOf: lateOnTheFirst).first?.period == YearMonth(year: 2026, month: 12))
+}
+
+@Test func theReminderIsOfferedOnlyWhileTheDeviceHasNeverBeenAsked() {
+    func offers(_ isEnabled: Bool = true, _ permission: UNAuthorizationStatus = .notDetermined, dismissed: Bool = false) -> Bool {
+        FinanceMonthReminder.offersReminder(isEnabled: isEnabled, permission: permission, hasDismissedOffer: dismissed)
+    }
+    #expect(offers(), "On by default, never asked: the Summary offers it")
+    #expect(!offers(false), "Switched off in Settings")
+    #expect(!offers(dismissed: true), "Turned down with Not Now")
+    #expect(!offers(.authorized), "Already allowed: the reminders just arrive")
+    #expect(!offers(.provisional))
+    #expect(!offers(.denied), "Refused: only the system Settings app can undo that")
 }
 
 // MARK: - People's colours

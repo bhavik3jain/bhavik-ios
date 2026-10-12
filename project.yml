@@ -40,6 +40,14 @@ targets:
       # catalog under "resources" silently did nothing, leaving the app iconless.
       - path: App/Sources
       - path: App/Resources/Assets.xcassets
+      # The privacy manifest (required-reason APIs) and the privacy policy
+      # Settings shows (`PrivacyPolicyView`), on both targets. The build phase
+      # is spelled out rather than left to XcodeGen's guess from the file
+      # type: a policy left out of the bundle would show an empty screen.
+      - path: App/Resources/PrivacyInfo.xcprivacy
+        buildPhase: resources
+      - path: docs/app-store/privacy-policy.md
+        buildPhase: resources
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.bhavikjain.trackers
@@ -134,6 +142,11 @@ targets:
     sources:
       - path: App/Sources
       - path: App/Resources/Assets.xcassets
+      # See the iOS target.
+      - path: App/Resources/PrivacyInfo.xcprivacy
+        buildPhase: resources
+      - path: docs/app-store/privacy-policy.md
+        buildPhase: resources
       # Finance's Export to Numbers (App/Sources/MacFinanceNumbers.swift) fills
       # the committed template with the scripts' own fill script, so the Mac
       # app and scripts/finance can never drift apart. Mac only: the phone

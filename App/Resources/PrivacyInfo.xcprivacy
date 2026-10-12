@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<!-- The app's privacy manifest, bundled into both targets (project.yml).
+     Without it every upload drew an "ITMS-91053: Missing API declaration"
+     email for UserDefaults, and Apple has said uploads lacking it will be
+     refused. A new use of a required-reason API (file timestamps, disk
+     space, system boot time, active keyboards, user defaults) needs its
+     category added here. The packages link statically into the app, so
+     this one file covers them too. Collected data is empty on purpose: the
+     developer receives nothing, and what the app sends to TMDB, FedEx and
+     the gold and silver price service goes under the person's own keys or
+     carries nothing about them (docs/app-store/review-notes.md, App
+     Privacy). -->
+<dict>
+	<key>NSPrivacyTracking</key>
+	<false/>
+	<key>NSPrivacyTrackingDomains</key>
+	<array/>
+	<key>NSPrivacyCollectedDataTypes</key>
+	<array/>
+	<key>NSPrivacyAccessedAPITypes</key>
+	<array>
+		<!-- @AppStorage and UserDefaults throughout: settings, ledgers,
+		     dismissed offers. Read and written by this app only. -->
+		<dict>
+			<key>NSPrivacyAccessedAPIType</key>
+			<string>NSPrivacyAccessedAPICategoryUserDefaults</string>
+			<key>NSPrivacyAccessedAPITypeReasons</key>
+			<array>
+				<string>CA92.1</string>
+			</array>
+		</dict>
+		<!-- Core's HTMLDocumentExport reads the creation date of its own
+		     export folders in the app's temporary directory, to delete the
+		     ones over an hour old. -->
+		<dict>
+			<key>NSPrivacyAccessedAPIType</key>
+			<string>NSPrivacyAccessedAPICategoryFileTimestamp</string>
+			<key>NSPrivacyAccessedAPITypeReasons</key>
+			<array>
+				<string>C617.1</string>
+			</array>
+		</dict>
+	</array>
+</dict>
+</plist>

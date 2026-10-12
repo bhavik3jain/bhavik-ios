@@ -57,6 +57,14 @@ while open, is valued at them everywhere (`MonthSummary`, `FinanceHistory`, prog
 take `live:`). Closing the month writes them into it. Saving on every refresh would sync, and
 iCloud's zone alert subscriptions fire on any change — every app open would alert the partner.
 
+- **App Store paperwork lives in the tree.** `App/Resources/PrivacyInfo.xcprivacy` (both targets)
+  declares the required-reason APIs in use, UserDefaults and file timestamps: a new one (disk
+  space, system boot time, active keyboards, another timestamp read) gets its category there, or
+  every upload draws an ITMS-91053 email. `docs/app-store/privacy-policy.md` is bundled and shown in
+  Settings › Privacy Policy, and lists every service the app sends anything to: a new one goes in
+  it. `docs/app-store/review-notes.md` has App Review's notes, the Mac sandbox justification and the
+  App Privacy answers. Nothing asks for a permission at launch; keep it that way (Finance's monthly
+  reminder asks from its Summary card or Settings' switch, TV's alerts from theirs).
 - `bhavik-ios.xcodeproj` is XcodeGen output and is **gitignored**. (Three stale iCloud conflict
   copies, `bhavik-ios 2/3/4.xcodeproj`, also sit in the root — ignore them.)
 - `App/Resources/Info.plist` and `Info-macOS.plist` are **tracked in git but still generated**, from
@@ -335,7 +343,8 @@ release one, or Debug shows no weather.
   branch's files ("Build input file cannot be found").
 - **Simulator driving:** screenshots lag a second or two behind a tap, so wait before deciding a tap
   missed; scrolling minimises the tab bar to one floating button, so scroll back up before tapping
-  a tab. Opening Finance asks for notification permission (the monthly reminder).
+  a tab. Opening Finance no longer asks for notification permission: on a fresh simulator the
+  Summary shows the monthly reminder's offer card instead, and only its Turn On asks.
 - **Merging:** auto-merge is disabled on the repo. Check `gh pr view N --json statusCheckRollup`,
   then `gh pr merge N --merge` (merge commits, as the history has), then
   `gh workflow run TestFlight --ref main`.
