@@ -562,15 +562,15 @@ private func detail(_ tile: BalanceTile, _ month: SharedFinanceMonth, filter: Ow
 }
 
 @Test func theReminderIsOfferedOnlyWhileTheDeviceHasNeverBeenAsked() {
-    func offers(_ isEnabled: Bool = true, _ permission: UNAuthorizationStatus = .notDetermined, dismissed: Bool = false) -> Bool {
-        FinanceMonthReminder.offersReminder(isEnabled: isEnabled, permission: permission, hasDismissedOffer: dismissed)
+    func offers(enabled: Bool = true, permission: UNAuthorizationStatus = .notDetermined, dismissed: Bool = false) -> Bool {
+        FinanceMonthReminder.offersReminder(isEnabled: enabled, permission: permission, hasDismissedOffer: dismissed)
     }
     #expect(offers(), "On by default, never asked: the Summary offers it")
-    #expect(!offers(false), "Switched off in Settings")
+    #expect(!offers(enabled: false), "Switched off in Settings")
     #expect(!offers(dismissed: true), "Turned down with Not Now")
-    #expect(!offers(.authorized), "Already allowed: the reminders just arrive")
-    #expect(!offers(.provisional))
-    #expect(!offers(.denied), "Refused: only the system Settings app can undo that")
+    #expect(!offers(permission: .authorized), "Already allowed: the reminders just arrive")
+    #expect(!offers(permission: .provisional))
+    #expect(!offers(permission: .denied), "Refused: only the system Settings app can undo that")
 }
 
 // MARK: - People's colours
