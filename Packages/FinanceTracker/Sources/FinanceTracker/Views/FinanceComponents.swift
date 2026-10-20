@@ -135,15 +135,26 @@ struct AmountTextField: View {
 }
 
 /// A person's initials and name — the sub-heading over their accounts within
-/// a category, with what they add up to.
+/// a category, or over their gold or silver — with what they add up to.
 struct OwnerGroupHeader: View {
-    let group: AccountGroup
+    let owner: SharedFinanceOwner?
+    let title: String
     let total: Double
+
+    init(owner: SharedFinanceOwner?, title: String, total: Double) {
+        self.owner = owner
+        self.title = title
+        self.total = total
+    }
+
+    init(group: AccountGroup, total: Double) {
+        self.init(owner: group.owner, title: group.title, total: total)
+    }
 
     var body: some View {
         HStack(spacing: 8) {
-            OwnerBadge(owner: group.owner)
-            Text(group.title)
+            OwnerBadge(owner: owner)
+            Text(title)
                 .font(.subheadline.weight(.semibold))
             Spacer()
             Text(FinanceFormat.money(total))

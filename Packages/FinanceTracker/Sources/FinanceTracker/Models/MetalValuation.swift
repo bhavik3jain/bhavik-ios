@@ -118,3 +118,60 @@ public struct MetalLocation: Identifiable, Equatable, Sendable {
 
     public var id: String { name }
 }
+
+/// One person's gold, or silver, on Holdings: whose it is, the items, and
+/// what they're worth.
+struct MetalGroup: Identifiable {
+    /// nil for items that belong to no one.
+    let owner: SharedFinanceOwner?
+    /// In the order they were given — Holdings passes `displayOrder`.
+    let items: [SharedFinanceMetalItem]
+    let holdings: MetalHoldings
+
+    var id: String { owner.map { $0.objectID.uriRepresentation().absoluteString } ?? "no-one" }
+
+    var title: String { owner?.name ?? "No one" }
+}
+
+/// Holdings lists gold and silver apart, each split by person — the way
+/// `AccountGrouping` splits a category's accounts.
+enum MetalGrouping {
+    /// `items` of one metal, and only those at `location` when it's set,
+    /// matched the way the location chips count them: trimmed, any case.
+    static func items(
+        _ items: [SharedFinanceMetalItem],
+        of metal: MetalKind,
+        at location: String? = nil
+    ) -> [SharedFinanceMetalItem] {
+        items.filter { item in
+            guard item.metal == metal else { return false }
+            guard let location else { return true }
+            return item.location.trimmingCharacters(in: .whitespaces).caseInsensitiveCompare(location) == .orderedSame
+        }
+    }
+
+    /// `items` split by owner — people in their own order, items with no
+    /// owner last — each group keeping the order it was given. Empty groups
+    /// are left out.
+    static func byOwner(_ items: [SharedFinanceMetalItem], prices: MetalPrices) -> [MetalGroup] {
+        let owners = Set(items.compactMap(\.owner)).sorted(by: SharedFinanceOwner.displayOrder)
+        var groups = owners.map { owner in
+            let owned = items.filter { $0.owner == owner }
+            return MetalGroup(owner: owner, items: owned, holdings: MetalHoldings(owned, prices: prices))
+        }
+        let unowned = items.filter { $0.owner == nil }
+        if !unowned.isEmpty {
+            groups.append(MetalGroup(owner: nil, items: unowned, holdings: MetalHoldings(unowned, prices: prices)))
+        }
+        return groups
+    }
+
+    /// Each group's share of what they're worth together, for the bar in
+    /// their colours: 0 for a group worth nothing, and all 0 when no group
+    /// is worth anything — never a division by zero.
+    static func shares(_ groups: [MetalGroup]) -> [Double] {
+        let total = groups.reduce(0) { $0 + max($1.holdings.value, 0) }
+        guard total > 0 else { return groups.map { _ in 0 } }
+        return groups.map { max($0.holdings.value, 0) / total }
+    }
+}

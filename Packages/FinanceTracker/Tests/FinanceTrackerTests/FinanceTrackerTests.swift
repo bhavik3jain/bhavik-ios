@@ -134,6 +134,39 @@ private let ounce = 28.349523125
     #expect(ring.value(at: prices) == 3_000)
 }
 
+@MainActor
+@Test func holdingsListGoldAndSilverApartSplitByPerson() throws {
+    let household = makeHousehold()
+    let bhavik = try owner("Bhavik", in: household)
+    let saloni = try owner("Saloni", in: household)
+    let bar = SharedFinanceMetalItem(name: "Bar", metal: .gold, grams: ounce, household: household, owner: saloni)
+    bar.location = "Locker"
+    let coin = SharedFinanceMetalItem(name: "Coin", metal: .gold, grams: ounce, household: household, owner: bhavik)
+    coin.location = " locker "
+    let chain = SharedFinanceMetalItem(name: "Chain", metal: .gold, grams: ounce, household: household)
+    chain.location = "Home"
+    let spoons = SharedFinanceMetalItem(name: "Spoons", metal: .silver, grams: ounce, household: household, owner: bhavik)
+    let items = household.sortedMetals
+    let prices = MetalPrices(gold: 4_000, silver: 50)
+
+    let gold = MetalGrouping.items(items, of: .gold)
+    #expect(Set(gold) == [bar, coin, chain])
+    #expect(MetalGrouping.items(items, of: .silver) == [spoons])
+    #expect(Set(MetalGrouping.items(items, of: .gold, at: "Locker")) == [bar, coin], "Trimmed, any case — as the chips count them")
+
+    let groups = MetalGrouping.byOwner(gold, prices: prices)
+    #expect(groups.map(\.title) == ["Bhavik", "Saloni", "No one"], "People in their order, no one last")
+    #expect(groups.map(\.items) == [[coin], [bar], [chain]])
+    #expect(groups.allSatisfy { approximately($0.holdings.value, 4_000, within: 0.01) })
+    #expect(MetalGrouping.byOwner(MetalGrouping.items(items, of: .silver), prices: prices).map(\.title) == ["Bhavik"])
+
+    let shares = MetalGrouping.shares(groups)
+    #expect(shares.count == 3)
+    #expect(shares.allSatisfy { approximately($0, 1.0 / 3.0) })
+    let worthless = MetalGrouping.byOwner(gold, prices: MetalPrices())
+    #expect(MetalGrouping.shares(worthless) == [0, 0, 0], "Nothing priced yet is no share, not a division by zero")
+}
+
 // MARK: - Cards
 
 @MainActor

@@ -7,6 +7,8 @@ import SwiftUI
 /// in grams.
 struct MetalEditorView: View {
     let item: SharedFinanceMetalItem?
+    /// What a new item starts as: the metal Holdings is showing.
+    var newMetal = MetalKind.gold
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.managedObjectContext) private var context
@@ -53,7 +55,7 @@ struct MetalEditorView: View {
                         ForEach(MetalKind.allCases) { Text($0.displayName).tag($0) }
                     }
                     .pickerStyle(.segmented)
-                    TextField("Name", text: $name, prompt: Text("Gold - Bar 1"))
+                    TextField("Name", text: $name, prompt: Text("\(metal.displayName) - Bar 1"))
                         .textInputAutocapitalization(.words)
                 }
 
@@ -133,7 +135,7 @@ struct MetalEditorView: View {
                     }
                 }
             }
-            .navigationTitle(isNew ? "Add Gold or Silver" : "Edit")
+            .navigationTitle(isNew ? "Add \(metal.displayName)" : "Edit")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -173,7 +175,10 @@ struct MetalEditorView: View {
     private func load() {
         guard !loaded else { return }
         loaded = true
-        guard let item else { return }
+        guard let item else {
+            metal = newMetal
+            return
+        }
         metal = item.metal
         name = item.name
         weightText = FinanceFormat.editable(item.grams)
