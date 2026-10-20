@@ -1,3 +1,4 @@
+import Combine
 import Core
 import CoreData
 import SwiftUI
@@ -37,8 +38,16 @@ struct HoldingsView: View {
     /// nil shows every location.
     @State private var locationFilter: String?
     @State private var showingPeople = false
+    /// Bumped on every change in the Finance store, and read by `body`.
+    /// Moving a piece from Joint to Bhavik changes no fetch's results —
+    /// the same items in the same order — so `FinanceFetches` never redrew
+    /// this view: the piece stayed under Joint, with Joint's old total and
+    /// share, until Holdings was left and opened again. Rows observe their
+    /// own object; the grouping, totals and share bar are worked out here.
+    @State private var changes = 0
 
     var body: some View {
+        let _ = changes
         let snapshot = data.snapshot
         let isEditable = snapshot.canEdit
         NavigationStack {
@@ -138,6 +147,15 @@ struct HoldingsView: View {
         }
         // A location picked on Gold may hold no silver at all.
         .onChange(of: mode) { locationFilter = nil }
+        // Throttled like Core's `ManagedObjectFetch`: an iCloud import
+        // merges in batches, each one otherwise a redraw.
+        .onReceive(
+            NotificationCenter.default
+                .publisher(for: .NSManagedObjectContextObjectsDidChange, object: context)
+                .throttle(for: .milliseconds(250), scheduler: DispatchQueue.main, latest: true)
+        ) { _ in
+            changes &+= 1
+        }
     }
 
     private func list(_ snapshot: FinanceSnapshot, isEditable: Bool) -> some View {
