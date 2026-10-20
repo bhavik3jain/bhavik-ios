@@ -3,17 +3,28 @@ import CoreData
 import SwiftUI
 
 /// What the household holds: every account by category, and the gold and
-/// silver.
+/// the silver — each its own list, split by person.
 struct HoldingsView: View {
     @Environment(\.moduleLayout) private var layout
     @Environment(\.managedObjectContext) private var context
     @Environment(\.financePersistentContainer) private var container
     var data = FinanceFetches()
 
+    /// Gold and silver were one list; the user asked for them apart.
     private enum Mode: String, CaseIterable, Identifiable {
         case accounts = "Accounts"
-        case metals = "Gold & silver"
+        case gold = "Gold"
+        case silver = "Silver"
         var id: String { rawValue }
+
+        /// The metal this mode lists; nil for accounts.
+        var metal: MetalKind? {
+            switch self {
+            case .accounts: nil
+            case .gold: .gold
+            case .silver: .silver
+            }
+        }
     }
 
     @State private var mode = Mode.accounts
@@ -75,14 +86,15 @@ struct HoldingsView: View {
                 if isEditable {
                     ToolbarItem(placement: .primaryAction) {
                         Button {
-                            switch mode {
-                            case .accounts: addingAccount = true
-                            case .metals: addingMetal = true
+                            if mode.metal == nil {
+                                addingAccount = true
+                            } else {
+                                addingMetal = true
                             }
                         } label: {
                             Image(systemName: "plus")
                         }
-                        .accessibilityLabel(mode == .accounts ? "New Account" : "Add Gold or Silver")
+                        .accessibilityLabel(mode.metal.map { "Add \($0.displayName)" } ?? "New Account")
                     }
                 }
                 ToolbarItem(placement: layout.secondaryToolbarPlacement) {
@@ -96,7 +108,7 @@ struct HoldingsView: View {
                 AccountEditorView(account: account)
             }
             .sheet(isPresented: $addingMetal) {
-                MetalEditorView(item: nil)
+                MetalEditorView(item: nil, newMetal: mode.metal ?? .gold)
             }
             .sheet(item: $editingMetal) { item in
                 MetalEditorView(item: item)
@@ -117,11 +129,15 @@ struct HoldingsView: View {
         }
         // A review's "Open Gold & Silver": the module's own tab is already
         // built with its mode in @State, so it's asked for, not passed in.
+        // Its fixes can be about either metal; Gold unless there's only silver.
         .onChange(of: HoldingsModeRequest.shared.showsMetals, initial: true) { _, showsMetals in
             guard showsMetals else { return }
-            mode = .metals
+            let metals = data.snapshot.metals
+            mode = !metals.contains { $0.metal == .gold } && metals.contains { $0.metal == .silver } ? .silver : .gold
             HoldingsModeRequest.shared.showsMetals = false
         }
+        // A location picked on Gold may hold no silver at all.
+        .onChange(of: mode) { locationFilter = nil }
     }
 
     private func list(_ snapshot: FinanceSnapshot, isEditable: Bool) -> some View {
@@ -138,11 +154,10 @@ struct HoldingsView: View {
                 }
             }
 
-            switch mode {
-            case .accounts:
+            if let metal = mode.metal {
+                metalSections(snapshot, metal: metal, isEditable: isEditable)
+            } else {
                 accountSections(snapshot, isEditable: isEditable)
-            case .metals:
-                metalSections(snapshot, isEditable: isEditable)
             }
         }
     }
@@ -255,19 +270,22 @@ struct HoldingsView: View {
 
     // MARK: - Gold & silver
 
+    /// One metal: what it's worth, its price, where it's kept, and each
+    /// person's pieces under their badge, in their colour.
     @ViewBuilder
-    private func metalSections(_ snapshot: FinanceSnapshot, isEditable: Bool) -> some View {
+    private func metalSections(_ snapshot: FinanceSnapshot, metal: MetalKind, isEditable: Bool) -> some View {
         let prices = snapshot.currentPrices
-        let holdings = MetalHoldings(snapshot.metals, prices: prices)
-        let locations = MetalHoldings.locations(snapshot.metals)
-        let shown = snapshot.metals.filter { item in
-            guard let locationFilter else { return true }
-            return item.location.trimmingCharacters(in: .whitespaces).caseInsensitiveCompare(locationFilter) == .orderedSame
-        }
+        let items = MetalGrouping.items(snapshot.metals, of: metal)
+        let holdings = MetalHoldings(items, prices: prices)
+        let locations = MetalHoldings.locations(items)
+        // The header and its bar are the whole metal; the list follows the
+        // location chip.
+        let everyone = MetalGrouping.byOwner(items, prices: prices)
+        let groups = MetalGrouping.byOwner(MetalGrouping.items(items, of: metal, at: locationFilter), prices: prices)
 
         Section {
             VStack(alignment: .leading, spacing: 8) {
-                Text("Current value")
+                Text("\(metal.displayName) value")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                 Text(FinanceFormat.money(holdings.value))
@@ -286,23 +304,26 @@ struct HoldingsView: View {
                 Text("Gain counts only the items with a cost recorded.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                if everyone.count > 1 {
+                    OwnerShareBar(shares: ownerShares(everyone))
+                        .padding(.top, 4)
+                }
             }
             .padding(.vertical, 4)
         }
 
         Section {
-            LabeledContent("Gold", value: "\(FinanceFormat.cents(prices.gold)) / oz")
-            LabeledContent("Silver", value: "\(FinanceFormat.cents(prices.silver)) / oz")
+            LabeledContent(metal.displayName, value: "\(FinanceFormat.cents(prices.price(for: metal))) / oz")
         } header: {
-            Text(snapshot.latestMonth.map { "\($0.title) prices" } ?? "Prices")
+            Text(snapshot.latestMonth.map { "\($0.title) price" } ?? "Price")
         } footer: {
-            Text("Change them on the month's page under Months.")
+            Text("Change it on the month's page under Months.")
         }
 
         if !locations.isEmpty {
             Section {
                 ChipRow {
-                    FinanceChip(title: "All", detail: "\(snapshot.metals.count)", isSelected: locationFilter == nil) {
+                    FinanceChip(title: "All", detail: "\(items.count)", isSelected: locationFilter == nil) {
                         locationFilter = nil
                     }
                     ForEach(locations) { location in
@@ -316,27 +337,49 @@ struct HoldingsView: View {
             }
         }
 
-        Section {
-            if snapshot.metals.isEmpty {
-                Text("Add each bar, coin or piece of jewellery with its weight; it's valued at the month's price.")
+        if items.isEmpty {
+            Section {
+                Text("No \(metal.displayName.lowercased()) yet. Add each bar, coin or piece of jewellery with its weight; it's valued at the month's price.")
                     .foregroundStyle(.secondary)
             }
-            ForEach(shown) { item in
-                Button {
-                    if isEditable { editingMetal = item }
-                } label: {
-                    MetalRow(item: item, prices: prices)
-                }
-                .tint(.primary)
-                .swipeActions(edge: .trailing) {
-                    if isEditable {
-                        Button("Delete", systemImage: "trash", role: .destructive) {
-                            context.delete(item)
-                            try? context.saveIfNeeded()
+        }
+
+        ForEach(groups) { group in
+            Section {
+                ForEach(group.items) { item in
+                    Button {
+                        if isEditable { editingMetal = item }
+                    } label: {
+                        MetalRow(item: item, prices: prices)
+                    }
+                    .tint(.primary)
+                    .swipeActions(edge: .trailing) {
+                        if isEditable {
+                            Button("Delete", systemImage: "trash", role: .destructive) {
+                                context.delete(item)
+                                try? context.saveIfNeeded()
+                            }
                         }
                     }
                 }
+            } header: {
+                OwnerGroupHeader(owner: group.owner, title: group.title, total: group.holdings.value)
+                    .textCase(nil)
             }
+        }
+    }
+
+    /// The bar's slices, worked out here rather than in the bar: this view
+    /// redraws when someone's colour changes in People, a bar handed the
+    /// same owner objects again would not.
+    private func ownerShares(_ groups: [MetalGroup]) -> [OwnerShare] {
+        zip(groups, MetalGrouping.shares(groups)).map { group, share in
+            OwnerShare(
+                id: group.id,
+                name: group.title,
+                color: group.owner?.color.color ?? .gray,
+                fraction: share
+            )
         }
     }
 }
@@ -398,17 +441,13 @@ private struct AccountRow: View {
     }
 }
 
+/// A piece of gold or silver. Whose it is is the section it sits in.
 private struct MetalRow: View {
     @ObservedObject var item: SharedFinanceMetalItem
     let prices: MetalPrices
 
     var body: some View {
         HStack(spacing: 10) {
-            Text(item.metal.symbol)
-                .font(.system(size: 12, weight: .bold, design: .rounded))
-                .foregroundStyle(.white)
-                .frame(width: 30, height: 30)
-                .background(item.metal == .gold ? Color(red: 0.80, green: 0.62, blue: 0.16) : Color.gray, in: RoundedRectangle(cornerRadius: 8))
             VStack(alignment: .leading, spacing: 2) {
                 Text(item.name.isEmpty ? "Untitled" : item.name)
                     .lineLimit(1)
@@ -439,7 +478,57 @@ private struct MetalRow: View {
         let location = item.location.trimmingCharacters(in: .whitespaces)
         if !location.isEmpty { parts.append(location) }
         if item.hasManualValue { parts.append("value set by hand") }
-        if let owner = item.owner { parts.append(owner.name) }
         return parts.joined(separator: " · ")
+    }
+}
+
+/// One person's slice of a metal's value.
+private struct OwnerShare: Identifiable {
+    let id: String
+    let name: String
+    let color: Color
+    let fraction: Double
+}
+
+/// Who holds how much of the gold, or the silver: one bar in each person's
+/// colour, and a key with their share.
+private struct OwnerShareBar: View {
+    let shares: [OwnerShare]
+
+    var body: some View {
+        let shown = shares.filter { $0.fraction > 0 }
+        if !shown.isEmpty {
+            VStack(alignment: .leading, spacing: 6) {
+                GeometryReader { geometry in
+                    let gaps = CGFloat(shown.count - 1) * 2
+                    HStack(spacing: 2) {
+                        ForEach(shown) { share in
+                            Rectangle()
+                                .fill(share.color)
+                                .frame(width: max(0, (geometry.size.width - gaps) * share.fraction))
+                        }
+                    }
+                }
+                .frame(height: 8)
+                .clipShape(Capsule())
+                HStack(spacing: 12) {
+                    ForEach(shares) { share in
+                        HStack(spacing: 4) {
+                            Circle()
+                                .fill(share.color)
+                                .frame(width: 8, height: 8)
+                            Text(share.name)
+                            Text(share.fraction.formatted(.percent.precision(.fractionLength(0))))
+                                .foregroundStyle(.secondary)
+                                .monospacedDigit()
+                        }
+                        .lineLimit(1)
+                    }
+                }
+                .font(.caption)
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(shares.map { "\($0.name) \($0.fraction.formatted(.percent.precision(.fractionLength(0))))" }.joined(separator: ", "))
+        }
     }
 }
