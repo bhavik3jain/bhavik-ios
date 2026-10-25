@@ -121,6 +121,12 @@ struct HomeView: View {
     @State private var tripSection: TripSection = .plan
     #endif
 
+    #if os(iOS)
+    /// Regular on the open iPhone Duo's inner display, where the hub is the
+    /// Overview's cards rather than the list.
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    #endif
+
     var body: some View {
         Group {
             #if os(macOS)
@@ -175,23 +181,21 @@ struct HomeView: View {
 
     // MARK: - iOS: hub list, modules as a full-screen cover
 
+    #if os(iOS)
     private var iOSBody: some View {
         NavigationStack {
-            List {
-                ForEach(layoutStore.visibleModules) { module in
-                    ModuleRow(
-                        accent: module.accent,
-                        icon: module.icon,
-                        detail: detail(for: module)
-                    ) { selectedModule = module }
-                        // Each row peeks on a long press: the module's own summary
-                        // card, fed from the queries above so no module reads
-                        // another's data.
-                        .contextMenu {
-                            contextMenuItems(for: module)
-                        } preview: {
-                            peek(for: module)
-                        }
+            Group {
+                // The open iPhone Duo's inner display is regular width: the
+                // Overview's cards there, the list everywhere else — and the
+                // list again the moment the phone folds shut.
+                if horizontalSizeClass == .regular {
+                    HubDashboard(modules: layoutStore.visibleModules, isTall: overviewCardIsTall) { module, now in
+                        overviewCard(for: module, asOf: now)
+                    } menu: { module in
+                        contextMenuItems(for: module)
+                    }
+                } else {
+                    hubList
                 }
             }
             // Every store at once, not `.refreshesFromCloud()`: this list's
@@ -218,6 +222,27 @@ struct HomeView: View {
             }
         }
     }
+
+    private var hubList: some View {
+        List {
+            ForEach(layoutStore.visibleModules) { module in
+                ModuleRow(
+                    accent: module.accent,
+                    icon: module.icon,
+                    detail: detail(for: module)
+                ) { selectedModule = module }
+                    // Each row peeks on a long press: the module's own summary
+                    // card, fed from the queries above so no module reads
+                    // another's data.
+                    .contextMenu {
+                        contextMenuItems(for: module)
+                    } preview: {
+                        peek(for: module)
+                    }
+            }
+        }
+    }
+    #endif
 
     // MARK: - macOS: a sidebar, modules in the detail pane
 
@@ -282,12 +307,7 @@ struct HomeView: View {
                     modules: layoutStore.visibleModules,
                     syncMonitor: syncMonitor,
                     open: { selectedModule = $0 },
-                    // Only a trip under way has a day's plan to show; with
-                    // nothing under way Trips lists what's coming up in the
-                    // same height as every other row.
-                    isTall: { module, now in
-                        module == .trips && !TripTrackerModule.sidebarTrips(trips, asOf: now).underWay.isEmpty
-                    }
+                    isTall: overviewCardIsTall
                 ) { module, now in
                     overviewCard(for: module, asOf: now)
                 }
@@ -426,6 +446,9 @@ struct HomeView: View {
         case .gym, .points: return nil
         }
     }
+    #endif
+
+    // MARK: - Overview cards: the Mac's Overview and the open Duo's hub
 
     /// Each tracker's Overview card, fed from the queries above so no module
     /// reads another's data — the same arrangement as the phone's peeks.
@@ -435,8 +458,13 @@ struct HomeView: View {
         switch module {
         case .trips:
             TripTrackerModule.overviewCard(trips: trips, asOf: now) { id, section in
+                // The phone's Trips opens on its list: the trip bindings are
+                // the Mac sidebar's alone, and TripRootView ignores them in
+                // the tab layout.
+                #if os(macOS)
                 openTripID = id
                 tripSection = section
+                #endif
                 selectedModule = .trips
             }
         case .explore: ExploreTrackerModule.overviewCard(guides: guides, open: open)
@@ -448,7 +476,12 @@ struct HomeView: View {
         case .points: PointsTrackerModule.overviewCard(accounts: pointsAccounts, asOf: now, open: open)
         }
     }
-    #endif
+
+    /// Only a trip under way has a day's plan to show; with nothing under way
+    /// Trips lists what's coming up in the same height as every other row.
+    private func overviewCardIsTall(_ module: SelectedModule, asOf now: Date) -> Bool {
+        module == .trips && !TripTrackerModule.sidebarTrips(trips, asOf: now).underWay.isEmpty
+    }
 
     // MARK: - Shared: which module is which
 
