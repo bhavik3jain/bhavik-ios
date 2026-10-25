@@ -7,8 +7,9 @@ credentials, the CloudKit Console ritual and how to run tests — read it rather
 file is only the things that will cost you an hour if you don't know them.
 
 Repo slug `bhavik3jain/bhavik-ios`. Needs the iOS 26 SDK to compile at all (Xcode 26 or newer; all three workflows
-run on GitHub's `xcode-27` preview image, pinned to Xcode 27.0 — not the newest installed, which there is a
-27.2 beta that App Store Connect rejects). Core depends on nothing, the eight trackers depend only on Core,
+run on GitHub's `xcode-27` image, pinned to Xcode 27.1 — the first SDK with the iPhone Duo's layout — not the
+newest installed (a 27.2 release candidate; the image once carried a 27.2 beta, which App Store Connect rejects). On the open Duo
+(regular width) the iOS hub is `HubDashboard`, the Mac Overview's cards; folded it's the list. Core depends on nothing, the eight trackers depend only on Core,
 no feature package imports another, zero remote dependencies — keep it that way. Each module's
 namespace is a `<Module>TrackerModule` caseless enum (`models`, `accent`, `symbolName`, `sections`,
 `rootView()`).

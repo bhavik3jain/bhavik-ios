@@ -19,16 +19,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Use Xcode 27.0
-        # Pinned, not "newest installed": the xcode-27 image also carries 27.1
-        # and a 27.2 beta, and App Store Connect rejects a build made with a
-        # beta Xcode. Moved off macos-latest (Xcode 26.6) after its compiler
-        # crashed in IRGen on SharedChangeNotificationsSection.swift while the
-        # app is developed on Xcode 27. The image is a GitHub preview, so jobs
-        # can queue; falling back is runs-on: macos-latest plus this step
+      - name: Use Xcode 27.1
+        # Pinned, not "newest installed": the xcode-27 image also carries 27.0
+        # and a 27.2 release candidate, and its default moves whenever GitHub
+        # updates the image — it once held a 27.2 beta, and App Store Connect
+        # rejects a build made with a beta Xcode. 27.1 (27A9275, the image's default
+        # since October 2026) is the first SDK with the iPhone Duo's layout:
+        # built with 27.0 the app doesn't reach the edges of the open Duo's
+        # screen, and its tab and tool bars stay horizontal. Moved off
+        # macos-latest (Xcode 26.6) after its compiler crashed in IRGen on
+        # SharedChangeNotificationsSection.swift while the app is developed on
+        # Xcode 27; falling back is runs-on: macos-latest plus this step
         # picking the newest Xcode again.
         run: |
-          xcode=/Applications/Xcode_27.0.app
+          xcode=/Applications/Xcode_27.1.app
           if [ ! -d "$xcode" ]; then
             echo "$xcode is not on this runner. Installed:"
             ls -d /Applications/Xcode*.app
@@ -49,11 +53,14 @@ jobs:
       - name: Pick an iPhone simulator
         id: simulator
         # The runners' simulator line-up changes, so choose one at run time
-        # rather than pinning a model that may not be installed.
+        # rather than pinning a model that may not be installed. Never the
+        # iPhone Duo, which Xcode 27.1 lists last: its simulator can take
+        # several minutes to boot the first time (Xcode 27.1 release notes).
         run: |
           set -euo pipefail
           udid=$(xcrun simctl list devices available \
                  | grep -E "^\s+iPhone" \
+                 | grep -v "iPhone Duo" \
                  | tail -1 \
                  | grep -oE "[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}")
           if [ -z "$udid" ]; then
@@ -93,10 +100,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Use Xcode 27.0
+      - name: Use Xcode 27.1
         # See the test job.
         run: |
-          xcode=/Applications/Xcode_27.0.app
+          xcode=/Applications/Xcode_27.1.app
           if [ ! -d "$xcode" ]; then
             echo "$xcode is not on this runner. Installed:"
             ls -d /Applications/Xcode*.app
