@@ -7,8 +7,9 @@ import SwiftUI
 /// plan and the ideas around it to show, where every other card has a number.
 ///
 /// The cards themselves come from the modules (`overviewCard(…)`), fed by
-/// `HomeView`'s queries; this only lays them out, where Core's `OverviewGrid`
-/// says — the arithmetic lives there so it can be tested.
+/// `HomeView`'s queries; this only lays them out, through `OverviewCardRows`
+/// (shared with the open iPhone Duo's hub) where Core's `OverviewGrid` says —
+/// the arithmetic lives there so it can be tested.
 struct MacOverview<Card: View>: View {
     let modules: [SelectedModule]
     let syncMonitor: CloudSyncMonitor?
@@ -19,8 +20,6 @@ struct MacOverview<Card: View>: View {
     /// A module's card as of the given moment — see the TimelineView below.
     @ViewBuilder let card: (SelectedModule, Date) -> Card
 
-    private typealias Grid = OverviewGrid<SelectedModule>
-
     var body: some View {
         // Re-read once a minute. The cards read `.now` only when HomeView
         // re-rendered, which only a data change did — left open overnight,
@@ -28,25 +27,8 @@ struct MacOverview<Card: View>: View {
         // yesterday's.
         TimelineView(.everyMinute) { context in
             GeometryReader { proxy in
-                let grid = Grid(
-                    width: proxy.size.width,
-                    ids: modules,
-                    span: { $0 == .trips ? 2 : 1 },
-                    isTall: { isTall($0, context.date) }
-                )
                 ScrollView {
-                    VStack(alignment: .leading, spacing: Grid.spacing) {
-                        ForEach(Array(grid.rows.enumerated()), id: \.offset) { _, row in
-                            HStack(alignment: .top, spacing: Grid.spacing) {
-                                ForEach(row.cells, id: \.id) { cell in
-                                    card(cell.id, context.date)
-                                        .frame(width: max(0, cell.width), height: row.height)
-                                }
-                            }
-                        }
-                    }
-                    .padding(Grid.padding)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    OverviewCardRows(width: proxy.size.width, modules: modules, now: context.date, isTall: isTall, card: card)
                 }
             }
             .navigationSubtitle(context.date.formatted(.dateTime.weekday(.wide).day().month(.wide)))
