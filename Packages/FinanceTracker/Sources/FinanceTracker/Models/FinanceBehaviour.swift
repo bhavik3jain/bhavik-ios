@@ -116,7 +116,7 @@ public extension SharedFinanceAccount {
     /// counting only our share of each charge — the sheet's SUMIFS.
     func spend(in period: YearMonth) -> Double {
         (transactions ?? [])
-            .filter { period.contains($0.date) }
+            .filter { $0.counts(in: period) }
             .reduce(0) { $0 + $1.actualCost }
     }
 
@@ -211,10 +211,10 @@ public extension SharedFinanceMonth {
         return SharedFinanceBudget(category: name, limit: value, month: self)
     }
 
-    /// The household's transactions dated in this month.
+    /// The household's transactions counted in this month.
     var transactionsInMonth: [SharedFinanceTransaction] {
         guard let period else { return [] }
-        return Array(household?.transactions ?? []).filter { period.contains($0.date) }
+        return Array(household?.transactions ?? []).filter { $0.counts(in: period) }
     }
 
     func close(asOf now: Date = .now) {
@@ -299,6 +299,23 @@ public extension SharedFinanceTransaction {
     var isRefund: Bool { actualCost < 0 }
 
     /// "Food · Dinner · Chase - Sapphire Preferred", leaving out whatever's blank.
+    /// The month this counts toward: the one assigned, or else its date's.
+    var countedPeriod: YearMonth {
+        assignedMonth.flatMap(YearMonth.init) ?? YearMonth(containing: date)
+    }
+
+    /// Whether this belongs to `period`. Every screen and total asks this,
+    /// never the date, or a month's figures stop agreeing with each other.
+    func counts(in period: YearMonth) -> Bool {
+        if let assignedMonth { return assignedMonth == period.rawValue }
+        return period.contains(date)
+    }
+
+    /// Dated in one month and counted in another, so lists say so.
+    var isCountedOutsideItsDate: Bool {
+        countedPeriod != YearMonth(containing: date)
+    }
+
     var detailLine: String {
         [category, expense, card?.displayName ?? ""]
             .map { $0.trimmingCharacters(in: .whitespaces) }

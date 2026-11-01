@@ -18,6 +18,8 @@ struct TransactionEditorView: View {
     @State private var merchant = ""
     @State private var expense = ""
     @State private var date = Date.now
+    /// The month picked by hand or already assigned; nil is automatic.
+    @State private var assignedMonth: YearMonth?
     @State private var card: SharedFinanceAccount?
     @State private var category = ""
     @State private var isPartlyOurs = false
@@ -84,6 +86,21 @@ struct TransactionEditorView: View {
                     }
                     TextField("Expense", text: $expense, prompt: Text("What it was for"))
                     DatePicker("Date", selection: $date, displayedComponents: .date)
+                    let automatic = automaticMonth(snapshot)
+                    Picker("Counts toward", selection: $assignedMonth) {
+                        Text("Auto: \(automatic.title)").tag(YearMonth?.none)
+                        ForEach(TransactionMonthRule.choices(for: date, automatic: automatic, selected: assignedMonth)) { period in
+                            Text(period.title).tag(YearMonth?.some(period))
+                        }
+                    }
+                } footer: {
+                    if let explanation = TransactionMonthRule.explanation(
+                        counted: assignedMonth ?? automaticMonth(snapshot),
+                        date: date,
+                        isAutomatic: assignedMonth == nil
+                    ) {
+                        Text(explanation)
+                    }
                 }
 
                 Section {
@@ -163,6 +180,21 @@ struct TransactionEditorView: View {
         }
     }
 
+    /// One from before months could be assigned keeps following its date until
+    /// someone picks a month for it.
+    private var isUnassignedExisting: Bool {
+        transaction != nil && transaction?.assignedMonth == nil
+    }
+
+    private func automaticMonth(_ snapshot: FinanceSnapshot) -> YearMonth {
+        if isUnassignedExisting { return YearMonth(containing: date) }
+        var closedByPeriod: [YearMonth: Bool] = [:]
+        for month in snapshot.months {
+            if let period = month.period { closedByPeriod[period] = month.isClosed }
+        }
+        return TransactionMonthRule.automatic(for: date, closedByPeriod: closedByPeriod)
+    }
+
     /// The known categories, plus the chosen one if it's new.
     private func chipCategories(_ known: [String]) -> [String] {
         let trimmed = category.trimmingCharacters(in: .whitespaces)
@@ -212,6 +244,7 @@ struct TransactionEditorView: View {
         settledMerchant = loadedKey.isEmpty ? nil : loadedKey
         expense = transaction.expense
         date = transaction.date
+        assignedMonth = transaction.assignedMonth.flatMap(YearMonth.init)
         card = transaction.card
         category = transaction.category
         isPartlyOurs = transaction.isSplit
@@ -224,8 +257,14 @@ struct TransactionEditorView: View {
         // Into the card's own household, so the two can never be in
         // different stores.
         guard let household = card.household ?? snapshot.household else { return }
+        let storedMonth = TransactionMonthRule.stored(
+            selected: assignedMonth,
+            automatic: automaticMonth(snapshot),
+            isUnassignedExisting: isUnassignedExisting
+        )
         let target = transaction ?? SharedFinanceTransaction(date: date, cost: cost, merchant: "", household: household)
         target.date = date
+        target.assignedMonth = storedMonth
         target.cost = cost
         target.actualCost = actualCost
         target.merchant = merchant.trimmingCharacters(in: .whitespaces)

@@ -57,7 +57,14 @@ struct MacTransactionsView<Filter: View>: View {
                 }
                 .width(min: 60, ideal: 70)
                 TableColumn("Merchant", value: \.merchant) { transaction in
-                    Text(transaction.merchant.isEmpty ? "Untitled" : transaction.merchant)
+                    VStack(alignment: .leading, spacing: 0) {
+                        Text(transaction.merchant.isEmpty ? "Untitled" : transaction.merchant)
+                        if transaction.isCountedOutsideItsDate {
+                            Text("Counts toward \(transaction.countedPeriod.monthName)")
+                                .font(.caption)
+                                .foregroundStyle(FinanceTrackerModule.accent.color)
+                        }
+                    }
                 }
                 .width(min: 140, ideal: 200)
                 TableColumn("Category", value: \.category) { transaction in

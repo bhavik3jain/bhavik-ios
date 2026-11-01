@@ -240,7 +240,7 @@ public struct BalanceTileDetail {
             let spend = card.spend(in: period)
             let previousSpend = previous?.period.map { card.spend(in: $0) }
             guard spend != 0 || (previousSpend ?? 0) != 0 else { return nil }
-            let count = (card.transactions ?? []).count { period.contains($0.date) }
+            let count = (card.transactions ?? []).count { $0.counts(in: period) }
             let subtitle = [card.owner?.name, counted(count, "transaction")].compactMap(\.self).joined(separator: " · ")
             return Line(id: card.objectID, title: card.displayName, subtitle: subtitle, amount: spend, previous: previousSpend, gain: nil)
         }

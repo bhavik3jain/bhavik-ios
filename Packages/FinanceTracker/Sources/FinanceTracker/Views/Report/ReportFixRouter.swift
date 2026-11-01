@@ -89,7 +89,7 @@ struct ReportChargesQuery: Hashable, Identifiable {
     /// compared the way budgets are ("food " is Food; "Other" takes the
     /// uncategorised), merchants ignoring case and stray spaces.
     func transactions(in all: [SharedFinanceTransaction]) -> [SharedFinanceTransaction] {
-        var matching = all.filter { transaction in periods.contains { $0.contains(transaction.date) } }
+        var matching = all.filter { transaction in periods.contains { transaction.counts(in: $0) } }
         if let category {
             matching = SpendingSummary.transactions(matching, inCategory: category)
         }

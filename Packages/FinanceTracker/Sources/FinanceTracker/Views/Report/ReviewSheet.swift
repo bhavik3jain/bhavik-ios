@@ -45,6 +45,7 @@ struct ReportInputs: Hashable {
         }
         for transaction in snapshot.transactions {
             hasher.combine(transaction.date)
+            hasher.combine(transaction.assignedMonth)
             hasher.combine(transaction.actualCost)
             hasher.combine(transaction.category)
             // Read with the category to tell a subscription.

@@ -62,7 +62,7 @@ public enum SpendingSummary {
         card: SharedFinanceAccount? = nil
     ) -> [SharedFinanceTransaction] {
         all
-            .filter { period.contains($0.date) && (card == nil || $0.card == card) }
+            .filter { $0.counts(in: period) && (card == nil || $0.card == card) }
             .sorted { $0.date != $1.date ? $0.date > $1.date : $0.createdAt > $1.createdAt }
     }
 

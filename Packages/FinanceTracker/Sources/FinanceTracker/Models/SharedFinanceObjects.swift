@@ -269,6 +269,11 @@ public final class SharedFinanceTransaction: NSManagedObject, Identifiable {
     @NSManaged public var expense: String
     @NSManaged public var breakDown: String
     @NSManaged public var createdAt: Date
+    /// The month this counts toward, "2026-10", which can differ from its date's
+    /// when a statement runs past the month's end. nil on anything saved before
+    /// this existed or by a build without it: those go by date on screen and by
+    /// entry time on the sheet (`SheetPeriod`).
+    @NSManaged public var assignedMonth: String?
 
     @NSManaged public var household: SharedFinanceHousehold?
     @NSManaged public var card: SharedFinanceAccount?

@@ -586,6 +586,7 @@ public enum FinanceFold {
                 copy.expense = transaction.expense
                 copy.breakDown = transaction.breakDown
                 copy.createdAt = transaction.createdAt
+                copy.assignedMonth = transaction.assignedMonth
             }
         }
 
