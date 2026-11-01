@@ -434,7 +434,7 @@ struct SpendingView: View {
     /// newest first.
     private static func periods(_ snapshot: FinanceSnapshot) -> [YearMonth] {
         var periods = Set(snapshot.months.compactMap(\.period))
-        periods.formUnion(snapshot.transactions.map { YearMonth(containing: $0.date) })
+        periods.formUnion(snapshot.transactions.map(\.countedPeriod))
         periods.insert(YearMonth(containing: .now))
         return periods.sorted(by: >)
     }
@@ -459,6 +459,11 @@ struct TransactionRow: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
+                }
+                if transaction.isCountedOutsideItsDate {
+                    Text("Counts toward \(transaction.countedPeriod.monthName)")
+                        .font(.caption)
+                        .foregroundStyle(FinanceTrackerModule.accent.color)
                 }
             }
             Spacer(minLength: 8)

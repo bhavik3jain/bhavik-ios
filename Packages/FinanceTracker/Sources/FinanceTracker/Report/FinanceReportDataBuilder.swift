@@ -702,7 +702,7 @@ struct FinanceReportBuilder {
     /// the card or account they were paid with, as `MonthSummary` counts a
     /// card's spend by its owner.
     func filteredTransactions(in period: YearMonth) -> [SharedFinanceTransaction] {
-        allTransactions.filter { period.contains($0.date) && filter.includes($0.card?.owner) }
+        allTransactions.filter { $0.counts(in: period) && filter.includes($0.card?.owner) }
     }
 
     private func spending(scope: ReportScope, period: YearMonth, periods: [YearMonth], month: SharedFinanceMonth) -> FinanceReportData.SpendingSection {
@@ -716,7 +716,7 @@ struct FinanceReportBuilder {
         // month of no spending.
         let averagePeriods: [YearMonth] = scope.isYear ? [] : (1...Self.averageLookbackMonths)
             .map { YearMonth(year: period.year, month: period.month - $0) }
-            .filter { candidate in allTransactions.contains { candidate.contains($0.date) } }
+            .filter { candidate in allTransactions.contains { $0.counts(in: candidate) } }
             .prefix(Self.averageMonths)
             .reversed()
         let averageTransactions = averagePeriods.map { filteredTransactions(in: $0) }
@@ -1024,7 +1024,7 @@ struct FinanceReportBuilder {
         let rows = cards.compactMap { card -> FinanceReportData.CardRow? in
             guard filter.includes(card.owner) else { return nil }
             let spend = periods.reduce(0) { $0 + card.spend(in: $1) }
-            let count = (card.transactions ?? []).count { transaction in periods.contains { $0.contains(transaction.date) } }
+            let count = (card.transactions ?? []).count { transaction in periods.contains { transaction.counts(in: $0) } }
             guard !card.isArchived || spend != 0 else { return nil }
             let monthly = periods.isEmpty ? spend : spend / Double(periods.count)
             let use: Double? = card.limit > 0 ? monthly / card.limit : nil
@@ -1121,12 +1121,12 @@ struct FinanceReportBuilder {
         let startSummary = compared.map(summary(of:))
         let change = startSummary.map { endSummary.netWorth - $0.netWorth }
 
-        let monthsWithSpend = periods.filter { period in allTransactions.contains { period.contains($0.date) } }
+        let monthsWithSpend = periods.filter { period in allTransactions.contains { $0.counts(in: period) } }
         let spendAverage: Double? = monthsWithSpend.isEmpty ? nil : spending.total / Double(monthsWithSpend.count)
 
         // Last year, per month with any spending, for "up 12% on 2025".
         let lastYear = (1...12).map { YearMonth(year: year - 1, month: $0) }
-        let lastYearMonths = lastYear.filter { period in allTransactions.contains { period.contains($0.date) } }
+        let lastYearMonths = lastYear.filter { period in allTransactions.contains { $0.counts(in: period) } }
         let lastYearTransactions = lastYearMonths.flatMap { filteredTransactions(in: $0) }
         let previousYearAverage: Double? = lastYearMonths.isEmpty ? nil : SpendingSummary.total(lastYearTransactions) / Double(lastYearMonths.count)
 

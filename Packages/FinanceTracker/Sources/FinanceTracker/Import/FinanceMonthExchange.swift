@@ -55,8 +55,9 @@ public struct FinanceImportSummary: Equatable, Sendable {
 
 public extension FinanceMonthDocument {
     /// The document for `month`: its balances and prices, its budgets, the
-    /// transactions its sheet holds (`SheetPeriod`: entered since the month
-    /// before was closed, not dated in the calendar month), and the
+    /// transactions its sheet holds (those assigned to it, plus unassigned ones
+    /// by `SheetPeriod`: entered since the month before was closed, not dated
+    /// in the calendar month), and the
     /// household's owners, cards and metals as they are now. Everything is
     /// sorted, so exporting twice gives the same file.
     init(month: SharedFinanceMonth) {
@@ -98,7 +99,9 @@ public extension FinanceMonthDocument {
                 )
             },
             transactions: (household?.transactions ?? [])
-                .filter { sheet.contains(entered: $0.createdAt) }
+                .filter { transaction in
+                    transaction.assignedMonth.map { $0 == month.yearMonth } ?? sheet.contains(entered: transaction.createdAt)
+                }
                 .sorted(by: FinanceMonthExchange.exportOrder)
                 .map { transaction in
                     TransactionEntry(

@@ -34,12 +34,19 @@ money ops carry a fourth element, `"currency"`, and the fill script *types* the 
 ("$173,902.21") into template cells formatted currency/two places; Metal Price is written as the
 sheet's `=STOCK("GC=F")`/`=STOCK("SI=F")`.
 
-**A month's export holds the transactions *entered* since the month before was closed**
-(`SheetPeriod`, by `createdAt`), not those dated in the calendar month — the user's sheet runs
-from close to close, and by date 19 of September's 116 charges were missing. So `createdAt`
-matters: the importer caps it at the imported month's close (or end), or a backfilled month would
-land on the open month's sheet, and `DebugSeed` sets it to each charge's date. The app's own
-screens (spending, budgets, reports) still go by calendar month. The **Mac app** runs
+**A transaction counts toward its `assignedMonth`** ("2026-10", optional), which can differ from its
+date's month because a card statement runs past the month's end. Everything asks
+`transaction.counts(in:)` / `countedPeriod`, never `period.contains(date)`: spending, budgets, card
+totals, net worth, reports and the sheet. The editor's **Counts toward** row defaults through
+`TransactionMonthRule.automatic`: the month before the date's while it's still open (only that one,
+or a month forgotten long ago would catch every charge), else the date's own or the first after it
+not closed. Unassigned ones (saved before this existed, by an older build, or imported) keep the old
+rules, and the editor leaves them unassigned until someone picks a month: on screen they go by
+calendar month, and **on the sheet by entry** — `SheetPeriod`, by `createdAt`: entered since the
+month before was closed, since the user's sheet runs from close to close, and by date 19 of
+September's 116 charges were missing. So `createdAt` still matters: the importer caps it at the
+imported month's close (or end), or a backfilled month would land on the open month's sheet, and
+`DebugSeed` sets it to each charge's date. The **Mac app** runs
 the same export in-process (`App/Sources/MacFinanceNumbers.swift`, OSAKit): project.yml bundles
 `numbers_fill.js` and the template into the Mac target, and `FinanceNumbersSpec.swift` is a port of
 `export_numbers.build_spec` — **change one, change the other**. It needs the Apple-events sandbox

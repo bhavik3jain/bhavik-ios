@@ -15,8 +15,9 @@ import Foundation
 /// have on the spreadsheet. A month that was never closed ends where the next
 /// calendar month starts, if there is one.
 ///
-/// The app's own screens (spending, budgets, reports) still go by calendar
-/// month; only the sheet follows this.
+/// This only decides for transactions with no `assignedMonth`: those from
+/// before it existed, or saved by a build without it. An assigned one is on its
+/// month's sheet, and on that month's screens too.
 public struct SheetPeriod: Equatable, Sendable {
     /// Entered strictly after this; nil from the very first transaction.
     public var after: Date?

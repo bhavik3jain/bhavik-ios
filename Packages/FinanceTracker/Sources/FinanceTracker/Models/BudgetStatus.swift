@@ -82,7 +82,7 @@ public struct BudgetStatus: Equatable, Sendable {
         )
     }
 
-    /// Only transactions dated inside `period` count, whatever's passed in.
+    /// Only transactions counted in `period` count, whatever's passed in.
     /// A negative limit is a category kept with no budget
     /// (`SharedFinanceBudget.noLimit`).
     public init(
@@ -91,7 +91,7 @@ public struct BudgetStatus: Equatable, Sendable {
         transactions: [SharedFinanceTransaction],
         asOf now: Date = .now
     ) {
-        let inPeriod = transactions.filter { period.contains($0.date) }
+        let inPeriod = transactions.filter { $0.counts(in: period) }
         let spending = SpendingSummary.totalsByKey(inPeriod)
         var listedKeys = Set<String>()
         var lines: [BudgetLine] = []

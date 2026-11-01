@@ -108,6 +108,7 @@ public enum FinanceModel {
             string("expense", default: ""),
             string("breakDown", default: ""),
             date("createdAt", optional: false, default: .now),
+            optionalString("assignedMonth"),
         ]
         budget.properties = [
             string("category", default: ""),
@@ -159,6 +160,14 @@ public enum FinanceModel {
         attribute.attributeType = .stringAttributeType
         attribute.isOptional = false
         attribute.defaultValue = value
+        return attribute
+    }
+
+    private static func optionalString(_ name: String) -> NSAttributeDescription {
+        let attribute = NSAttributeDescription()
+        attribute.name = name
+        attribute.attributeType = .stringAttributeType
+        attribute.isOptional = true
         return attribute
     }
 
