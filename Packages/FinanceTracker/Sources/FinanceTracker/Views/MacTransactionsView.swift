@@ -58,7 +58,13 @@ struct MacTransactionsView<Filter: View>: View {
                 .width(min: 60, ideal: 70)
                 TableColumn("Merchant", value: \.merchant) { transaction in
                     VStack(alignment: .leading, spacing: 0) {
-                        Text(transaction.merchant.isEmpty ? "Untitled" : transaction.merchant)
+                        HStack(spacing: 4) {
+                            Text(transaction.merchant.isEmpty ? "Untitled" : transaction.merchant)
+                            if transaction.isVerified {
+                                VerifiedSeal()
+                                    .font(.caption)
+                            }
+                        }
                         if transaction.isCountedOutsideItsDate {
                             Text("Counts toward \(transaction.countedPeriod.monthName)")
                                 .font(.caption)

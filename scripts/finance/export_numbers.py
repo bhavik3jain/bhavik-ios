@@ -157,6 +157,7 @@ def build_spec(document: dict, output: str, troy_fix: bool = False) -> dict:
             [4, "text", tx["category"]], [5, "text", tx["expense"]], [6, "text", tx["breakDown"]],
             [3, "text", tx["merchant"]],
             [7, "text", tx["card"]],
+            *([[col, "fill", fn.VERIFIED_FILL] for col in fn.VERIFIED_FILL_COLUMNS] if tx.get("verified") else []),
         ])
     # Merchant carries the row's token: Date is a date cell and Card is the grouping column.
     tables.append(_table(fn.TRANSACTION_TABLE, 3, rows, 8, group_col=7))

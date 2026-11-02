@@ -130,6 +130,9 @@ on Personal Items, Total Assets and Total Net Worth with it.
   the grouped order Numbers shows, so an exported month re-imports with the same rows in a
   different order. `Table.cell()` raises `KeyError` on those tables in numbers-parser 4.19, so
   reading only uses `rows()`.
+- **A verified transaction's row is filled** the sheet's teal (#6DCFB9) from Cost through Card, Date left
+  white as in the user's own sheet. `"verified"` is optional: an older JSON exports with no fills. It costs
+  seven Apple events a row, about a minute on a month of 120 fully verified charges.
 - **Transactions follow the sheet, not the calendar.** The user's sheet runs from one sheet to the
   next, not by calendar month: September's began with charges from Aug 23 and kept growing into
   October. A month's export holds the transactions *entered* after the month before it was closed
@@ -156,7 +159,7 @@ values below are made up.
   "accounts": [ { "category": "cash", "institution": "Example Bank", "name": "Checking", "owner": "Joint", "balance": 2500.0 } ],
   "cards": [ { "institution": "Example Card", "name": "Rewards", "owner": "Alex", "limit": 10000.0, "annualFee": 0.0 } ],
   "metals": [ { "name": "Gold - Coin", "metal": "gold", "grams": 31.1035, "pricePaidPerOz": 2000.0, "purchaseValue": 2000.0, "manualValue": null, "location": "Safe", "owner": "Joint" } ],
-  "transactions": [ { "date": "2026-08-23", "cost": 12.5, "actualCost": 12.5, "merchant": "City Parking", "category": "Travel", "expense": "Parking", "breakDown": "N/A", "card": "Example Card - Rewards" } ],
+  "transactions": [ { "date": "2026-08-23", "cost": 12.5, "actualCost": 12.5, "merchant": "City Parking", "category": "Travel", "expense": "Parking", "breakDown": "N/A", "card": "Example Card - Rewards", "verified": true } ],
   "budgets": [ { "category": "Food", "limit": 525.0 } ] }
 ```
 

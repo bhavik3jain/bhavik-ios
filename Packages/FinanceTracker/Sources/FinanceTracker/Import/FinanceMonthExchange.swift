@@ -112,7 +112,8 @@ public extension FinanceMonthDocument {
                         category: transaction.category,
                         expense: transaction.expense,
                         breakDown: transaction.breakDown,
-                        card: transaction.card?.displayName ?? ""
+                        card: transaction.card?.displayName ?? "",
+                        verified: transaction.isVerified
                     )
                 },
             budgets: month.sortedBudgets.map { BudgetEntry(category: $0.category, limit: $0.limit) }
@@ -322,6 +323,7 @@ public enum FinanceMonthExchange {
             transaction.category = entry.category.trimmingCharacters(in: .whitespaces)
             transaction.expense = entry.expense.trimmingCharacters(in: .whitespaces)
             transaction.breakDown = entry.breakDown.trimmingCharacters(in: .whitespaces)
+            transaction.setVerified(entry.verified)
             summary.transactionsAdded += 1
         }
 

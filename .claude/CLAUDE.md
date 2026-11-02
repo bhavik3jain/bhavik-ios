@@ -54,6 +54,18 @@ exception, `com.apple.security.automation.apple-events` and `NSAppleEventsUsageD
 any one and every Apple event fails -1743 with no prompt. `-FinanceNumbersExportProbe YES` (Debug,
 Mac) runs it on a made-up month at launch.
 
+**A verified transaction is ticked off against its card's statement** (`verifiedAt`, `StatementVerification`).
+Spending's seal opens it: on the phone a sheet (`StatementVerifySheet`: pick a card, then a checklist), on the Mac
+in place (`MacStatementVerifyView`, a `List` with hand-laid columns because a `Table` can't tint a whole row; Space
+ticks the selected row and moves down). It goes by `cost`, what the bank printed, never `actualCost`, and by
+`counts(in:)`. Ticks aren't saved one at a time: a save per tick is an upload per tick and an iCloud alert per
+upload, so they save on leaving the screen or the app. `describeSharedChange` says nothing for a save that only
+touched `verifiedAt`, but iCloud's server alerts can't be filtered, so a partner may still get one. The editor clears
+it when date, cost, merchant or card change. On the sheet a verified row's Cost through Card are filled the user's
+teal, Date left white as in their own sheet: `"fill"` ops, in the Swift spec **and** `export_numbers.py`, and
+`FILLS` in `numbers_fill.js`, whose values aren't the colour itself. Numbers stores what it's given shifted (109,207,185
+came out 125,214,198), and scripting reads every fill back black, so check a change with numbers-parser's `bg_color`.
+
 **A new Finance month starts every balance at zero** (`MonthRollover`), so a half-filled month's
 totals are a fraction of the real ones. Anything headlining a net worth (Summary, peek, Overview,
 home row) goes through `FinanceHome.reportedMonth`, which falls back to the month before until the

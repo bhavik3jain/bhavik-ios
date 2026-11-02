@@ -14,7 +14,8 @@ import Foundation
 ///       "metals": [ { "name", "metal", "grams", "pricePaidPerOz", "purchaseValue",
 ///                     "manualValue" (null when automatic), "location", "owner" } ],
 ///       "transactions": [ { "date" (yyyy-MM-dd), "cost", "actualCost", "merchant",
-///                           "category", "expense", "breakDown", "card" (its displayName) } ],
+///                           "category", "expense", "breakDown", "card" (its displayName),
+///                           "verified" (ticked off against the statement; the sheet fills the row) } ],
 ///       "budgets": [ { "category", "limit" } ] }
 ///
 /// Decoding is lenient — a missing array or string reads as empty — so a
@@ -156,6 +157,7 @@ public struct FinanceMonthDocument: Codable, Equatable, Sendable {
         /// The `displayName` of the card it was charged to, "Chase - Sapphire
         /// Preferred", or of the cash account it was paid from.
         public var card: String
+        public var verified: Bool
 
         public init(
             date: String,
@@ -165,7 +167,8 @@ public struct FinanceMonthDocument: Codable, Equatable, Sendable {
             category: String,
             expense: String,
             breakDown: String,
-            card: String
+            card: String,
+            verified: Bool = false
         ) {
             self.date = date
             self.cost = cost
@@ -175,6 +178,7 @@ public struct FinanceMonthDocument: Codable, Equatable, Sendable {
             self.expense = expense
             self.breakDown = breakDown
             self.card = card
+            self.verified = verified
         }
     }
 
@@ -297,7 +301,8 @@ public extension FinanceMonthDocument.TransactionEntry {
             category: try container.value(.category, or: ""),
             expense: try container.value(.expense, or: ""),
             breakDown: try container.value(.breakDown, or: ""),
-            card: try container.value(.card, or: "")
+            card: try container.value(.card, or: ""),
+            verified: try container.value(.verified, or: false)
         )
     }
 }

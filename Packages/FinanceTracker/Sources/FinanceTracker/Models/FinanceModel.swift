@@ -109,6 +109,7 @@ public enum FinanceModel {
             string("breakDown", default: ""),
             date("createdAt", optional: false, default: .now),
             optionalString("assignedMonth"),
+            date("verifiedAt"),
         ]
         budget.properties = [
             string("category", default: ""),

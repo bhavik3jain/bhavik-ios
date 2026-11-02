@@ -274,6 +274,9 @@ public final class SharedFinanceTransaction: NSManagedObject, Identifiable {
     /// this existed or by a build without it: those go by date on screen and by
     /// entry time on the sheet (`SheetPeriod`).
     @NSManaged public var assignedMonth: String?
+    /// When someone ticked this off against the card's statement; nil until
+    /// then. See `StatementVerification`.
+    @NSManaged public var verifiedAt: Date?
 
     @NSManaged public var household: SharedFinanceHousehold?
     @NSManaged public var card: SharedFinanceAccount?

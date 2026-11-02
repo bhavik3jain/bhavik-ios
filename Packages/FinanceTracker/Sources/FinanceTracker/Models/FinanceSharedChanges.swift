@@ -67,6 +67,11 @@ public extension FinanceTrackerModule {
 
         case let transaction as SharedFinanceTransaction:
             guard let household = transaction.household ?? transaction.card?.household else { return nil }
+            // Ticking off a statement touches every charge on it: a notice per
+            // tick would say "changed a transaction" for nothing that changed.
+            if !inserted, change.updatedProperties.isSubset(of: ["verifiedAt"]), !change.updatedProperties.isEmpty {
+                return nil
+            }
             let merchant = transaction.merchant.trimmingCharacters(in: .whitespacesAndNewlines)
             // The merchant goes after "at", never after an article: "a \(merchant)
             // transaction" read "added a Amazon transaction" on the lock screen.

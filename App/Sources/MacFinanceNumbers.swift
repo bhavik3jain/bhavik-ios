@@ -223,7 +223,9 @@ enum MacFinanceNumbers {
                 D.TransactionEntry(
                     date: String(format: "2026-09-%02d", 1 + index % 28), cost: Double(5 + index % 40), actualCost: Double(5 + index % 40),
                     merchant: "Shop \(index)", category: ["Food", "Travel", "Home"][index % 3], expense: "Expense \(index % 7)", breakDown: "",
-                    card: "Card Co \(1 + index % 15) - Card \(1 + index % 15)"
+                    card: "Card Co \(1 + index % 15) - Card \(1 + index % 15)",
+                    // Every row: filling one costs seven Apple events, so this is the slowest month.
+                    verified: true
                 )
             }
         )

@@ -27,10 +27,19 @@
 // - Writing a number into a currency cell turns the cell's format to automatic: the template's
 //   "$20,000" came out "20,000", a set metal value "2,413.4", and a Total over a mix of the two lost
 //   its format entirely ("113820.6462…", clipped). So a cell op can name the format to put back.
+// - A background colour written through scripting isn't stored as given: 109,207,185 came out
+//   125,214,198 in the file. FILLS holds what to write so the file ends up with the colour named
+//   beside it. Reading backgroundColor back gives black whatever the fill, so it can't be checked
+//   here; numbers-parser's bg_color reads the stored value. Row-wide (row.backgroundColor) is ten
+//   times faster than a cell at a time, but would colour Date and the group column too.
 
 ObjC.import("Foundation");
 
 const Numbers = Application("com.apple.Numbers");  // "Numbers Creator Studio" answers to this id
+
+const FILLS = {
+  verified: [94 * 257, 199 * 257, 171 * 257],  // stored as the sheet's teal, 109,207,185 (#6DCFB9)
+};
 
 function readFile(path) {
   const data = $.NSString.stringWithContentsOfFileEncodingError(path, $.NSUTF8StringEncoding, null);
@@ -358,7 +367,10 @@ function fillTable(t, ts, priceRows) {
   // cell and the row is found again by its token; the token column goes last of all, which is also
   // what a {ROW} formula needs. Clearing a blank row's Owner before its token once left a
   // "zzrow0zz" row behind: the token was then cleared in whichever row had slid into its place.
-  const fillRow = (token, ops) => {
+  //
+  // Fills go after all of that, once the row has stopped moving.
+  const fillRow = (token, allOps) => {
+    const ops = allOps.filter(op => op[1] !== "fill");
     const last = col => ops.filter(op => op[0] === col);
     const ordered = [...ops.filter(op => op[0] !== ts.groupCol && op[0] !== ts.tokenCol),
                      ...last(ts.groupCol), ...last(ts.tokenCol)];
@@ -373,6 +385,10 @@ function fillTable(t, ts, priceRows) {
           r = rowOf(token);
         }
       }
+    });
+    allOps.filter(op => op[1] === "fill").forEach(([col, , name]) => {
+      if (!(name in FILLS)) throw new Error(`unknown fill ${name}`);
+      cell(r, col).backgroundColor = FILLS[name];
     });
   };
   ts.rows.forEach((ops, i) => fillRow(tokens[i], ops));
