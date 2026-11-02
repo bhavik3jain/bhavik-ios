@@ -168,6 +168,11 @@ public enum FinanceDebugSeed {
                     transaction.actualCost = charge.cost / 2
                     transaction.breakDown = "Split with a friend"
                 }
+                // Older months checked off; the last finished one under way,
+                // for the verify screens and the sheet's filled rows.
+                if !isOpen, index < last || charge.day <= 12 {
+                    transaction.verifiedAt = date
+                }
             }
         }
         try? context.save()

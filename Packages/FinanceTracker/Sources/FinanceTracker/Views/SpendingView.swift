@@ -26,6 +26,10 @@ struct SpendingView: View {
     @State private var editing: SharedFinanceTransaction?
     @State private var adding = false
     @State private var categoryEditor: CategoryBudgetEditorView.Target?
+    @State private var isVerifying = false
+
+    /// The Mac verifies in place, in this window; the phone in a sheet.
+    private var isVerifyingOnMac: Bool { layout == .sidebar && isVerifying }
 
     var body: some View {
         let snapshot = data.snapshot
@@ -33,15 +37,19 @@ struct SpendingView: View {
         let period = chosenPeriod ?? snapshot.latestMonth?.period ?? YearMonth(containing: .now)
         NavigationStack {
             Group {
-                if layout == .sidebar, mode == .transactions, !snapshot.paymentAccounts.isEmpty {
+                if isVerifyingOnMac {
+                    MacStatementVerifyView(period: period, isEditable: isEditable, edit: { editing = $0 }) {
+                        isVerifying = false
+                    }
+                } else if layout == .sidebar, mode == .transactions, !snapshot.paymentAccounts.isEmpty {
                     macTransactions(snapshot, period: period, isEditable: isEditable)
                 } else {
                     list(snapshot, period: period, isEditable: isEditable)
                 }
             }
-            .navigationTitle("Spending")
+            .navigationTitle(isVerifyingOnMac ? "Verify Statement" : "Spending")
             .toolbar {
-                if layout == .sidebar {
+                if layout == .sidebar, !isVerifyingOnMac {
                     ToolbarItem(placement: .primaryAction) {
                         Picker("View", selection: $mode) {
                             ForEach(Mode.allCases) { Text($0.rawValue).tag($0) }
@@ -54,11 +62,28 @@ struct SpendingView: View {
                 ToolbarItem(placement: .navigation) {
                     monthMenu(snapshot, selected: period)
                 }
-                if isEditable {
+                if isEditable, mode == .transactions, !isVerifyingOnMac {
+                    ToolbarItem(placement: .primaryAction) {
+                        Button {
+                            isVerifying = true
+                        } label: {
+                            Image(systemName: "checkmark.seal")
+                        }
+                        .accessibilityLabel("Verify a Statement")
+                        .disabled(snapshot.cards.isEmpty)
+                    }
+                }
+                if isEditable, !isVerifyingOnMac {
                     ToolbarItem(placement: .primaryAction) {
                         addButton(snapshot, month: snapshot.household?.month(for: period))
                     }
                 }
+            }
+            .sheet(isPresented: Binding(
+                get: { isVerifying && layout != .sidebar },
+                set: { isVerifying = $0 }
+            )) {
+                StatementVerifySheet(startingPeriod: period)
             }
             .sheet(isPresented: $adding) {
                 TransactionEditorView(transaction: nil, defaultDate: Self.defaultDate(in: period))
@@ -451,9 +476,15 @@ struct TransactionRow: View {
     var body: some View {
         HStack(alignment: .firstTextBaseline) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(transaction.merchant.isEmpty ? "Untitled" : transaction.merchant)
-                    .fontWeight(.semibold)
-                    .lineLimit(1)
+                HStack(alignment: .firstTextBaseline, spacing: 5) {
+                    Text(transaction.merchant.isEmpty ? "Untitled" : transaction.merchant)
+                        .fontWeight(.semibold)
+                        .lineLimit(1)
+                    if transaction.isVerified {
+                        VerifiedSeal()
+                            .font(.caption)
+                    }
+                }
                 if !transaction.detailLine.isEmpty {
                     Text(transaction.detailLine)
                         .font(.caption)

@@ -54,6 +54,11 @@ NO_LOCATION = "(blank)"  # what Numbers' own pivot called an item with no locati
 
 CURRENCY = "currency"  # the Numbers format money cells end up in
 
+# A verified transaction's cells: Cost through Card, as in the user's own sheet, where Date stays
+# white. numbers_fill.js holds the colour. FinanceNumbersSpec.verifiedFillColumns has the same.
+VERIFIED_FILL = "verified"
+VERIFIED_FILL_COLUMNS = range(1, 8)
+
 # Metal Price is the user's live STOCK() quote of the same futures the app's MetalPriceFeed reads, so
 # an exported sheet's metals follow the market as the user's own sheet does. The month's price goes
 # in only if Numbers won't take the formula. FinanceNumbersSpec.priceFormulas has the same.

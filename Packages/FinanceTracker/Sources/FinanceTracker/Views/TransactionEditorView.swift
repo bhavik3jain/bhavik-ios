@@ -262,6 +262,9 @@ struct TransactionEditorView: View {
             automatic: automaticMonth(snapshot),
             isUnassignedExisting: isUnassignedExisting
         )
+        if let transaction, StatementVerification.editChangesStatementLine(of: transaction, date: date, cost: cost, merchant: merchant, card: card) {
+            transaction.setVerified(false)
+        }
         let target = transaction ?? SharedFinanceTransaction(date: date, cost: cost, merchant: "", household: household)
         target.date = date
         target.assignedMonth = storedMonth

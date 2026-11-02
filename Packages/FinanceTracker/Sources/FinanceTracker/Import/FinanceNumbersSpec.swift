@@ -13,8 +13,8 @@ import Foundation
 /// group column Numbers adds to a grouped table. Ops: "set" writes a value,
 /// "text" writes text as text, "date" a yyyy-MM-dd date, "keep" writes unless
 /// the cell has a formula, "formula" writes a formula (`{ROW}` is this row,
-/// `{COL:k}` column k's header, `{PRICE:gold}` the Metal Price cell). An op
-/// may name the format its cell is left in ("currency"): writing a number into
+/// `{COL:k}` column k's header, `{PRICE:gold}` the Metal Price cell), "fill"
+/// a named cell fill (`verified`, the sheet's teal). An op may name the format its cell is left in ("currency"): writing a number into
 /// a currency cell turns it automatic, so "$20,000" came out "20,000".
 public struct FinanceNumbersSpec: Encodable, Equatable, Sendable {
     public var path: String
@@ -129,6 +129,11 @@ public struct FinanceNumbersSpec: Encodable, Equatable, Sendable {
     /// as their own sheet does; the month's price only if Numbers refuses it.
     public static let priceFormulas = ["gold": #"=STOCK("GC=F")"#, "silver": #"=STOCK("SI=F")"#]
     public static let joint = "Joint"
+    /// A verified transaction's cells: Cost through Card, as in the user's own
+    /// sheet, where Date stays white. `export_numbers.VERIFIED_FILL_COLUMNS`
+    /// has the same.
+    public static let verifiedFillColumns = 1...7
+    public static let verifiedFill = "verified"
 
     public init(document: FinanceMonthDocument, outputPath: String, opened: Bool = true) {
         path = outputPath
@@ -190,6 +195,9 @@ public struct FinanceNumbersSpec: Encodable, Equatable, Sendable {
         let transactionRows = document.transactions.map { transaction in
             let actual = Self.money(transaction.actualCost)
             let cost = Self.money(transaction.cost)
+            let fills = transaction.verified
+                ? Self.verifiedFillColumns.map { Op($0, "fill", .text(Self.verifiedFill)) }
+                : []
             return [Op(0, "date", .text(String(transaction.date.prefix(10)))),
                     Op(1, "set", .number(cost)),
                     Op(2, actual == cost ? "keep" : "set", .number(actual)),
@@ -197,7 +205,7 @@ public struct FinanceNumbersSpec: Encodable, Equatable, Sendable {
                     Op(5, "text", .text(transaction.expense)),
                     Op(6, "text", .text(transaction.breakDown)),
                     Op(3, "text", .text(transaction.merchant)),
-                    Op(7, "text", .text(transaction.card))]
+                    Op(7, "text", .text(transaction.card))] + fills
         }
         tables.append(Self.table(Self.transactionTable, tokenCol: 3, rows: transactionRows, width: 8, groupCol: 7))
 

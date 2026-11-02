@@ -12,7 +12,7 @@ through TestFlight; also builds for the Mac.
 | Fuel | Log fill-ups per vehicle, track MPG and cost, import a Fuelly CSV export |
 | Orders | Track FedEx, UPS and USPS deliveries, with an in-app browser for the ones that can't be read automatically |
 | Points | Track credit card, hotel and airline points for everyone in the household, with balance history, expiry warnings, and sharing with a partner |
-| Finance | Track net worth month by month — balances, cards, loans, gold and silver, spending and budgets — shared with a partner, live gold and silver prices, and an Export to Numbers on the Mac that fills the old Numbers sheet; every month (and every year) has a report, a web page built on the device that shares as .html or PDF, and on Apple Intelligence devices a written review of what went well, what to watch and what to try next, with one-tap fixes and "Ask about September" |
+| Finance | Track net worth month by month — balances, cards, loans, gold and silver, spending and budgets — shared with a partner, live gold and silver prices, and an Export to Numbers on the Mac that fills the old Numbers sheet; every month (and every year) has a report, a web page built on the device that shares as .html or PDF, and on Apple Intelligence devices a written review of what went well, what to watch and what to try next, with one-tap fixes and "Ask about September"; tick a card's charges off against its statement, and verified rows come out filled on the sheet |
 
 Each tracker is its own local Swift package so the modules stay independent and can be developed —
 or removed — without disturbing the others.
