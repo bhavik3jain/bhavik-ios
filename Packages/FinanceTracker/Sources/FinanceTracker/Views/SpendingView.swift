@@ -474,6 +474,11 @@ struct TransactionRow: View {
     @ObservedObject var transaction: SharedFinanceTransaction
 
     var body: some View {
+        // Redrawn on its own delete, before the list drops the row: see `isGone`.
+        if !transaction.isGone { row }
+    }
+
+    private var row: some View {
         HStack(alignment: .firstTextBaseline) {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(alignment: .firstTextBaseline, spacing: 5) {
