@@ -42,6 +42,11 @@ private struct VerifyToggle: View {
     let toggle: () -> Void
 
     var body: some View {
+        // Deleted, here or on another device, while on screen: see `isGone`.
+        if !transaction.isGone { content }
+    }
+
+    private var content: some View {
         Button(action: toggle) {
             Image(systemName: transaction.isVerified ? "checkmark.seal.fill" : "circle")
                 .font(.system(size: size))
@@ -241,6 +246,11 @@ private struct StatementChargeRow: View {
     let edit: () -> Void
 
     var body: some View {
+        // Deleted, here or on another device, while on screen: see `isGone`.
+        if !transaction.isGone { content }
+    }
+
+    private var content: some View {
         HStack(spacing: 4) {
             VerifyToggle(transaction: transaction, size: 24, toggle: toggle)
             Button(action: edit) {
@@ -270,6 +280,11 @@ private struct StatementAmount: View {
     @ObservedObject var transaction: SharedFinanceTransaction
 
     var body: some View {
+        // Deleted, here or on another device, while on screen: see `isGone`.
+        if !transaction.isGone { content }
+    }
+
+    private var content: some View {
         Text(FinanceFormat.cents(transaction.cost))
             .monospacedDigit()
             .foregroundStyle(transaction.cost < 0 ? Color.green : Color.primary)
@@ -476,6 +491,11 @@ private struct MacStatementRow: View {
     let toggle: () -> Void
 
     var body: some View {
+        // Deleted, here or on another device, while on screen: see `isGone`.
+        if !transaction.isGone { content }
+    }
+
+    private var content: some View {
         HStack(spacing: 8) {
             VerifyToggle(transaction: transaction, size: 17, toggle: toggle)
                 .frame(height: 30)

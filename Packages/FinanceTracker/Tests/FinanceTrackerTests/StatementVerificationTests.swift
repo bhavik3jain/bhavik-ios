@@ -162,3 +162,21 @@ private let nov2 = FinanceCalendar.date(2026, 11, 2)
     let old = #"{"month":"2026-10","transactions":[{"date":"2026-10-04","cost":1,"merchant":"Old","card":"X"}]}"#
     #expect(try FinanceMonthExchange.decode(Data(old.utf8)).transactions.first?.verified == false)
 }
+
+// A swipe-to-delete on Spending crashed every time: the row observes the
+// transaction, redrew on its own delete and read a nil `date`. Views go by
+// `isGone` before reading anything.
+@MainActor
+@Test func aDeletedTransactionIsGoneBeforeAndAfterTheSave() throws {
+    let household = makeHousehold()
+    let context = try #require(household.managedObjectContext)
+    let card = SharedFinanceAccount(institution: "Big Bank", name: "Rewards", category: .card, household: household)
+    let charge = SharedFinanceTransaction(date: oct4, cost: 10, merchant: "Bakery", household: household, card: card)
+    try context.save()
+    #expect(!charge.isGone)
+
+    context.delete(charge)
+    #expect(charge.isGone)
+    try context.save()
+    #expect(charge.isGone)
+}

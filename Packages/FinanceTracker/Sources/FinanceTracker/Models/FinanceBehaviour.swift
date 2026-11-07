@@ -298,6 +298,14 @@ public extension SharedFinanceTransaction {
 
     var isRefund: Bool { actualCost < 0 }
 
+    /// Deleted, here or by a sync. Its `date`, `merchant` and the rest are then
+    /// nil behind non-optional Swift types, and reading one traps with no
+    /// message: a swipe-to-delete on Spending crashed the app every time
+    /// (November 2026), because the row observes the transaction and redraws
+    /// on the delete, reading `date` for its "Counts toward" line. Every view
+    /// that observes a transaction checks this first.
+    var isGone: Bool { isDeleted || managedObjectContext == nil }
+
     /// "Food · Dinner · Chase - Sapphire Preferred", leaving out whatever's blank.
     /// The month this counts toward: the one assigned, or else its date's.
     var countedPeriod: YearMonth {

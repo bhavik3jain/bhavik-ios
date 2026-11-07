@@ -40,7 +40,7 @@ struct FinanceFetches: DynamicProperty {
             // One per period until `FinanceFold` has folded a duplicate.
             months: FinanceFold.distinctMonths(months.filter { $0.household == household && $0.period != nil }),
             metals: metals.filter { $0.household == household }.sorted(by: SharedFinanceMetalItem.displayOrder),
-            transactions: transactions.filter { $0.household == household },
+            transactions: transactions.filter { !$0.isGone && $0.household == household },
             // With no household yet, adding anything would create one —
             // which waits for iCloud. See `financeCanCreateHousehold`.
             canEdit: household.map { canEdit($0, in: container) } ?? canCreateHousehold,
