@@ -104,6 +104,8 @@ public enum TripDebugSeed {
         car.startsAt = at(2, 11)
         car.trip = rome
 
+        seedSplit(on: rome, context: context, at: at, asOf: now)
+
         // Upcoming: one inside the forecast window, one well beyond it.
         let lisbon = SharedTrip(context: context, title: "Lisbon long weekend", destination: "Lisbon, Portugal", startDate: day(5 + 9), endDate: day(5 + 12))
         lisbon.latitude = 38.7223
@@ -128,6 +130,39 @@ public enum TripDebugSeed {
         lagoon.trip = reykjavik
 
         try? context.saveIfNeeded()
+    }
+
+    /// The Split face's sample: Saloni as a share participant's snapshot row
+    /// (on an unshared simulator trip she reads as having left — the state a
+    /// row is kept for), Alex without the app, an expense in every split mode,
+    /// one before the trip, and a payment.
+    private static func seedSplit(on trip: SharedTrip, context: NSManagedObjectContext, at: (Int, Int, Int) -> Date, asOf now: Date) {
+        trip.currencyCode = "EUR"
+        let me = PersonKey.owner
+        let saloni = PersonKey.participant(recordName: "_seedSaloni")
+        let saloniRow = SharedTripPerson(context: context, key: saloni, name: "Saloni", kind: .participant, asOf: now)
+        saloniRow.trip = trip
+        let alexRow = SharedTripPerson(context: context, manualName: "Alex", asOf: now)
+        alexRow.sortOrder = 1
+        alexRow.trip = trip
+        let alex = alexRow.key
+
+        typealias Entry = ExpenseSplit.Entry
+        let expenses: [(String, Int64, PersonKey, ExpenseSplit, ExpenseCategory, Date)] = [
+            ("Hotel de Russie deposit", 60_000, me, .equal([me, saloni]), .stay, at(-30, 10, 0)),
+            ("Vatican tickets", 10_200, me, ExpenseSplit(mode: .exact, entries: [Entry(key: me, value: 3_400), Entry(key: saloni, value: 3_400), Entry(key: alex, value: 3_400)]), .activity, at(-1, 8, 30)),
+            ("Dinner at Da Enzo", 23_640, saloni, .equal([me, saloni, alex]), .food, at(-1, 21, 0)),
+            ("Taxi to Trastevere", 3_800, alex, ExpenseSplit(mode: .shares, entries: [Entry(key: me, value: 2), Entry(key: saloni, value: 1), Entry(key: alex, value: 1)]), .transport, at(0, 19, 30)),
+            ("Market groceries", 4_560, me, ExpenseSplit(mode: .percent, entries: [Entry(key: me, value: 5_000), Entry(key: saloni, value: 3_000), Entry(key: alex, value: 2_000)]), .shopping, at(0, 11, 0)),
+            ("Gelato at Giolitti", 1_200, me, .equal([me, alex]), .food, at(0, 16, 0)),
+        ]
+        for (title, amount, payer, split, category, date) in expenses {
+            let expense = SharedTripExpense(context: context, title: title, amountMinor: amount, currencyCode: "EUR", payer: payer, split: split, category: category, spentAt: date, asOf: now)
+            expense.trip = trip
+        }
+        let payment = SharedTripExpense(context: context, title: "Payment", amountMinor: 4_000, currencyCode: "EUR", payer: alex, split: .payment(to: me, amountMinor: 4_000), kind: .payment, spentAt: at(0, 17, 0), asOf: now)
+        payment.note = "Cash"
+        payment.trip = trip
     }
 }
 #endif

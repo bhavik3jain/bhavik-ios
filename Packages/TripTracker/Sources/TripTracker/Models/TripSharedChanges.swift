@@ -10,6 +10,14 @@ public extension TripTrackerModule {
         let inserted = change.kind == .inserted
         switch object {
         case let trip as SharedTrip:
+            // The first expense on a trip with no currency sets the trip's
+            // too, and the partner got "updated Rome" beside "added Dinner
+            // (€236.40)" for a change they never made. A switch from Split's
+            // Trip Currency menu only steers new expenses, so it says nothing
+            // either.
+            if !inserted, !change.updatedProperties.isEmpty, change.updatedProperties.isSubset(of: ["currencyCode"]) {
+                return nil
+            }
             let action: String
             if inserted {
                 action = "shared \(TripSharedChangeWording.title(of: trip))"
@@ -51,6 +59,18 @@ public extension TripTrackerModule {
             let name = TripSharedChangeWording.name(booking.title, fallback: "a booking")
             return TripSharedChangeWording.description(trip, inserted ? "added \(name)" : "changed \(name)")
 
+        case let expense as SharedTripExpense:
+            guard let trip = expense.trip else { return nil }
+            return TripSharedChangeWording.description(trip, TripSharedChangeWording.action(for: expense, change))
+
+        case let person as SharedTripPerson:
+            // A participant's snapshot row is bookkeeping (written the first
+            // time they're in an expense); a manual person's later edits —
+            // hiding, linking — say nothing either.
+            guard let trip = person.trip, inserted, person.kind == .manual else { return nil }
+            let name = TripSharedChangeWording.name(person.name, fallback: "someone")
+            return TripSharedChangeWording.description(trip, "added \(name) to the split")
+
         default:
             return nil
         }
@@ -69,6 +89,26 @@ enum TripSharedChangeWording {
     static func name(_ text: String, fallback: String) -> String {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? fallback : trimmed
+    }
+
+    /// An expense's or payment's wording. The title and amount only — never
+    /// the note, and never who owes whom.
+    static func action(for expense: SharedTripExpense, _ change: SharedObjectChange) -> String {
+        let amount = TripMoney.format(expense.amountMinor, code: expense.resolvedCurrencyCode())
+        let amountChanged = !change.updatedProperties.isDisjoint(with: ["amountMinor", "currencyCode"])
+        if expense.isPayment {
+            switch change.kind {
+            case .inserted: return "recorded a \(amount) payment"
+            case .deleted: return "deleted a \(amount) payment"
+            case .updated: return amountChanged ? "changed a payment to \(amount)" : "changed a \(amount) payment"
+            }
+        }
+        let name = TripSharedChangeWording.name(expense.title, fallback: "an expense")
+        switch change.kind {
+        case .inserted: return "added \(name) (\(amount))"
+        case .deleted: return "deleted \(name)"
+        case .updated: return amountChanged ? "changed \(name) to \(amount)" : "changed \(name)"
+        }
     }
 
     /// "Day 3" for the third day. Nothing for an item on no day at all.

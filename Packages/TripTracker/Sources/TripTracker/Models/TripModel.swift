@@ -1,7 +1,7 @@
 import CoreData
 import Foundation
 
-/// Builds the Core Data model behind Trips' four entities, by hand rather than
+/// Builds the Core Data model behind Trips' six entities, by hand rather than
 /// a `.xcdatamodeld` — this repo's convention is hand-written, diffable,
 /// comment-heavy Swift, and a `.xcdatamodeld` is an opaque plist directory that
 /// does neither.
@@ -19,6 +19,8 @@ import Foundation
 /// | `SharedItineraryItem`   | `SharedItineraryItem`  |
 /// | `SharedFlight`          | `SharedFlight`         |
 /// | `SharedBooking`         | `SharedBooking`        |
+/// | `SharedTripExpense`     | `SharedTripExpense`    |
+/// | `SharedTripPerson`      | `SharedTripPerson`     |
 ///
 /// The Swift class name and the entity name are independent
 /// (`NSEntityDescription.managedObjectClassName` vs `.name`) — nothing requires
@@ -47,6 +49,8 @@ public enum TripModel {
         static let item = "SharedItineraryItem"
         static let flight = "SharedFlight"
         static let booking = "SharedBooking"
+        static let expense = "SharedTripExpense"
+        static let person = "SharedTripPerson"
     }
 
     @MainActor
@@ -69,6 +73,14 @@ public enum TripModel {
         booking.name = EntityName.booking
         booking.managedObjectClassName = NSStringFromClass(SharedBooking.self)
 
+        let expense = NSEntityDescription()
+        expense.name = EntityName.expense
+        expense.managedObjectClassName = NSStringFromClass(SharedTripExpense.self)
+
+        let person = NSEntityDescription()
+        person.name = EntityName.person
+        person.managedObjectClassName = NSStringFromClass(SharedTripPerson.self)
+
         trip.properties = [
             string("title", default: ""),
             string("destination", default: ""),
@@ -83,6 +95,9 @@ public enum TripModel {
             // resolve it via KVC.
             double("latitudeNumber"),
             double("longitudeNumber"),
+            // The Split face's default currency: "" means the device locale's.
+            // Additive — builds from before it simply never read it.
+            string("currencyCode", default: ""),
         ]
 
         item.properties = [
@@ -133,6 +148,41 @@ public enum TripModel {
             secureNote,
         ]
 
+        let expenseNote = string("note", default: "")
+        // Free text about who owed what — end to end encrypted like a
+        // booking's secure note, and never in a notification.
+        expenseNote.allowsCloudEncryption = true
+
+        // The split is one string on the expense, never child share rows:
+        // CloudKit applies each record whole and in no guaranteed order, so a
+        // partner could import a new amount before its new rows and see a
+        // split that doesn't add up. One record makes every edit atomic.
+        expense.properties = [
+            string("title", default: ""),
+            integer("amountMinor", default: 0),
+            string("currencyCode", default: ""),
+            string("payerKey", default: ""),
+            string("kindRaw", default: ExpenseKind.expense.rawValue),
+            string("categoryRaw", default: ExpenseCategory.other.rawValue),
+            string("splitModeRaw", default: ExpenseSplitMode.equal.rawValue),
+            string("splitEncoded", default: ""),
+            expenseNote,
+            date("spentAt"),
+            date("createdAt"),
+            date("updatedAt"),
+        ]
+
+        person.properties = [
+            string("personKey", default: ""),
+            string("name", default: ""),
+            string("kindRaw", default: PersonRowKind.manual.rawValue),
+            string("mergedIntoKey", default: ""),
+            bool("isHidden", default: false),
+            integer("sortOrder", default: 0),
+            date("createdAt"),
+            date("updatedAt"),
+        ]
+
         // MARK: Relationships
         //
         // Every to-many/to-one pair below needs its `inverseRelationship` set on
@@ -144,13 +194,17 @@ public enum TripModel {
         let (items, itemTrip) = toManyPair(name: "items", inverseName: "trip", from: trip, to: item)
         let (flights, flightTrip) = toManyPair(name: "flights", inverseName: "trip", from: trip, to: flight)
         let (bookings, bookingTrip) = toManyPair(name: "bookings", inverseName: "trip", from: trip, to: booking)
+        let (expenses, expenseTrip) = toManyPair(name: "expenses", inverseName: "trip", from: trip, to: expense)
+        let (people, personTrip) = toManyPair(name: "people", inverseName: "trip", from: trip, to: person)
 
-        trip.properties += [items, flights, bookings]
+        trip.properties += [items, flights, bookings, expenses, people]
         item.properties += [itemTrip]
         flight.properties += [flightTrip]
         booking.properties += [bookingTrip]
+        expense.properties += [expenseTrip]
+        person.properties += [personTrip]
 
-        model.entities = [trip, item, flight, booking]
+        model.entities = [trip, item, flight, booking, expense, person]
         return model
     }
 
