@@ -45,6 +45,10 @@ public final class SharedTrip: NSManagedObject, Identifiable {
     /// actually exposes.
     @NSManaged var latitudeNumber: NSNumber?
     @NSManaged var longitudeNumber: NSNumber?
+    /// The Split face's default currency, an ISO code; "" means the device
+    /// locale's. Each expense copies it when made, so changing it later never
+    /// reinterprets an old expense.
+    @NSManaged public var currencyCode: String
 
     // No stored phase. "In progress" is a fact about today, and a stored flag
     // would be wrong every morning — nothing runs in the background to flip it
@@ -54,6 +58,8 @@ public final class SharedTrip: NSManagedObject, Identifiable {
     @NSManaged public var items: Set<SharedItineraryItem>?
     @NSManaged public var flights: Set<SharedFlight>?
     @NSManaged public var bookings: Set<SharedBooking>?
+    @NSManaged public var expenses: Set<SharedTripExpense>?
+    @NSManaged public var people: Set<SharedTripPerson>?
 
     public convenience init(
         context: NSManagedObjectContext,

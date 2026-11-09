@@ -2,8 +2,10 @@ import Core
 import CoreData
 import SwiftUI
 
-/// The faces of one trip. Titles are one short word each: five of them share
-/// a segmented control the width of an iPhone.
+/// The faces of one trip. Titles are one short word each: six of them share
+/// a segmented control the width of an iPhone (about 59 pt a segment at 13 pt
+/// on a 358 pt control — check the smallest supported iPhone after adding a
+/// seventh, or a longer word).
 ///
 /// Public so the Mac sidebar and Overview can open a trip on a given face —
 /// the Overview's nearby-ideas tile opens straight onto Nearby.
@@ -13,6 +15,7 @@ public enum TripSection: String, CaseIterable, Identifiable, Sendable {
     case nearby
     case map
     case codes
+    case split
 
     public var id: String { rawValue }
 
@@ -23,6 +26,7 @@ public enum TripSection: String, CaseIterable, Identifiable, Sendable {
         case .nearby: "Nearby"
         case .map: "Map"
         case .codes: "Codes"
+        case .split: "Split"
         }
     }
 }
@@ -40,6 +44,12 @@ enum TripSheet: Identifiable {
     case review
     /// Suggest Places around a day's stops, or the whole trip when nil.
     case suggestions(day: Int?)
+    case newExpense
+    case expense(SharedTripExpense)
+    case settleUp
+    case recordPayment(PaymentPrefill)
+    case payment(SharedTripExpense)
+    case people
 
     var id: String {
         switch self {
@@ -52,6 +62,12 @@ enum TripSheet: Identifiable {
         case .editTrip: "edit-trip"
         case .review: "review"
         case .suggestions(let day): "suggestions-\(day ?? -1)"
+        case .newExpense: "new-expense"
+        case .expense(let expense): "expense-\(expense.objectID.hashValue)"
+        case .settleUp: "settle-up"
+        case .recordPayment(let prefill): "record-payment-\(prefill.id)"
+        case .payment(let payment): "payment-\(payment.objectID.hashValue)"
+        case .people: "people"
         }
     }
 }
@@ -142,6 +158,8 @@ struct TripDetailView: View {
                 TripMapView(trip: trip) { sheet = $0 }
             case .codes:
                 TripCodesView(trip: trip) { sheet = $0 }
+            case .split:
+                TripSplitView(trip: trip, canEdit: canEdit) { sheet = $0 }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -175,6 +193,27 @@ struct TripDetailView: View {
                     .pickerStyle(.segmented)
                     .labelsHidden()
                     .fixedSize()
+                }
+                if section == .split {
+                    if canEdit {
+                        ToolbarItem(placement: .primaryAction) {
+                            Button {
+                                sheet = .newExpense
+                            } label: {
+                                Label("Add Expense", systemImage: "plus.circle")
+                            }
+                            .keyboardShortcut("e", modifiers: [.command, .shift])
+                            .help("Add an expense to this trip's split (⇧⌘E)")
+                        }
+                    }
+                    ToolbarItem(placement: .primaryAction) {
+                        Button {
+                            sheet = .people
+                        } label: {
+                            Label("People", systemImage: "person.2")
+                        }
+                        .help("Who's on this trip's split")
+                    }
                 }
                 if section == .plan {
                     ToolbarItem(placement: .primaryAction) {
@@ -224,6 +263,12 @@ struct TripDetailView: View {
                             reviewButton
                             Divider()
                         }
+                        // On Split it's what the menu is for, so it comes
+                        // first; elsewhere it waits at the bottom.
+                        if section == .split {
+                            addExpenseButton
+                            Divider()
+                        }
                         Button {
                             sheet = .newItem(day: selectedDay)
                         } label: {
@@ -243,6 +288,9 @@ struct TripDetailView: View {
                             sheet = .newBooking
                         } label: {
                             Label("Add Booking", systemImage: "ticket")
+                        }
+                        if section != .split {
+                            addExpenseButton
                         }
                         Divider()
                         Button {
@@ -277,6 +325,18 @@ struct TripDetailView: View {
                 TripReviewSheet(trip: trip, weather: weather, focusDay: selectedDay, canEdit: canEdit)
             case .suggestions(let day):
                 PlaceSuggestionsSheet(trip: trip, weather: weather, canEdit: canEdit, scope: day.map(SuggestionScope.day) ?? .trip)
+            case .newExpense:
+                ExpenseEditorView(trip: trip, expense: nil)
+            case .expense(let expense):
+                ExpenseEditorView(trip: trip, expense: expense)
+            case .settleUp:
+                SettleUpView(trip: trip, canEdit: canEdit)
+            case .recordPayment(let prefill):
+                RecordPaymentView(trip: trip, payment: nil, prefill: prefill)
+            case .payment(let payment):
+                RecordPaymentView(trip: trip, payment: payment, prefill: nil)
+            case .people:
+                TripPeopleSheet(trip: trip, canEdit: canEdit)
             }
         }
         // Loads the model while the plan is being read, so a Review Plan tap
@@ -292,6 +352,14 @@ struct TripDetailView: View {
         .onChange(of: trip.dates.dayCount) { _, count in
             // A shortened trip must not leave the strip pointing past its end.
             selectedDay = min(selectedDay, count - 1)
+        }
+    }
+
+    private var addExpenseButton: some View {
+        Button {
+            sheet = .newExpense
+        } label: {
+            Label("Add Expense", systemImage: "creditcard")
         }
     }
 
@@ -313,10 +381,21 @@ struct TripDetailView: View {
     /// "Italy · 6–14 Jun · Day 3 of 9 · Shared with Saloni" — what the phone's
     /// header says under the title, as one line for the Mac's toolbar.
     private var subtitle: String {
+        if section == .split, layout == .sidebar {
+            return splitSubtitle
+        }
         let dates = trip.dates
         return [trip.destination, ItineraryFormat.dateRange(dates), TripOverview.dayOfTrip(dates) ?? "", sharingStatus.tripBadgeLabel ?? ""]
             .filter { !$0.isEmpty }
             .joined(separator: " · ")
+    }
+
+    /// "€1,116.40 · 4 people" on the Mac's Split face. Read off the trip's
+    /// relationships rather than fetched: this is only the title bar, and it
+    /// catches up with an edited amount at the next redraw.
+    private var splitSubtitle: String {
+        let (_, people) = SplitSnapshot.people(of: trip, in: container, rows: trip.personRecords)
+        return SplitWording(people: people).subtitle(ledger: trip.ledger(people: people))
     }
 
     private var header: some View {

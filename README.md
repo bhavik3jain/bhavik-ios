@@ -5,7 +5,7 @@ through TestFlight; also builds for the Mac.
 
 | Module | What it does |
 | --- | --- |
-| Trips | Plan a trip day by day — itinerary, flights, bookings and door codes — with a map, the forecast, and a PDF itinerary to share; undecided ideas wait off the calendar, ranked by how far they are from you or a day's plan; Review Plan flags overlaps, tight walks, busy days and rain on outdoor plans with one-tap fixes, and on Apple Intelligence devices writes a short review and suggests real nearby places, on the device |
+| Trips | Plan a trip day by day — itinerary, flights, bookings and door codes — with a map, the forecast, and a PDF itinerary to share; undecided ideas wait off the calendar, ranked by how far they are from you or a day's plan; Review Plan flags overlaps, tight walks, busy days and rain on outdoor plans with one-tap fixes, and on Apple Intelligence devices writes a short review and suggests real nearby places, on the device; Split shares the trip's costs with the people it's shared with (and anyone without the app) — equally, by amount, shares or percent, in any currency — and Settle Up suggests a short list of payments to square up |
 | Explore | Keep guides of places to eat, see and do in an area, mark them tried and rated, and see how far away they are |
 | Gym | Log workouts as weight × reps, save routines, track per-exercise progress |
 | TV | Track shows, episodes and films, with a catch-up backlog and an upcoming-episode schedule, and keep watch lists with someone — share a list and either of you can add to it, tick things off as watched together, or copy a title into your own library |

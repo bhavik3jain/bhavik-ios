@@ -442,6 +442,41 @@ show an error: every failure falls back to the plain check or the nearest places
 - On a simulator use `-TripAdvisorStub YES`. `-TripAdvisorProbe YES` exercises the real model without
   touching real data (see Tests above).
 
+## Trip expenses (Split)
+
+A sixth trip face, all in `Packages/TripTracker` (`Expenses/`, `SharedTripExpense`, `SharedTripPerson`,
+`SplitSupport.swift`). Two new Core Data entities in `TripModel` — **they need the Console ritual** before any
+TestFlight build, like any entity added to a hand-built model.
+
+- **People are keys, not rows** (`PersonKey`): the share's owner is `owner` **by role**, never by record name
+  (CloudKit calls the owner `__defaultOwner__` on their own device, and something else on everyone else's);
+  other accepted participants `ck:<recordName>`; someone without the app `manual:<UUID>`, linkable to a
+  participant through `mergedIntoKey` (`TripPeople.resolve` follows it; a cycle reads as no link). The
+  roster comes from the trip's `CKShare` through `SharingStatusCache`/`SplitSnapshot` — never a sharing call
+  on the main thread — and pending invitees show greyed, not splittable. A participant's own `ck:` key on a
+  partner's device needs `CurrentUserRecord` (`CKContainer.userRecordID()`, cached in UserDefaults, retried
+  no sooner than a minute after a failure).
+- **A participant's `SharedTripPerson` row is written on first use, never on open**
+  (`recordParticipants(of:share:)` in the expense save): writing on open is a synced save, and an iCloud
+  alert to the partner, every time anyone looks at Split. Two devices can still each write one: rows
+  **fold on read by key** (`TripPeople.fold`, newest stamp, ties to the later name), never deduplicated by
+  deleting.
+- **The split is one string on the expense** (`splitModeRaw` + `splitEncoded` JSON), never child rows:
+  CloudKit applies records whole and in no set order, so separate share rows could arrive before their new
+  total and not add up. Only the rule is stored; cents are worked out on read.
+- **Money is `Int64` minor units per ISO currency** (`TripMoney`, never `Double`; JPY has 0 places, KWD 3).
+  Equal, shares and percent (basis points) divide by **largest remainder**, ties by ascending key, so every
+  device gets the same cents. `editable` writes and `parse` reads **in the same locale** — a POSIX "236.4"
+  prefilled on a German phone read back as €2,364.
+- **Balances and Settle Up are per currency** (`TripLedger`, `SettleUp`: greedy transfers, near-minimal, one
+  currency at a time) — never converted or summed across currencies. Each expense keeps its own
+  `currencyCode`; the trip's `currencyCode` is only the default for new ones, and the first expense sets
+  it when empty. A trip update touching only `currencyCode` is never notified.
+- **A payment is an expense with `kindRaw == "payment"`** (payer paid, the single split key received), not
+  an entity of its own. One payer per expense.
+- View-only participants (`canEdit` false) see everything and change nothing. On the Mac the face is a list
+  with a 300 pt balances column.
+
 ## Finance report and review: the same rule as Trips
 
 `Packages/FinanceTracker/Sources/FinanceTracker/Report/` builds the month (or year) report:
